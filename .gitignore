@@ -1,0 +1,9 @@
+node_modules/
+.wwebjs_auth/
+.wwebjs_cache/
+.env
+user_limit.json
+user_roles.json
+user_tugas.json
+panitia_agustus.json
+temp/
