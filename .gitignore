@@ -1,6 +1,5 @@
 node_modules/
-.wwebjs_auth/
-.wwebjs_cache/
+auth_session/
 .env
 user_limit.json
 user_roles.json
