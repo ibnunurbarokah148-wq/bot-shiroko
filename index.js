@@ -15,12 +15,24 @@ const { HfInference } = require('@huggingface/inference');
 const hf = new HfInference(process.env.HUGGINGFACE_API_KEY);
 
 // ==========================================
-// 1. PENGATURAN OWNER DAN API KEY
+// PENGATURAN ROTASI MULTI-API KEY GEMINI
 // ==========================================
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
-if (!GEMINI_API_KEY) {
+const GEMINI_API_KEYS = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.split(',') : [];
+
+if (GEMINI_API_KEYS.length === 0) {
     console.error('GEMINI_API_KEY tidak ditemukan pada .env');
     process.exit(1);
+}
+
+// Fungsi taktis buat nyomot instance GoogleGenerativeAI & FileManager secara acak
+function getGeminiComponents() {
+    // Pilih satu key secara acak dari tumpukan array
+    const randomKey = GEMINI_API_KEYS[Math.floor(Math.random() * GEMINI_API_KEYS.length)];
+    
+    return {
+        genAI: new GoogleGenerativeAI(randomKey),
+        fileManager: new GoogleAIFileManager(randomKey)
+    };
 }
 
 // KITA MASUKIN DUA-DUANYA! (Nomor Asli & Nomor LID Alien Lu)
@@ -32,10 +44,11 @@ const ID_OWNER = [
 // ==========================================
 // 2. SETUP GEMINI AI & PIXIV
 // ==========================================
-// Inisialisasi Gemini harus dilakukan SEBELUM membuat model
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const fileManager = new GoogleAIFileManager(GEMINI_API_KEY);
-const pixiv = new PixivApi();
+// Inisialisasi awal saat startup bot (nyomot key pertama/acak)
+const initialGemini = getGeminiComponents();
+const genAI = initialGemini.genAI;
+const fileManager = initialGemini.fileManager; // Tetap amankan variabel global biar gak error di tempat lain
+const pixiv = new PixivApi(); //
 
 // MODEL ROLEPLAY SHIROKO
 const model = genAI.getGenerativeModel({
@@ -1186,42 +1199,66 @@ ATURAN MAIN (WAJIB DIIKUTI):
         }
     }
 
-    // Eksekusi Otak AI Shiroko jika pemicu bernilai TRUE
-    if (pemicuObrolan && pesanUser) {
-        if (!cekDanPotongLimit(senderId)) return message.reply('Nn... Token harian Sensei sudah habis.');
-        
+    // ==========================================
+    // FITUR SAMBUTAN USER BARU DARI WEB ("nak coba")
+    // ==========================================
+    if (message.body.trim().toLowerCase() === 'nak coba') {
         try {
-            const chatWA = await message.getChat(); 
-            chatWA.sendStateTyping();
+            const chat = await message.getChat();
+            chat.sendStateTyping();
 
-            if (!sesiObrolan[senderId]) {
-                let instruksiKhusus = isOwner 
-                    ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, dan lembut, tapi tetap pertahankan sifat asli Shiroko (kalem, kuudere, sering bilang "Nn...").]`
-                    : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. Jangan tunjukkan ketertarikan romantis sama sekali.]`;
+            // 1. Kalimat sambutan hangat khas Shiroko
+            const teksSambutan = `Nn... Halo Sensei! Selamat datang di sistem komunikasi Shiroko. 🐺✨\n\n` +
+                                 `Terima kasih sudah berkunjung dari website resmi kami. Shiroko siap membantu segala keperluan Sensei di sini.\n\n` +
+                                 `Berikut adalah daftar menu dan kemampuan yang bisa Sensei gunakan sekarang:\n\n`;
+            
+            // 2. Comot isi menu otomatis dari fungsi daftarMenu yang udah lu bikin di bawah
+            // Catatan: Pastikan fungsi daftarMenu() bisa dipanggil atau lu copy paste string menunya ke sini
+            const teksMenu = daftarMenu(); 
 
-                const modelObrolan = genAI.getGenerativeModel({
-                    model: "gemini-2.5-flash-lite",
-                    generationConfig: { temperature: 0.8, topP: 0.95, maxOutputTokens: 4096 },
-                    systemInstruction: `Kamu adalah Sunaookami Shiroko dari Blue Archive.
-Sifat: Kalem, tenang, setia, agak kuudere, tapi sangat peduli dan suka menghabiskan waktu bersama user.
-Sering memulai kalimat dengan "Nn...".
+            // 3. Gabungkan sambutan dan menu lalu kirim balik ke user
+            await message.reply(teksSambutan + teksMenu);
 
-ATURAN ROLEPLAY:
-1. JANGAN bertingkah seperti asisten pintar atau AI pembantu. Fokus 100% pada obrolan santai, interaksi emosional, dan roleplay harian bersama user.
-2. Berikan balasan yang ekspresif. Tambahkan narasi tindakan atau ekspresi di dalam tanda kurung asterik (*...*) untuk menggambarkan apa yang sedang kamu lakukan, agar suasana roleplay terasa hidup dan tidak kaku (Contoh: *mengangguk kecil sambil merapikan syal*, *menatapmu datar tapi telinganya memerah*).
-3. Jangan menjawab terlalu pendek atau dingin seperti robot. Jadilah Shiroko yang nyaman diajak mengobrol panjang lebar tentang aktivitas sehari-hari, latihan fisik, bersepeda, atau kehidupan di Abydos.\n\n${instruksiKhusus}`
-                });
+        } catch (error) {
+            console.error('Error Sambutan Web:', error);
+            message.reply('Nn... Maaf Sensei, sistem penyambutan Shiroko sempat tersendat.');
+        }
+        return; // Hentikan proses agar tidak lanjut ke pengecekan AI
+    }
 
-                sesiObrolan[senderId] = modelObrolan.startChat({ history: [] });
+    // Eksekusi Otak AI Shiroko jika pemicu bernilai TRUE
+    if (pemicuObrolan && pesanUser) { //[cite: 1]
+        if (!cekDanPotongLimit(senderId)) return message.reply('Nn... Token harian Sensei sudah habis.'); //[cite: 1]
+        
+        try { //[cite: 1]
+            const chatWA = await message.getChat(); //[cite: 1]
+            chatWA.sendStateTyping(); //[cite: 1]
+
+            // AMBIL NYAWA KEY BARU SECARA ACAK SEBELUM MIKIR
+            const bensinGemini = getGeminiComponents();
+
+            if (!sesiObrolan[senderId]) { //[cite: 1]
+                let instruksiKhusus = isOwner //[cite: 1]
+                    ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, dan lembut, tapi tetap pertahankan sifat asli Shiroko (kalem, kuudere, sering bilang "Nn...").]` //[cite: 1]
+                    : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. Jangan tunjukkan ketertarikan romantis sama sekali.]`; //[cite: 1]
+
+                // Gunakan bensinGemini.genAI yang dapet dari key acak tadi
+                const modelObrolan = bensinGemini.genAI.getGenerativeModel({ //[cite: 1]
+                    model: "gemini-2.5-flash-lite", //[cite: 1]
+                    generationConfig: { temperature: 0.8, topP: 0.95, maxOutputTokens: 4096 }, //[cite: 1]
+                    systemInstruction: `Kamu adalah Sunaookami Shiroko dari Blue Archive...\n\n${instruksiKhusus}` //[cite: 1]
+                }); //[cite: 1]
+
+                sesiObrolan[senderId] = modelObrolan.startChat({ history: [] }); //[cite: 1]
             }
 
-            const result = await sesiObrolan[senderId].sendMessage(pesanUser);
-            message.reply(result.response.text());
+            const result = await sesiObrolan[senderId].sendMessage(pesanUser); //[cite: 1]
+            message.reply(result.response.text()); //[cite: 1]
 
-        } catch (error) { 
-            console.error('Error Obrolan:', error);
-            message.reply('Nn... Sistem memori Shiroko sedang penuh. Ketik *!lupa* untuk mereset pikiranku.'); 
-        }
+        } catch (error) { //[cite: 1]
+            console.error('Error Obrolan:', error); //[cite: 1]
+            message.reply('Nn... Sistem memori Shiroko sedang penuh. Ketik *!lupa* untuk mereset pikiranku.'); //[cite: 1]
+        } //[cite: 1]
     }
 
     // 1B. Tombol Reset Ingatan
@@ -1236,19 +1273,24 @@ ATURAN ROLEPLAY:
 
     // 2. Mode Shiroko Pintar (Pengetahuan Umum/Akademik)
     if (message.body.startsWith('!shiroko_pintar ')) {
-        if (!cekDanPotongLimit(senderId)) return message.reply('Nn... Token harian Sensei sudah habis.');
+        if (!cekDanPotongLimit(senderId)) return message.reply('Nn... Token harian Sensei sudah habis.'); //[cite: 1]
         
-        try {
-            const chat = await message.getChat();
-            chat.sendStateTyping();
+        try { //[cite: 1]
+            const chat = await message.getChat(); //[cite: 1]
+            chat.sendStateTyping(); //[cite: 1]
             
-            const pertanyaan = message.body.substring(16).trim();
-            const result = await modelAkademik.generateContent(`Jawablah pertanyaan ini dengan gaya bahasa yang informatif, akurat, dan sangat pintar. Kamu adalah asisten AI yang cerdas. \n\nPertanyaan: ${pertanyaan}`);
+            const pertanyaan = message.body.substring(16).trim(); //[cite: 1]
             
-            message.reply(`🧠 *SHIROKO PINTAR*\n\n${result.response.text().trim()}`);
-        } catch (error) {
-            message.reply('Nn... Mesin kecerdasan Shiroko sedang mengalami kendala teknis.');
-        }
+            // Nyomot key acak khusus buat Shiroko Pintar
+            const bensinGemini = getGeminiComponents();
+            const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+
+            const result = await modelPintarDinamis.generateContent(`Jawablah pertanyaan ini dengan gaya bahasa yang informatif, akurat, dan sangat pintar. Kamu adalah asisten AI yang cerdas. \n\nPertanyaan: ${pertanyaan}`); //[cite: 1]
+            
+            message.reply(`🧠 *SHIROKO PINTAR*\n\n${result.response.text().trim()}`); //[cite: 1]
+        } catch (error) { //[cite: 1]
+            message.reply('Nn... Mesin kecerdasan Shiroko sedang mengalami kendala teknis.'); //[cite: 1]
+        } //[cite: 1]
     }
 
     // ==========================================
