@@ -33,6 +33,21 @@ const initialGemini = getGeminiComponents(); //[cite: 3]
 const genAI = initialGemini.genAI; //[cite: 3]
 const fileManager = initialGemini.fileManager; //[cite: 3]
 const pixiv = new PixivApi(); //[cite: 3]
+async function loginPixiv() {
+    try {
+        if (!process.env.PIXIV_REFRESH_TOKEN) {
+            console.log("⚠️ PIXIV_REFRESH_TOKEN tidak ada di .env. Fitur Pixiv dimatikan.");
+            return;
+        }
+        await pixiv.refreshAccessToken(process.env.PIXIV_REFRESH_TOKEN);
+        console.log("✅ Berhasil menembus server Pixiv! Mesin Gacha siap.");
+    } catch (err) {
+        console.error("❌ Gagal login Pixiv. Token mungkin kedaluwarsa:", err);
+    }
+}
+
+// Panggil fungsinya saat sistem pertama kali hidup
+loginPixiv();
 
 // MODEL ROLEPLAY SHIROKO
 const model = genAI.getGenerativeModel({ //[cite: 3]
@@ -64,7 +79,27 @@ let dbPanitia = fs.existsSync(panitiaFile) ? JSON.parse(fs.readFileSync(panitiaF
 
 function simpanDB() { fs.writeFileSync(limitFile, JSON.stringify(dbLimit, null, 2)); } //[cite: 3]
 function getCoreNumber(num) { if (!num) return ''; let n = num.toString().replace(/[^0-9]/g, ''); if (n.startsWith('62')) n = n.substring(2); if (n.startsWith('0')) n = n.substring(1); return n; } //[cite: 3]
-function cekDanPotongLimit(targetID) { const coreTarget = getCoreNumber(targetID); if (ID_OWNER.some(owner => getCoreNumber(owner) === coreTarget)) return true; if (!dbLimit[targetID]) dbLimit[targetID] = JATAH_HARIAN; if (dbLimit[targetID] <= 0) return false; dbLimit[targetID] -= 1; simpanDB(); return true; } //[cite: 3]
+function cekDanPotongLimit(targetID) { 
+    const coreTarget = getCoreNumber(targetID); 
+    if (ID_OWNER.some(owner => getCoreNumber(owner) === coreTarget)) return true; 
+    
+    // PERBAIKAN: Gunakan strict check (=== undefined)
+    if (dbLimit[targetID] === undefined) {
+        dbLimit[targetID] = JATAH_HARIAN; 
+    }
+    
+    if (dbLimit[targetID] <= 0) return false; 
+    
+    dbLimit[targetID] -= 1; 
+    simpanDB(); 
+    return true; 
+}
+function kembalikanLimit(targetID) {
+    if (dbLimit[targetID] !== undefined) {
+        dbLimit[targetID] += 1;
+        simpanDB();
+    }
+}
 
     // ==========================================
 // INTI MESIN BAILEYS (PAIRING CODE LOGIN)
@@ -79,6 +114,13 @@ const question = (text) => {
         });
     });
 };
+
+// Reset limit harian setiap jam 00:00 tengah malam waktu Jakarta
+cron.schedule('0 0 * * *', () => {
+    dbLimit = {}; // Mengosongkan memori limit
+    simpanDB();   // Menyimpan data kosong ke JSON
+    console.log('[SISTEM] Limit harian seluruh User telah direset.');
+}, { timezone: "Asia/Jakarta" });
 
 async function hubungkanKeWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_session');
@@ -582,6 +624,7 @@ async function hubungkanKeWhatsApp() {
 
             if (bankSoalGuru.length === 0) return reply(`Nn... Sensei ${dataGuru.nama} belum memasukkan kasus ujian. Ujian tidak bisa dimulai.`);
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token harian Kouhai sudah habis.');
+            
 
             try {
                 reply(`Nn... Menyiapkan ruang ujian dengan skenario dari Sensei *${dataGuru.nama}*. Mohon tunggu sebentar...`);
