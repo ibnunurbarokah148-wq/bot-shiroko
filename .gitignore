@@ -1,6 +1,7 @@
 node_modules/
 auth_session/
 .env
+user_coba.json
 user_limit.json
 user_roles.json
 user_tugas.json

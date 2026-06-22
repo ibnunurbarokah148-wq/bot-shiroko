@@ -53,7 +53,8 @@ const modelAkademik = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite",
 // ==========================================
 // VARIABLES STATE & DATABASE JSON (TETAP SAMA)
 // ==========================================
-const sesiKaryaIlmiah = {}; let alarmSubuhState = { aktif: false, count: 0, timer: null };
+const sesiKaryaIlmiah = {}; const dbCoba = fs.existsSync('./user_coba.json') ? JSON.parse(fs.readFileSync('./user_coba.json', 'utf-8')) : {};
+function simpanCoba() { fs.writeFileSync('./user_coba.json', JSON.stringify(dbCoba, null, 2)); }; let alarmSubuhState = { aktif: false, count: 0, timer: null };
 let alarmSalatAktif = true; const sesiSalat = {}; const sesiWaifu = {}; const sesiPixiv = {}; const sesiTopup = {}; const sesiTikTok = {}; const sesiUjian = {}; const sesiObrolan = {}; //[cite: 3]
 const limitFile = './user_limit.json'; const roleFile = './user_roles.json'; const tugasFile = './user_tugas.json'; const panitiaFile = './panitia_agustus.json'; const JATAH_HARIAN = 5; //[cite: 3]
 let dbLimit = fs.existsSync(limitFile) ? JSON.parse(fs.readFileSync(limitFile, 'utf-8')) : {}; //[cite: 3]
@@ -517,7 +518,18 @@ async function hubungkanKeWhatsApp() {
 
         if (textLower === '!ping') return reply('Nn... Pong. Shiroko standby via Baileys, Sensei.');
 
-        if (textLower === 'nak coba') return reply(`Nn... Halo Sensei! Selamat datang di sistem komunikasi Shiroko. 🐺✨\n\nTerima kasih sudah berkunjung dari website resmi kami. Shiroko siap membantu segala keperluan Sensei di sini.\n\nKetik *!menu* untuk melihat perlengkapan taktis Shiroko.`);
+        if (textLower === 'nak coba') {
+    // Cek apakah user sudah pernah coba
+    if (dbCoba[senderId]) {
+        return reply(`Nn... Sensei, kamu kan sudah pernah menyapa Shiroko sebelumnya. Jangan diulang terus ya, nanti memorinya penuh. ✨`);
+    }
+
+    // Jika belum, tandai dia sudah pernah coba dan simpan ke DB
+    dbCoba[senderId] = true;
+    simpanCoba();
+
+    return reply(`Nn... Halo Sensei! Selamat datang di sistem komunikasi Shiroko. 🐺✨\n\nTerima kasih sudah berkunjung dari website resmi kami. Shiroko siap membantu segala keperluan Sensei di sini.\n\nKetik *!menu* untuk melihat perlengkapan taktis Shiroko.`);
+}
 
         // ==========================================
         // MENU UTAMA BOT
