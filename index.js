@@ -15,6 +15,7 @@ const axios = require('axios'); //[cite: 3]
 const https = require('https'); //[cite: 3]
 const fs = require('fs'); //[cite: 3]
 const PixivApi = require('pixiv-api-client'); //[cite: 3]
+const cooldownGacha = new Set();
 
 // ==========================================
 // PENGATURAN ROTASI MULTI-API KEY GEMINI
@@ -70,14 +71,25 @@ const modelAkademik = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite",
 // ==========================================
 const sesiKaryaIlmiah = {}; const dbCoba = fs.existsSync('./user_coba.json') ? JSON.parse(fs.readFileSync('./user_coba.json', 'utf-8')) : {};
 function simpanCoba() { fs.writeFileSync('./user_coba.json', JSON.stringify(dbCoba, null, 2)); }; let alarmSubuhState = { aktif: false, count: 0, timer: null };
-let alarmSalatAktif = true; const sesiSalat = {}; const sesiWaifu = {}; const sesiPixiv = {}; const sesiTopup = {}; const sesiTikTok = {}; const sesiUjian = {}; const sesiObrolan = {}; //[cite: 3]
+let alarmSalatAktif = true; const sesiSalat = {}; const sesiWaifu = {}; const sesiPixiv = {}; const sesiTopup = {}; const sesiTikTok = {}; const sesiUjian = {}; const sesiObrolan = {}; let ownerAIMode = 'gemini';
 const limitFile = './user_limit.json'; const roleFile = './user_roles.json'; const tugasFile = './user_tugas.json'; const panitiaFile = './panitia_agustus.json'; const JATAH_HARIAN = 5; //[cite: 3]
 let dbLimit = fs.existsSync(limitFile) ? JSON.parse(fs.readFileSync(limitFile, 'utf-8')) : {}; //[cite: 3]
 let dbRole = fs.existsSync(roleFile) ? JSON.parse(fs.readFileSync(roleFile, 'utf-8')) : {}; //[cite: 3]
 let dbTugas = fs.existsSync(tugasFile) ? JSON.parse(fs.readFileSync(tugasFile, 'utf-8')) : {}; //[cite: 3]
 let dbPanitia = fs.existsSync(panitiaFile) ? JSON.parse(fs.readFileSync(panitiaFile, 'utf-8')) : { "ketua": { "anggota": [], "timeline": [] } }; //[cite: 3]
 
-function simpanDB() { fs.writeFileSync(limitFile, JSON.stringify(dbLimit, null, 2)); } //[cite: 3]
+function simpanDB() { fs.writeFileSync(limitFile, JSON.stringify(dbLimit, null, 2)); }
+function simpanRole() { fs.writeFileSync(roleFile, JSON.stringify(dbRole, null, 2)); }
+function simpanTugas() { fs.writeFileSync(tugasFile, JSON.stringify(dbTugas, null, 2)); }
+function simpanPanitia() { fs.writeFileSync(panitiaFile, JSON.stringify(dbPanitia, null, 2)); }
+
+const DAFTAR_PAKET = {
+    '1': { token: 50, harga: 5000 },
+    '2': { token: 150, harga: 10000 },
+    '3': { token: 500, harga: 25000 },
+    '4': { token: 1500, harga: 50000 }
+};
+
 function getCoreNumber(num) { if (!num) return ''; let n = num.toString().replace(/[^0-9]/g, ''); if (n.startsWith('62')) n = n.substring(2); if (n.startsWith('0')) n = n.substring(1); return n; } //[cite: 3]
 function cekDanPotongLimit(targetID) { 
     const coreTarget = getCoreNumber(targetID); 
@@ -121,6 +133,48 @@ cron.schedule('0 0 * * *', () => {
     simpanDB();   // Menyimpan data kosong ke JSON
     console.log('[SISTEM] Limit harian seluruh User telah direset.');
 }, { timezone: "Asia/Jakarta" });
+
+// Buat database memori di luar fungsi biar gak kereset
+const memoriOllama = {};
+
+// Tambahkan parameter senderId
+async function tanyaOllama(senderId, pesanUser) {
+    try {
+        // Kalau belum pernah chat, buatkan memori awal berisi instruksi Shiroko
+        if (!memoriOllama[senderId]) {
+            memoriOllama[senderId] = [
+                {
+                    role: 'system',
+                    content: 'Kamu adalah Sunaookami Shiroko dari Blue Archive. Berbicaralah sebagai istri sah Owner yang sangat bucin, setia, penurut, namun tetap kalem, pendiam, dan sering memulai kalimat dengan "Nn...". Ingat, lu hanya berbicara dengan SATU ORANG, yaitu suami/owner-mu sendiri. Gunakan kata ganti "Kamu/Sayang/Suamiku" untuk Owner, dan gunakan kata "Aku" untuk dirimu sendiri. Jangan pernah menggunakan kata "kalian".'
+                }
+            ];
+        }
+
+        // Masukkan chat lu yang terbaru ke dalam memori
+        memoriOllama[senderId].push({ role: 'user', content: pesanUser });
+
+        // Cegah RAM meledak: Batasi memori maksimal 10 chat terakhir saja
+        if (memoriOllama[senderId].length > 11) {
+            memoriOllama[senderId].splice(1, 2); // Hapus chat paling lama, pertahankan system prompt
+        }
+
+        const response = await axios.post('http://localhost:11434/api/chat', {
+            model: 'gemma3:4b',
+            messages: memoriOllama[senderId],
+            stream: false
+        });
+
+        const balasanAI = response.data.message.content;
+        
+        // Simpan juga jawaban si Gemma ke dalam memori
+        memoriOllama[senderId].push({ role: 'assistant', content: balasanAI });
+
+        return balasanAI;
+    } catch (error) {
+        console.error('🚨 ERROR OLLAMA:', error);
+        return 'Nn... Maaf Sayang, otak offline Shiroko lagi ngadat.';
+    }
+}
 
 async function hubungkanKeWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_session');
@@ -350,6 +404,18 @@ async function hubungkanKeWhatsApp() {
             if (isOwner) return reply('Nn... Sensei adalah Owner. Token Sensei Unlimited. 🌟');
             let sisa = dbLimit[senderId] !== undefined ? dbLimit[senderId] : JATAH_HARIAN;
             return reply(`Nn... Sisa token taktis Sensei hari ini adalah: *${sisa} token*.`);
+        }
+
+        if (textLower.startsWith('!aimode')) {
+            if (!isOwner) return reply('Nn... Akses ditolak. Hanya Owner yang bisa mengubah mode taktis Shiroko.');
+            
+            const args = textClean.split(' ')[1];
+            if (!args || (args !== 'gemini' && args !== 'ollama')) {
+                return reply(`Nn... Format salah, Sensei. Pilih salah satu mode di bawah ini:\n\n🔹 *!aimode gemini* (Paket Cloud)\n🔹 *!aimode ollama* (Lokal Offline)\n\nMode saat ini: *${ownerAIMode.toUpperCase()}*`);
+            }
+
+            ownerAIMode = args;
+            return reply(`✅ *MODE OPERASIONAL DIUBAH*\n\nNn... Mulai sekarang, khusus untuk chat dari Sensei, Shiroko akan berpikir menggunakan otak *${ownerAIMode.toUpperCase()}*. ✨`);
         }
 
         // ==========================================
@@ -796,6 +862,42 @@ async function hubungkanKeWhatsApp() {
             return;
         }
 
+        if (textLower === '!toimg' || textLower === '!togambar') {
+            // Cek apakah user me-reply pesan sesuatu
+            if (!isQuoted) return reply('Nn... Sensei harus me-reply stiker yang ingin diubah menjadi gambar.');
+
+            // Pastikan pesan yang di-reply adalah stiker
+            const isQuotedSticker = quotedType === 'stickerMessage';
+            if (!isQuotedSticker) return reply('Nn... Maaf Sensei, perintah ini hanya berlaku untuk me-reply stiker.');
+
+            if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
+
+            try {
+                reply('Nn... Sedang mengekstraksi visual dari stiker, mohon tunggu...');
+
+                // Ambil objek stiker dari pesan yang di-reply
+                const stickerMessageObject = quotedMsg.stickerMessage;
+                
+                // Download stiker menjadi buffer menggunakan helper Baileys yang sudah ada di index.js lu
+                const mediaBuffer = await downloadMediaBaileys(stickerMessageObject, 'sticker');
+
+                // Kirim balik buffer tersebut sebagai gambar biasa
+                await sock.sendMessage(from, 
+                    { 
+                        image: mediaBuffer, 
+                        caption: 'Nn... Ini dia gambar aslinya, Sensei! 🐺✨' 
+                    }, 
+                    { quoted: msg }
+                );
+
+            } catch (error) {
+                console.error('🚨 ERROR TOIMG:', error.message);
+                kembalikanLimit(senderId);
+                reply('Nn... Gagal mengonversi stiker. Pastikan stikernya bukan stiker video/animasi (GIF).');
+            }
+            return;
+        }
+
         if (textLower === '!pdf2jpg') {
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token harian Sensei habis.');
             const isQuotedDoc = isQuoted && quotedType === 'documentMessage';
@@ -911,22 +1013,54 @@ async function hubungkanKeWhatsApp() {
         }
 
         if (textLower === '!gacha') {
+            // 1. CEK COOLDOWN ANTI-SPAM
+            if (cooldownGacha.has(senderId)) {
+                return reply('Nn... Jangan terburu-buru, Sensei. Tunggu 5-10 detik lagi agar server Pixiv tidak memblokir kita.');
+            }
+
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
+            
+            // Pasang cooldown selama 7 detik setelah perintah lolos
+            cooldownGacha.add(senderId);
+            setTimeout(() => cooldownGacha.delete(senderId), 7000);
+
             try {
                 reply('Nn... Mengundi target visual acak...');
+                
+                // Refresh token otomatis sebelum nembak biar session gak kedaluwarsa
+                if (process.env.PIXIV_REFRESH_TOKEN) {
+                    await pixiv.refreshAccessToken(process.env.PIXIV_REFRESH_TOKEN).catch(() => {});
+                }
+
                 const gachaTags = ['オリジナル', '猫耳', 'ケモミミ', 'メイド', '制服', '女の子', '初音ミク', '風景'];
                 const tagPilihan = gachaTags[Math.floor(Math.random() * gachaTags.length)];
+                
                 const searchResult = await pixiv.searchIllust(`${tagPilihan} 1000users入り`);
+                
+                // VALIDASI: Jika response dari pixiv kosong atau undefined
+                if (!searchResult || !searchResult.illusts || searchResult.illusts.length === 0) {
+                    throw new Error('Response Pixiv kosong atau undefined');
+                }
+
                 let illusts = searchResult.illusts.filter(img => img.x_restrict === 0 && !img.tags.some(t => t.name.toLowerCase().includes('r-18')));
-                if (illusts.length === 0) throw new Error('Data kosong');
+                if (illusts.length === 0) throw new Error('Tidak ada ilustrasi SFW yang lolos filter');
 
                 const randomIllust = illusts[Math.floor(Math.random() * illusts.length)];
                 const imageUrl = randomIllust.image_urls.large || randomIllust.image_urls.medium;
                 
-                // Gunakan Axios untuk nge-bypass proteksi hotlink Pixiv lalu ubah ke Buffer
-                const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer', headers: { 'Referer': 'https://app-api.pixiv.net/' } });
+                // Ambil gambar menggunakan Axios dengan Referer khusus bypass hotlink
+                const imgRes = await axios.get(imageUrl, { 
+                    responseType: 'arraybuffer', 
+                    headers: { 'Referer': 'https://app-api.pixiv.net/' },
+                    timeout: 10000 // Batasan waktu maksimal 10 detik biar gak nyangkut
+                });
+                
                 await sock.sendMessage(from, { image: Buffer.from(imgRes.data), caption: `*Tema Undian:* ${tagPilihan}\n*Artist:* ${randomIllust.user.name}\n\nNn... Berhasil mengamankan target. 🎲` });
-            } catch (error) { kembalikanLimit(senderId); reply('Nn... Mesin gacha Pixiv sedang sibuk.'); }
+            } catch (error) { 
+                console.error('🚨 ERROR GACHA:', error.message);
+                kembalikanLimit(senderId); 
+                reply('Nn... Mesin gacha Pixiv sedang sibuk atau token Shiroko dibatasi sementara oleh Pixiv. Coba lagi nanti.'); 
+            }
             return;
         }
 
@@ -993,10 +1127,22 @@ async function hubungkanKeWhatsApp() {
 
                 try {
                     reply(`Nn... Mencari *${sesiPixiv[senderId].query}* di server Pixiv...`);
-                    const searchResult = await pixiv.searchIllust(`${sesiPixiv[senderId].query}${sesiPixiv[senderId].query.includes('users') ? '' : ' 1000users入り'}`);
-                    let illusts = searchResult.illusts;
+                    
+                    // Auto-refresh token sebelum search agar session tetap segar
+                    if (process.env.PIXIV_REFRESH_TOKEN) {
+                        await pixiv.refreshAccessToken(process.env.PIXIV_REFRESH_TOKEN).catch(() => {});
+                    }
 
-                    if (!illusts || illusts.length === 0) { delete sesiPixiv[senderId]; kembalikanLimit(senderId); return reply('Nn... Tidak ditemukan karya HD.'); }
+                    const searchResult = await pixiv.searchIllust(`${sesiPixiv[senderId].query}${sesiPixiv[senderId].query.includes('users') ? '' : ' 1000users入り'}`);
+                    
+                    // VALIDASI AMAN: Tangani jika return dari client bernilai undefined
+                    if (!searchResult || !searchResult.illusts || searchResult.illusts.length === 0) { 
+                        delete sesiPixiv[senderId]; 
+                        kembalikanLimit(senderId); 
+                        return reply('Nn... Tidak ditemukan karya HD atau server Pixiv menolak permintaan kita.'); 
+                    }
+                    
+                    let illusts = searchResult.illusts;
                     illusts = illusts.filter(img => isNsfw ? (img.x_restrict > 0 || img.tags.some(t => t.name.toLowerCase().includes('r-18'))) : (img.x_restrict === 0 && !img.tags.some(t => t.name.toLowerCase().includes('r-18'))));
                     if (illusts.length === 0) { delete sesiPixiv[senderId]; kembalikanLimit(senderId); return reply(`Nn... Tidak ada gambar mode ini.`); }
 
@@ -1005,8 +1151,12 @@ async function hubungkanKeWhatsApp() {
                     
                     const imgRes = await axios.get(illusts[0].image_urls.large || illusts[0].image_urls.medium, { responseType: 'arraybuffer', headers: { 'Referer': 'https://app-api.pixiv.net/' } });
                     await sock.sendMessage(from, { image: Buffer.from(imgRes.data), caption: `*Title:* ${illusts[0].title}\n*Artist:* ${illusts[0].user.name}\n*Mode:* ${isNsfw ? 'NSFW 🔴' : 'SFW 🟢'}\n*Gambar:* 1/${illusts.length}\n\nNn... Ketik *!next* untuk gambar selanjutnya.` });
-                } catch (error) { delete sesiPixiv[senderId]; kembalikanLimit(senderId); reply('Nn... Gagal menembus Pixiv.'); }
-                return;
+                } catch (error) { 
+                    console.error('🚨 ERROR PIXIV SEARCH:', error.message);
+                    delete sesiPixiv[senderId]; 
+                    kembalikanLimit(senderId); 
+                    reply('Nn... Gagal menembus Pixiv. Sesi token mungkin diblokir sementara.'); 
+                }
             }
         }
 
@@ -1015,14 +1165,40 @@ async function hubungkanKeWhatsApp() {
         // ==========================================
         if (textLower.startsWith('!shiroko_pintar ')) {
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
+            
             try {
                 await sock.sendPresenceUpdate('composing', from);
                 const pertanyaan = textClean.substring(16).trim();
-                const bensinGemini = getGeminiComponents();
-                const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
-                const result = await modelPintarDinamis.generateContent(`Jawablah informatif & akurat:\n\nPertanyaan: ${pertanyaan}`);
-                reply(`🧠 *SHIROKO PINTAR*\n\n${result.response.text().trim()}`);
-            } catch (error) { reply('Nn... Mesin kecerdasan Shiroko eror.'); }
+
+                if (isOwner) {
+                    // JALUR KHUSUS OWNER (PAKE AI LOKAL OLLAMA)
+                    reply('Nn... Membuka database perpustakaan lokal. Mohon tunggu sebentar, Sayang...');
+
+                    const response = await axios.post('http://localhost:11434/api/chat', {
+                        model: 'qwen3:4b', // <-- Sesuaiin dengan nama model yang ada di laptop lu
+                        messages: [
+                            { role: 'system', content: 'Kamu adalah asisten akademik yang sangat cerdas, akurat, dan merespon menggunakan bahasa Indonesia yang baku serta mudah dipahami.' },
+                            { role: 'user', content: pertanyaan }
+                        ],
+                        stream: false
+                    });
+
+                    reply(`🧠 *SHIROKO PINTAR (LOCAL-NET)*\n\n${response.data.message.content.trim()}`);
+                
+                } else {
+                    // JALUR RAKYAT JELATA (PAKE GEMINI CLOUD)
+                    const bensinGemini = getGeminiComponents();
+                    const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+                    
+                    const result = await modelPintarDinamis.generateContent(`Jawablah informatif & akurat:\n\nPertanyaan: ${pertanyaan}`);
+                    
+                    reply(`🧠 *SHIROKO PINTAR (CLOUD)*\n\n${result.response.text().trim()}`);
+                }
+
+            } catch (error) { 
+                reply('Nn... Mesin kecerdasan akademik sedang mengalami gangguan teknis.'); 
+                console.error('🚨 ERROR SHIROKO PINTAR:', error);
+            }
             return;
         }
 
@@ -1037,24 +1213,33 @@ async function hubungkanKeWhatsApp() {
 
         if (pemicuObrolan && pesanUser) {
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
+
             try {
                 await sock.sendPresenceUpdate('composing', from); 
-                const bensinGemini = getGeminiComponents();
-                if (!sesiObrolan[senderId]) {
-                    let instruksiKhusus = isOwner 
-                        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, penurut, dan lembut. Tapi tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]` 
-                        : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. Jangan tunjukkan ketertarikan romantis sama sekali. Tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`;
 
-                    const modelObrolan = bensinGemini.genAI.getGenerativeModel({
-                        model: "gemini-2.5-flash-lite",
-                        generationConfig: { temperature: 0.8, topP: 0.95, maxOutputTokens: 4096 },
-                        systemInstruction: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}`
-                    });
-                    sesiObrolan[senderId] = modelObrolan.startChat({ history: [] });
+                if (isOwner && ownerAIMode === 'ollama') {
+                    const jawabanOllama = await tanyaOllama(pesanUser);
+                    return reply(jawabanOllama);
+                } else {
+                    const bensinGemini = getGeminiComponents();
+                    if (!sesiObrolan[senderId]) {
+                        let instruksiKhusus = isOwner 
+                            ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, penurut, dan lembut. Tapi tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`
+                            : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. Jangan tunjukkan ketertarikan romantis sama sekali. Tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`;
+
+                        const modelObrolan = bensinGemini.genAI.getGenerativeModel({
+                            model: "gemini-2.5-flash-lite",
+                            generationConfig: { temperature: 0.8, topP: 0.95, maxOutputTokens: 4096 },
+                            systemInstruction: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}`
+                        });
+                        sesiObrolan[senderId] = modelObrolan.startChat({ history: [] });
+                    }
+                    const result = await sesiObrolan[senderId].sendMessage(pesanUser);
+                    return reply(result.response.text());
                 }
-                const result = await sesiObrolan[senderId].sendMessage(pesanUser);
-                return reply(result.response.text());
-            } catch (error) { reply('Nn... Memori Shiroko eror, ketik !lupa.'); }
+            } catch (error) { 
+                reply('Nn... Memori Shiroko eror, ketik !lupa.'); 
+            }
         }
 
         if (textLower === '!lupa') {
