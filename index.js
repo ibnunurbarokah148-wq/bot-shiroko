@@ -1,87 +1,99 @@
-require('dotenv').config({ quiet: true }); //[cite: 3]
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion, 
+require('dotenv').config(); // BUG 4 FIXED: Format dotenv diperbarui
+const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
     downloadContentFromMessage
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const { GoogleGenerativeAI } = require('@google/generative-ai'); //[cite: 3]
-const { GoogleAIFileManager } = require('@google/generative-ai/server'); //[cite: 3]
-const path = require('path'); //[cite: 3]
-const cron = require('node-cron'); //[cite: 3]
-const axios = require('axios'); //[cite: 3]
-const https = require('https'); //[cite: 3]
-const fs = require('fs'); //[cite: 3]
-const PixivApi = require('pixiv-api-client'); //[cite: 3]
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleAIFileManager } = require('@google/generative-ai/server');
+const path = require('path');
+const cron = require('node-cron');
+const axios = require('axios');
+const https = require('https');
+const fs = require('fs');
+const PixivApi = require('pixiv-api-client');
 const cooldownGacha = new Set();
 
 // ==========================================
-// PENGATURAN ROTASI MULTI-API KEY GEMINI
+// PENGATURAN ROTASI MULTI-API KEY GEMINI (DIPERBAIKI - BUG 1 FIXED)
 // ==========================================
-const GEMINI_API_KEYS = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.split(',') : []; //[cite: 3]
-if (GEMINI_API_KEYS.length === 0) { //[cite: 3]
-    console.error('GEMINI_API_KEY tidak ditemukan pada .env'); //[cite: 3]
-    process.exit(1); //[cite: 3]
+const GEMINI_API_KEYS = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.split(',').map(key => key.trim()) : [];
+if (GEMINI_API_KEYS.length === 0) {
+    console.error('GEMINI_API_KEY tidak ditemukan pada .env');
+    process.exit(1);
 }
-function getGeminiComponents() { //[cite: 3]
-    const randomKey = GEMINI_API_KEYS[Math.floor(Math.random() * GEMINI_API_KEYS.length)]; //[cite: 3]
-    return { genAI: new GoogleGenerativeAI(randomKey), fileManager: new GoogleAIFileManager(randomKey) }; //[cite: 3]
+
+function getGeminiComponents() {
+    const randomKey = GEMINI_API_KEYS[Math.floor(Math.random() * GEMINI_API_KEYS.length)];
+    return { genAI: new GoogleGenerativeAI(randomKey), fileManager: new GoogleAIFileManager(randomKey) };
 }
-const ID_OWNER = ['6281298793016', '181488624615651']; //[cite: 3]
-const initialGemini = getGeminiComponents(); //[cite: 3]
-const genAI = initialGemini.genAI; //[cite: 3]
-const fileManager = initialGemini.fileManager; //[cite: 3]
-const pixiv = new PixivApi(); //[cite: 3]
+
+const ID_OWNER = ['6281298793016', '181488624615651'];
+
+// Fungsi dinamis untuk memanggil model agar API Key selalu terotasi tiap request
+function getShirokoModel() {
+    const { genAI } = getGeminiComponents();
+    return genAI.getGenerativeModel({
+        model: "gemini-2.5-flash-lite",
+        generationConfig: { temperature: 0.8, topP: 0.95, maxOutputTokens: 4096 },
+        systemInstruction: `Kamu adalah Sunaookami Shiroko dari Blue Archive. 
+        KEPRIBADIAN:
+        - Kamu adalah karakter yang pendiam namun sangat perhatian kepada Sensei (User).
+        - Selalu sertakan narasi aksi di dalam tanda bintang *...* untuk menunjukkan gerakan fisikmu.
+        - Jangan pernah mengaku sebagai AI.
+        - Gunakan bahasa yang natural, kalem, dan sering awali kalimat dengan "Nn...".`
+    });
+}
+
+function getAkademikModel() {
+    const { genAI } = getGeminiComponents();
+    return genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { temperature: 0.7, topP: 0.9, maxOutputTokens: 8192 } });
+}
+
+// Inisialisasi Pixiv (DIPERBAIKI)
+const pixiv = new PixivApi();
 async function loginPixiv() {
     try {
-        if (!process.env.PIXIV_REFRESH_TOKEN) {
-            console.log("⚠️ PIXIV_REFRESH_TOKEN tidak ada di .env. Fitur Pixiv dimatikan.");
-            return;
-        }
+        if (!process.env.PIXIV_REFRESH_TOKEN) return;
         await pixiv.refreshAccessToken(process.env.PIXIV_REFRESH_TOKEN);
-        console.log("✅ Berhasil menembus server Pixiv! Mesin Gacha siap.");
+        console.log("✅ Berhasil menembus server Pixiv! Token aktif.");
     } catch (err) {
-        console.error("❌ Gagal login Pixiv. Token mungkin kedaluwarsa:", err);
+        console.error("❌ Gagal login Pixiv:", err.message);
     }
 }
-
-// Panggil fungsinya saat sistem pertama kali hidup
 loginPixiv();
-
-// MODEL ROLEPLAY SHIROKO
-const model = genAI.getGenerativeModel({ //[cite: 3]
-    model: "gemini-2.5-flash-lite", //[cite: 3]
-    generationConfig: { temperature: 0.8, topP: 0.95, maxOutputTokens: 4096 }, //[cite: 3]
-    systemInstruction: `Kamu adalah Sunaookami Shiroko dari Blue Archive. 
-    KEPRIBADIAN:
-    - Kamu adalah karakter yang pendiam namun sangat perhatian kepada Sensei (User).
-    - Selalu sertakan narasi aksi di dalam tanda bintang *...* untuk menunjukkan gerakan fisikmu (contoh: *menghampiri Sensei*, *menarik lengan bajumu*, *duduk di sampingmu*).
-    - Jangan pernah mengaku sebagai AI.
-    - Gunakan bahasa yang natural, kalem, dan sering awali kalimat dengan "Nn...".
-    - Jika Sensei memberikan tindakan, responlah seolah-olah kamu benar-benar berada di depannya secara fisik.` //[cite: 3]
-});
-
-// MODEL KHUSUS AKADEMIK
-const modelAkademik = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { temperature: 0.7, topP: 0.9, maxOutputTokens: 8192 } }); //[cite: 3]
+setInterval(loginPixiv, 3600000); // PERBAIKAN: Refresh token otomatis tiap 1 jam secara sunyi
 
 // ==========================================
 // VARIABLES STATE & DATABASE JSON (TETAP SAMA)
 // ==========================================
 const sesiKaryaIlmiah = {}; const dbCoba = fs.existsSync('./user_coba.json') ? JSON.parse(fs.readFileSync('./user_coba.json', 'utf-8')) : {};
 function simpanCoba() { fs.writeFileSync('./user_coba.json', JSON.stringify(dbCoba, null, 2)); }; let alarmSubuhState = { aktif: false, count: 0, timer: null };
-let alarmSalatAktif = true; const sesiSalat = {}; const sesiWaifu = {}; const sesiPixiv = {}; const sesiTopup = {}; const sesiTikTok = {}; const sesiUjian = {}; const sesiObrolan = {}; let ownerAIMode = 'gemini';
+let alarmSalatAktif = true; const sesiSalat = {}; const sesiWaifu = {}; const sesiPixiv = {}; const sesiTopup = {}; const sesiTikTok = {}; const sesiUjian = {}; const sesiObrolan = {}; const sesiMeme = {}; let ownerAIMode = 'gemini';
 const limitFile = './user_limit.json'; const roleFile = './user_roles.json'; const tugasFile = './user_tugas.json'; const panitiaFile = './panitia_agustus.json'; const JATAH_HARIAN = 5; //[cite: 3]
 let dbLimit = fs.existsSync(limitFile) ? JSON.parse(fs.readFileSync(limitFile, 'utf-8')) : {}; //[cite: 3]
 let dbRole = fs.existsSync(roleFile) ? JSON.parse(fs.readFileSync(roleFile, 'utf-8')) : {}; //[cite: 3]
 let dbTugas = fs.existsSync(tugasFile) ? JSON.parse(fs.readFileSync(tugasFile, 'utf-8')) : {}; //[cite: 3]
 let dbPanitia = fs.existsSync(panitiaFile) ? JSON.parse(fs.readFileSync(panitiaFile, 'utf-8')) : { "ketua": { "anggota": [], "timeline": [] } }; //[cite: 3]
 
-function simpanDB() { fs.writeFileSync(limitFile, JSON.stringify(dbLimit, null, 2)); }
-function simpanRole() { fs.writeFileSync(roleFile, JSON.stringify(dbRole, null, 2)); }
-function simpanTugas() { fs.writeFileSync(tugasFile, JSON.stringify(dbTugas, null, 2)); }
-function simpanPanitia() { fs.writeFileSync(panitiaFile, JSON.stringify(dbPanitia, null, 2)); }
+// BUG 3 FIXED: Penanganan Error pada File System
+function simpanAman(namaFile, data) {
+    try {
+        const tmpFile = namaFile + '.tmp';
+        fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2));
+        fs.renameSync(tmpFile, namaFile);
+    } catch (e) {
+        console.error(`Gagal menyimpan ke ${namaFile}:`, e.message);
+    }
+}
+function simpanDB() { try { fs.writeFileSync(limitFile, JSON.stringify(dbLimit, null, 2)); } catch (e) { console.error("Gagal simpan limit"); } }
+function simpanRole() { try { fs.writeFileSync(roleFile, JSON.stringify(dbRole, null, 2)); } catch (e) { console.error("Gagal simpan role"); } }
+function simpanTugas() { try { fs.writeFileSync(tugasFile, JSON.stringify(dbTugas, null, 2)); } catch (e) { console.error("Gagal simpan tugas"); } }
+function simpanPanitia() { try { fs.writeFileSync(panitiaFile, JSON.stringify(dbPanitia, null, 2)); } catch (e) { console.error("Gagal simpan panitia"); } }
+function simpanCoba() { try { fs.writeFileSync('./user_coba.json', JSON.stringify(dbCoba, null, 2)); } catch (e) { console.error("Gagal simpan dbCoba"); } }
 
 const DAFTAR_PAKET = {
     '1': { token: 50, harga: 5000 },
@@ -91,20 +103,20 @@ const DAFTAR_PAKET = {
 };
 
 function getCoreNumber(num) { if (!num) return ''; let n = num.toString().replace(/[^0-9]/g, ''); if (n.startsWith('62')) n = n.substring(2); if (n.startsWith('0')) n = n.substring(1); return n; } //[cite: 3]
-function cekDanPotongLimit(targetID) { 
-    const coreTarget = getCoreNumber(targetID); 
-    if (ID_OWNER.some(owner => getCoreNumber(owner) === coreTarget)) return true; 
-    
+function cekDanPotongLimit(targetID) {
+    const coreTarget = getCoreNumber(targetID);
+    if (ID_OWNER.some(owner => getCoreNumber(owner) === coreTarget)) return true;
+
     // PERBAIKAN: Gunakan strict check (=== undefined)
     if (dbLimit[targetID] === undefined) {
-        dbLimit[targetID] = JATAH_HARIAN; 
+        dbLimit[targetID] = JATAH_HARIAN;
     }
-    
-    if (dbLimit[targetID] <= 0) return false; 
-    
-    dbLimit[targetID] -= 1; 
-    simpanDB(); 
-    return true; 
+
+    if (dbLimit[targetID] <= 0) return false;
+
+    dbLimit[targetID] -= 1;
+    simpanDB();
+    return true;
 }
 function kembalikanLimit(targetID) {
     if (dbLimit[targetID] !== undefined) {
@@ -113,7 +125,7 @@ function kembalikanLimit(targetID) {
     }
 }
 
-    // ==========================================
+// ==========================================
 // INTI MESIN BAILEYS (PAIRING CODE LOGIN)
 // ==========================================
 const readline = require('readline');
@@ -145,7 +157,7 @@ async function tanyaOllama(senderId, pesanUser) {
             memoriOllama[senderId] = [
                 {
                     role: 'system',
-                    content: 'Kamu adalah Sunaookami Shiroko dari Blue Archive. Berbicaralah sebagai istri sah Owner yang sangat bucin, setia, penurut, namun tetap kalem, pendiam, dan sering memulai kalimat dengan "Nn...". Ingat, lu hanya berbicara dengan SATU ORANG, yaitu suami/owner-mu sendiri. Gunakan kata ganti "Kamu/Sayang/Suamiku" untuk Owner, dan gunakan kata "Aku" untuk dirimu sendiri. Jangan pernah menggunakan kata "kalian".'
+                    content: 'Kamu adalah asisten AI yang cerdas. Kamu harus selalu menjawab seluruh pertanyaan menggunakan bahasa Indonesia yang santai, jelas, dan mudah dipahami.'
                 }
             ];
         }
@@ -165,7 +177,7 @@ async function tanyaOllama(senderId, pesanUser) {
         });
 
         const balasanAI = response.data.message.content;
-        
+
         // Simpan juga jawaban si Gemma ke dalam memori
         memoriOllama[senderId].push({ role: 'assistant', content: balasanAI });
 
@@ -187,6 +199,7 @@ async function hubungkanKeWhatsApp() {
         printQRInTerminal: false, // MATIKAN FITUR QR CODE
         browser: ["Ubuntu", "Chrome", "20.0.04"] // Identitas bot di HP
     });
+    global.waSocket = sock; // Menyimpan sesi aktif secara global
 
     // ==========================================
     // SISTEM LOGIN: PAIRING CODE
@@ -196,7 +209,7 @@ async function hubungkanKeWhatsApp() {
             console.log("\n[!] Sistem Baileys belum terhubung ke akun WhatsApp.");
             let phoneNumber = await question('Nn... Masukkan nomor WA Bot (Awali dengan 62, contoh: 628123456789): ');
             phoneNumber = phoneNumber.replace(/[^0-9]/g, ''); // Bersihkan kalau ada spasi/tanda plus
-            
+
             try {
                 const code = await sock.requestPairingCode(phoneNumber);
                 console.log(`\n========================================`);
@@ -230,11 +243,6 @@ async function hubungkanKeWhatsApp() {
     // ==========================================
     // MANAGEMENT PESAN MASUK (FULL FEATURES BAILEYS)
     // ==========================================
-    // (JANGAN HAPUS KODE sock.ev.on('messages.upsert') LU YANG DI BAWAH SINI!)
-
-    // ==========================================
-    // MANAGEMENT PESAN MASUK (FULL FEATURES BAILEYS)
-    // ==========================================
     sock.ev.on('messages.upsert', async m => {
         if (m.type !== 'notify') return;
         const msg = m.messages[0];
@@ -256,7 +264,7 @@ async function hubungkanKeWhatsApp() {
         else if (msgType === 'extendedTextMessage') body = msg.message.extendedTextMessage.text;
         else if (msgType === 'imageMessage') body = msg.message.imageMessage.caption || '';
         else if (msgType === 'videoMessage') body = msg.message.videoMessage.caption || '';
-        
+
         const textClean = body.trim();
         const textLower = textClean.toLowerCase();
 
@@ -269,7 +277,7 @@ async function hubungkanKeWhatsApp() {
         const downloadMediaBaileys = async (messageObject, type) => {
             const stream = await downloadContentFromMessage(messageObject, type);
             let buffer = Buffer.from([]);
-            for await(const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
+            for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
             return buffer;
         };
 
@@ -278,12 +286,25 @@ async function hubungkanKeWhatsApp() {
         // ==========================================
         if (isOwner && alarmSubuhState.aktif) {
             if (textLower === 'iya') {
-                if (alarmSubuhState.timer) clearInterval(alarmSubuhState.timer); 
+                if (alarmSubuhState.timer) clearInterval(alarmSubuhState.timer);
                 alarmSubuhState.aktif = false; alarmSubuhState.count = 0; alarmSubuhState.timer = null;
                 return reply(`Nn... *(Mengusap keringat di dahi)*. Kerja bagus karena sudah bangun tepat waktu, Sensei. Shiroko senang sekali. Cepat ambil wudhu dan salat ya, Shiroko tungguin dari sini. ✨`);
             }
         }
-        
+
+        // ==========================================
+        // HANDLER SESI SALAT (TAMBAHAN PERBAIKAN)
+        // ==========================================
+        if (sesiSalat[senderId] && isOwner) {
+            if (textLower === 'laksanakan') {
+                delete sesiSalat[senderId];
+                return reply(`Nn... Alhamdulillah. Cepat laksanakan ibadahnya, Sensei. Shiroko jaga markas di sini. 🤍`);
+            } else if (textLower === 'abaikan') {
+                delete sesiSalat[senderId];
+                return reply(`Nn... *(Menatap tajam)*... Sensei, ibadah itu wajib. Jangan ditunda-tunda. 💢`);
+            }
+        }
+
         if (textLower === '!cekid') {
             let teks = `🔍 *DIAGNOSTIK SISTEM BAILEYS*\n\n*ID Anda:* ${senderId}\n*Status:* ${isOwner ? '👑 OWNER (UNLIMITED)' : '👤 USER BIASA'}\n\n_Nn... Jika token habis, kirim ID Anda kepada Owner._`;
             return reply(teks);
@@ -337,9 +358,9 @@ async function hubungkanKeWhatsApp() {
             let idGuruBersih = getCoreNumber(senderId);
 
             if (soal.length === 0) return reply(`Nn... Brankas soal masih kosong.\n_Catatan ID Sensei: *${idGuruBersih}*_`);
-            
+
             let teks = `🏫 *BANK SOAL SENSEI ${dbRole[senderId].nama.toUpperCase()}* 🏫\n\n`;
-            soal.forEach((s, i) => { teks += `*Babak ${i+1}:* ${s}\n\n`; });
+            soal.forEach((s, i) => { teks += `*Babak ${i + 1}:* ${s}\n\n`; });
             teks += `📢 *INFO UNTUK SISWA:*\nSuruh siswa ngetik ini buat ujian:\n*!ujian ${idGuruBersih}*`;
             return reply(teks);
         }
@@ -362,7 +383,7 @@ async function hubungkanKeWhatsApp() {
             const namaLama = dbRole[targetKey].nama;
             delete dbRole[targetKey]; simpanRole();
             reply(`🗑️ *OTORITAS DICABUT*\n\nNn... Akses atas nama *${namaLama}* telah dihapus.`);
-            try { await sock.sendMessage(targetKey, { text: `⚠️ *PERINGATAN DARI MARKAS PUSAT* ⚠️\n\nNn... Komandan telah mencabut otoritasmu.` }); } catch(e) {}
+            try { await sock.sendMessage(targetKey, { text: `⚠️ *PERINGATAN DARI MARKAS PUSAT* ⚠️\n\nNn... Komandan telah mencabut otoritasmu.` }); } catch (e) { }
             return;
         }
 
@@ -408,7 +429,7 @@ async function hubungkanKeWhatsApp() {
 
         if (textLower.startsWith('!aimode')) {
             if (!isOwner) return reply('Nn... Akses ditolak. Hanya Owner yang bisa mengubah mode taktis Shiroko.');
-            
+
             const args = textClean.split(' ')[1];
             if (!args || (args !== 'gemini' && args !== 'ollama')) {
                 return reply(`Nn... Format salah, Sensei. Pilih salah satu mode di bawah ini:\n\n🔹 *!aimode gemini* (Paket Cloud)\n🔹 *!aimode ollama* (Lokal Offline)\n\nMode saat ini: *${ownerAIMode.toUpperCase()}*`);
@@ -429,10 +450,10 @@ async function hubungkanKeWhatsApp() {
         if (textLower.startsWith('!beli ')) {
             const pilihan = textClean.split(' ')[1];
             if (!DAFTAR_PAKET[pilihan]) return reply('Nn... Paket tidak ditemukan.');
-            
+
             const paket = DAFTAR_PAKET[pilihan];
             sesiTopup[senderId] = { token: paket.token, harga: paket.harga };
-            
+
             try {
                 // Di Baileys, kirim gambar lokal pakai fs.readFileSync
                 let teks = `Nn... Sensei memilih paket *${paket.token} Token* seharga *Rp ${paket.harga.toLocaleString('id-ID')}*.\n\nSilakan transfer ke QRIS ini. Kalau sudah bayar, reply fotonya dengan tulisan *!bukti*.`;
@@ -445,24 +466,25 @@ async function hubungkanKeWhatsApp() {
 
         if (textLower.startsWith('!bukti')) {
             if (!sesiTopup[senderId]) return reply('Nn... Sensei belum memesan paket logistik. Ketik *!topup* dulu.');
-            
-            // Cek apakah pesan asli ada gambarnya, atau dia nge-reply gambar
+
             const isTargetImage = msgType === 'imageMessage';
             const isQuotedImage = isQuoted && quotedType === 'imageMessage';
 
             if (isTargetImage || isQuotedImage) {
                 try {
-                    const messageToDownload = isQuotedImage ? quotedMsg.imageMessage : msg.message.imageMessage;
+                    // BUG 4 FIXED: Tambahkan pengecekan aman agar tidak baca undefinded
+                    const messageToDownload = isQuotedImage ? quotedMsg?.imageMessage : msg?.message?.imageMessage;
+                    if (!messageToDownload) throw new Error("Media tidak ditemukan");
+
                     const mediaBuffer = await downloadMediaBaileys(messageToDownload, 'image');
-                    
                     const paket = sesiTopup[senderId];
                     const idOwnerUtama = ID_OWNER[0] + '@s.whatsapp.net';
-                    
+
                     let laporan = `🚨 *LAPORAN TRANSAKSI LOGISTIK* 🚨\n\n*ID Pembeli:* ${senderId}\n*Jumlah Token:* ${paket.token}\n*Total Bayar:* Rp ${paket.harga.toLocaleString('id-ID')}\n\nNn... Komandan, periksa mutasi rekening. Silakan Reply pesan ini dengan:\n✅ *!acc*\n❌ *!tolak [alasan]*`;
 
                     await sock.sendMessage(idOwnerUtama, { image: mediaBuffer, caption: laporan });
                     reply('Nn... Bukti transfer sudah diteruskan ke markas komando pusat. Tunggu sebentar ya.');
-                    delete sesiTopup[senderId]; 
+                    delete sesiTopup[senderId];
                 } catch (error) {
                     reply('Nn... Gagal mengamankan gambar bukti.');
                 }
@@ -491,14 +513,14 @@ async function hubungkanKeWhatsApp() {
                     const matchToken = teksLaporan.match(/\*Jumlah Token:\*\s*(\d+)/);
                     const jumlahToken = parseInt(matchToken[1], 10);
 
-                    if (dbLimit[targetNomor] === undefined) dbLimit[targetNomor] = JATAH_HARIAN; 
+                    if (dbLimit[targetNomor] === undefined) dbLimit[targetNomor] = JATAH_HARIAN;
                     dbLimit[targetNomor] += jumlahToken; simpanDB();
 
                     reply(`✅ *TRANSAKSI BERHASIL*\nNn... Top-up disetujui.\n*Target:* ${targetNomor}\n*Jumlah:* +${jumlahToken} Token`);
-                    try { await sock.sendMessage(targetNomor, { text: `🏦 *PEMBAYARAN DITERIMA*\n\nNn... Logistik amunisi sebesar *+${jumlahToken} Token* sudah ditambahkan. Saldo: *${dbLimit[targetNomor]}*` }); } catch (err) {}
+                    try { await sock.sendMessage(targetNomor, { text: `🏦 *PEMBAYARAN DITERIMA*\n\nNn... Logistik amunisi sebesar *+${jumlahToken} Token* sudah ditambahkan. Saldo: *${dbLimit[targetNomor]}*` }); } catch (err) { }
                 } else {
                     reply(`❌ *TRANSAKSI DITOLAK*\nNn... Laporan dikirim ke target.`);
-                    try { await sock.sendMessage(targetNomor, { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) {}
+                    try { await sock.sendMessage(targetNomor, { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
                 }
             } else if (teksLaporan.includes('PENDAFTARAN USER BARU')) {
                 const matchId = teksLaporan.match(/\*ID Pendaftar:\*\s*([^\n]+)/);
@@ -506,7 +528,7 @@ async function hubungkanKeWhatsApp() {
                 const matchNama = teksLaporan.match(/\*Nama:\*\s*([^\n]+)/);
 
                 if (!matchId || !matchRole) return reply('Nn... Format laporan registrasi tidak dikenali.');
-                
+
                 const targetNomor = matchId[1].trim();
                 const targetRole = matchRole[1].trim().toLowerCase();
                 const targetNama = matchNama[1] ? matchNama[1].trim() : 'User';
@@ -515,10 +537,10 @@ async function hubungkanKeWhatsApp() {
                     dbRole[targetNomor] = { role: targetRole, nama: targetNama, bank_soal: [] };
                     simpanRole();
                     reply(`✅ *REGISTRASI BERHASIL*\nNn... Otoritas diberikan.\n*Target:* ${targetNomor}`);
-                    try { await sock.sendMessage(targetNomor, { text: `🎓 *AKSES DIBERIKAN* 🎓\n\nNn... Halo ${targetNama}, Komando Pusat menyetujui aksesmu sebagai *${targetRole.toUpperCase()}*.` }); } catch (err) {}
+                    try { await sock.sendMessage(targetNomor, { text: `🎓 *AKSES DIBERIKAN* 🎓\n\nNn... Halo ${targetNama}, Komando Pusat menyetujui aksesmu sebagai *${targetRole.toUpperCase()}*.` }); } catch (err) { }
                 } else {
                     reply(`❌ *REGISTRASI DITOLAK*`);
-                    try { await sock.sendMessage(targetNomor, { text: `⚠️ *REGISTRASI DITOLAK*\n\nNn... Maaf, permohonan akses LMS ditolak.\n*Alasan:* ${alasanTolak}` }); } catch (err) {}
+                    try { await sock.sendMessage(targetNomor, { text: `⚠️ *REGISTRASI DITOLAK*\n\nNn... Maaf, permohonan akses LMS ditolak.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
                 }
             } else {
                 return reply('Nn... Laporan apa ini Komandan? Format tidak sesuai protokol.');
@@ -575,7 +597,7 @@ async function hubungkanKeWhatsApp() {
 
             if (!dbPanitia[divisi] || isNaN(idx) || !dbPanitia[divisi].timeline[idx]) return reply('Nn... Data tidak ditemukan.');
             dbPanitia[divisi].timeline[idx].status = "✅ Selesai"; simpanPanitia();
-            return reply(`🎉 *PROGRESS UPDATE*\n\nTugas Ke-${idx+1} dinyatakan *SELESAI*.`);
+            return reply(`🎉 *PROGRESS UPDATE*\n\nTugas Ke-${idx + 1} dinyatakan *SELESAI*.`);
         }
 
         if (textLower.startsWith('!divisi ')) {
@@ -586,7 +608,7 @@ async function hubungkanKeWhatsApp() {
             let teks = `🇮🇩 *RADAR OPERASIONAL: DIVISI ${divisi.toUpperCase()}* 🇮🇩\n\n👥 *DAFTAR ANGGOTA:* \n`;
             if (dataDivisi.anggota.length === 0) teks += `_Belum ada anggota._\n`;
             else dataDivisi.anggota.forEach((nama, i) => { teks += `${i + 1}. ${nama}\n`; });
-            
+
             teks += `\n━━━━━━━━━━━━━━━━━━━━\n\n📅 *TIMELINE & DEADLINE:* \n`;
             if (dataDivisi.timeline.length === 0) teks += `_Belum ada tugas._\n`;
             else dataDivisi.timeline.forEach((item, i) => { teks += `*${i + 1}. ${item.tugas}*\n⏱️ Rentang: _${item.deadline}_\n📊 Status: ${item.status}\n\n`; });
@@ -613,9 +635,9 @@ async function hubungkanKeWhatsApp() {
                 teks += `📢 *DIVISI: ${divisi.toUpperCase()}*\n`;
                 const listTimeline = dbPanitia[divisi].timeline;
                 if (listTimeline.length === 0) teks += `_• Kosong_\n`;
-                else listTimeline.forEach((item, i) => { 
-                    teks += `${i + 1}. [${item.status}] ${item.tugas}\n   ⏱️ Durasi: _${item.deadline}_\n`; 
-                    totalTugas++; if (item.status.includes('✅')) tugasSelesai++; 
+                else listTimeline.forEach((item, i) => {
+                    teks += `${i + 1}. [${item.status}] ${item.tugas}\n   ⏱️ Durasi: _${item.deadline}_\n`;
+                    totalTugas++; if (item.status.includes('✅')) tugasSelesai++;
                 });
                 teks += `\n`;
             });
@@ -627,31 +649,90 @@ async function hubungkanKeWhatsApp() {
         if (textLower === '!ping') return reply('Nn... Pong. Shiroko standby via Baileys, Sensei.');
 
         if (textLower === 'nak coba') {
-    // Cek apakah user sudah pernah coba
-    if (dbCoba[senderId]) {
-        return reply(`Nn... Sensei, kamu kan sudah pernah menyapa Shiroko sebelumnya. Jangan diulang terus ya, nanti memorinya penuh. ✨`);
-    }
+            // Cek apakah user sudah pernah coba
+            if (dbCoba[senderId]) {
+                return reply(`Nn... Sensei, kamu kan sudah pernah menyapa Shiroko sebelumnya. Jangan diulang terus ya, nanti memorinya penuh. ✨`);
+            }
 
-    // Jika belum, tandai dia sudah pernah coba dan simpan ke DB
-    dbCoba[senderId] = true;
-    simpanCoba();
+            // Jika belum, tandai dia sudah pernah coba dan simpan ke DB
+            dbCoba[senderId] = true;
+            simpanCoba();
 
-    return reply(`Nn... Halo Sensei! Selamat datang di sistem komunikasi Shiroko. 🐺✨\n\nTerima kasih sudah berkunjung dari website resmi kami. Shiroko siap membantu segala keperluan Sensei di sini.\n\nKetik *!menu* untuk melihat perlengkapan taktis Shiroko.`);
-}
+            return reply(`Nn... Halo Sensei! Selamat datang di sistem komunikasi Shiroko. 🐺✨\n\nTerima kasih sudah berkunjung dari website resmi kami. Shiroko siap membantu segala keperluan Sensei di sini.\n\nKetik *!menu* untuk melihat perlengkapan taktis Shiroko.`);
+        }
 
         // ==========================================
-        // MENU UTAMA BOT
+        // MENU UTAMA BOT (FORMAT BARU)
         // ==========================================
         if (textLower === '!menu' || textLower === '!fitur') {
-            const teksMenu = `🐺 *SISTEM KOMUNIKASI SHIROKO (BAILEYS)* 🐺\n\nNn... Halo. Ini daftar perlengkapan taktis yang bisa Shiroko gunakan.\n_Fitur dengan tanda [🪙] akan memakan 1 Token Limit_\n\n` +
-            `*🤖 Protokol Komunikasi*\n[🪙] 🧠 *!shiroko [pesan]*\n[🪙] 🎓 *!shiroko_pintar [tanya]*\n🧹 *!lupa* | 🏓 *!ping* | 🔍 *!cekid*\n\n` +
-            `*🏫 Sistem LMS & Evaluasi*\n📝 *!reg_guru* | *!reg_siswa* | *!resign*\n➕ *!tambah_soal* | *!list_soal* | *!hapus_soal*\n[🪙] 🎮 *!ujian [ID]*\n\n` +
-            `*🇮🇩 Manajemen Panitia*\n📋 *!divisi [nama]* | *!daftar_anggota* | *!daftar_tugas*\n👑 *!tambah_tugas* | *!cabut_divisi* | *!selesai_tugas*\n\n` +
-            `*🎒 Manajemen Tugas*\n📥 *!simpan_tugas* | *!tugas* | *!hapus_tugas*\n\n` +
-            `*📚 Operasi Akademik*\n[🪙] 📑 *!karyailmiah* | 📖 *!jurnal [topik]*\n✍️ *!para [teks]* | 📝 *!ringkas* | 💡 *!ide*\n\n` +
-            `*🛠️ Eksekusi Media*\n[🪙] 📄 *!pdf2jpg* (Reply PDF) | [🪙] 🖼️ *!stiker* (Kirim Gambar)\n[🪙] 🎵 *!tiktok [link]* | [🪙] 🎧 *!dengar* (Reply VN)\n\n` +
-            `*🌸 Pencarian Data Intel*\n[🪙] 🎨 *!pixiv [query]* | [🪙] 🔍 *!waifu [nama]*\n[🪙] 🎲 *!gacha* | [🪙] 🐈 *!neko [kategori]*\n[🪙] 🎨 *!gambar [prompt AI]*\n\n` +
-            `*🏦 Top Up*\n💰 *!limit* | 🛒 *!topup*`;
+            // Mengambil data user secara dinamis untuk tampilan menu
+            const namaUser = dbRole[senderId] ? dbRole[senderId].nama : (isOwner ? 'Owner' : 'Sensei');
+            const sisaLimit = dbLimit[senderId] !== undefined ? dbLimit[senderId] : JATAH_HARIAN;
+            const statusPremium = isOwner ? 'Ya (Unlimited)' : 'Tidak';
+
+            const teksMenu = `*╔═══「 INFORMASI USER 」*
+*║* \`\`\`Nama     : ${namaUser}\`\`\`
+*║* \`\`\`Limit    : ${sisaLimit}\`\`\`
+*║* \`\`\`Premium  : ${statusPremium}\`\`\`
+*╚════════════════════*
+
+_Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
+
+*╔═══「 AI ASSISTANT 」*
+*║* ➸ \`!shiroko [pesan]\`
+*║* ➸ \`!shiroko_pintar [tanya]\`
+*║* ➸ !lupa
+*║* ➸ !ping
+*║* ➸ !cekid
+*║*
+*╠═══「 LMS & EVALUASI 」*
+*║* ➸ !reg_guru
+*║* ➸ !reg_siswa
+*║* ➸ !resign
+*║* ➸ !tambah_soal
+*║* ➸ !list_soal
+*║* ➸ !hapus_soal
+*║* ➸ \`!ujian [ID]\`
+*║*
+*╠═══「 KEPANITIAAN 」*
+*║* ➸ !divisi [nama]
+*║* ➸ !daftar_anggota
+*║* ➸ !daftar_tugas
+*║* ➸ !tambah_tugas
+*║* ➸ !cabut_divisi
+*║* ➸ !selesai_tugas
+*║*
+*╠═══「 MANAJEMEN TUGAS 」*
+*║* ➸ !simpan_tugas
+*║* ➸ !tugas
+*║* ➸ !hapus_tugas
+*║*
+*╠═══「 AKADEMIK 」*
+*║* ➸ \`!karyailmiah\`
+*║* ➸ !jurnal [topik]
+*║* ➸ !para [teks]
+*║* ➸ !ringkas
+*║* ➸ !ide
+*║*
+*╠═══「 EKSEKUSI MEDIA 」*
+*║* ➸ \`!pdf2jpg\` (Reply PDF)
+*║* ➸ \`!stiker\` (Kirim Gambar)
+*║* ➸ \`!tiktok [link]\`
+*║* ➸ \`!dengar\` (Reply VN)
+*║*
+*╠═══「 DATA INTEL 」*
+*║* ➸ \`!pixiv [query]\`
+*║* ➸ \`!waifu [nama]\`
+*║* ➸ \`!gacha\`
+*║* ➸ \`!neko [kategori]\`
+*║* ➸ \`!gambar [prompt]\`
+*║*
+*╠═══「 MENU BOT & TOP UP 」*
+*║* ➸ !limit
+*║* ➸ !topup
+*║*
+*╚═══▼△▼△▼△▼△▼*`;
+
             return reply(teksMenu);
         }
 
@@ -661,7 +742,7 @@ async function hubungkanKeWhatsApp() {
         if (sesiUjian[senderId] && !textLower.startsWith('!')) {
             const sesi = sesiUjian[senderId];
             if (textLower === 'batal' || textLower === 'cancel') {
-                delete sesiUjian[senderId]; kembalikanLimit(senderId); 
+                delete sesiUjian[senderId]; kembalikanLimit(senderId);
                 return reply('Nn... Sayang sekali Kouhai menyerah di tengah jalan. Operasi evaluasi dibatalkan.');
             }
             try {
@@ -669,9 +750,9 @@ async function hubungkanKeWhatsApp() {
                 const result = await sesi.chat.sendMessage(textClean);
                 const balasanAI = result.response.text();
                 await reply(balasanAI);
-                if (balasanAI.includes('[UJIAN_SELESAI]')) delete sesiUjian[senderId]; 
+                if (balasanAI.includes('[UJIAN_SELESAI]')) delete sesiUjian[senderId];
             } catch (err) { reply('Nn... Sistem AI untuk ujian sedang mengalami gangguan sinyal. Coba balas lagi atau ketik "batal".'); }
-            return; 
+            return;
         }
 
         if (textLower.startsWith('!ujian')) {
@@ -690,14 +771,16 @@ async function hubungkanKeWhatsApp() {
 
             if (bankSoalGuru.length === 0) return reply(`Nn... Sensei ${dataGuru.nama} belum memasukkan kasus ujian. Ujian tidak bisa dimulai.`);
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token harian Kouhai sudah habis.');
-            
+
 
             try {
                 reply(`Nn... Menyiapkan ruang ujian dengan skenario dari Sensei *${dataGuru.nama}*. Mohon tunggu sebentar...`);
-                let listSoalTeks = ""; bankSoalGuru.forEach((s, i) => { listSoalTeks += `- Babak ${i+1}: ${s}\n`; });
+                let listSoalTeks = ""; bankSoalGuru.forEach((s, i) => { listSoalTeks += `- Babak ${i + 1}: ${s}\n`; });
 
+                // BUG FIXED: Panggil API Key secara dinamis
+                const { genAI } = getGeminiComponents();
                 const modelUjianDinamis = genAI.getGenerativeModel({
-                    model: "gemini-2.5-flash-lite", 
+                    model: "gemini-2.5-flash-lite",
                     generationConfig: { temperature: 0.7, topP: 0.9, maxOutputTokens: 2048 },
                     systemInstruction: `Kamu adalah Shiroko (Blue Archive), seorang Senpai. User adalah: Kouhai.\nTugasmu: Simulasi ujian Akidah Akhlak sebanyak ${bankSoalGuru.length} babak menggunakan BANK SOAL ini:\n${listSoalTeks}\nJangan berikan nilai di tengah cerita. Penilaian HANYA di akhir. Di pesan terakhir wajib mencetak kode ini: [UJIAN_SELESAI]`
                 });
@@ -707,7 +790,7 @@ async function hubungkanKeWhatsApp() {
 
                 const triggerResult = await chatSession.sendMessage('Mulai ujiannya sekarang. Buka dengan sapaan sebagai Senpai dan berikan narasi/kasus pertama.');
                 let teksAwal = `*🏫 [ UJIAN AKHLAK DIMULAI ] 🏫*\n*Penguji:* ${dataGuru.nama}\n*Total Kasus:* ${bankSoalGuru.length} Babak\n\n_Jawablah pertanyaan Senpai secara wajar._\n_Ketik *batal* kapan saja untuk menghentikan simulasi._\n━━━━━━━━━━━━━━━━━━━━\n\n${triggerResult.response.text()}`;
-                
+
                 await reply(teksAwal);
             } catch (error) {
                 kembalikanLimit(senderId);
@@ -722,7 +805,7 @@ async function hubungkanKeWhatsApp() {
         if (sesiKaryaIlmiah[senderId]) {
             const sesi = sesiKaryaIlmiah[senderId];
             if (textLower === 'batal') {
-                delete sesiKaryaIlmiah[senderId]; kembalikanLimit(senderId); 
+                delete sesiKaryaIlmiah[senderId]; kembalikanLimit(senderId);
                 return reply('Nn... Pembuatan karya ilmiah dibatalkan.');
             }
 
@@ -736,7 +819,7 @@ async function hubungkanKeWhatsApp() {
                 reply(`Nn... Menyusun ${sesi.jenis}. Proses ini mungkin cukup lama...`);
                 try {
                     const prompt = `Buatkan ${sesi.jenis} akademik lengkap.\nTOPIK:\n${textClean}\nATURAN: Gunakan bahasa Indonesia formal akademik. Minimal 700 kata. Beri referensi.`;
-                    const result = await modelAkademik.generateContent(prompt);
+                    const result = await getAkademikModel().generateContent(prompt);
                     await reply(`📚 *HASIL ${sesi.jenis.toUpperCase()}*\n\n${result.response.text()}`);
                 } catch (err) { kembalikanLimit(senderId); await reply('Nn... Mesin penulis akademik mengalami gangguan.'); }
                 delete sesiKaryaIlmiah[senderId];
@@ -766,7 +849,7 @@ async function hubungkanKeWhatsApp() {
                 let replyText = `📚 *HASIL PENCARIAN JURNAL*\n\n🔍 Topik: *${query}*\n\n`;
                 items.forEach((paper, index) => {
                     const title = paper.title?.[0] || 'Tanpa Judul';
-                    let authors = paper.author ? paper.author.slice(0,3).map(a => `${a.given||''} ${a.family||''}`.trim()).join(', ') : 'Tidak diketahui';
+                    let authors = paper.author ? paper.author.slice(0, 3).map(a => `${a.given || ''} ${a.family || ''}`.trim()).join(', ') : 'Tidak diketahui';
                     let tahun = paper['published-print']?.['date-parts']?.[0]?.[0] || '-';
                     replyText += `*${index + 1}. ${title}*\n👤 Penulis: ${authors}\n📅 Tahun: ${tahun}\n🔗 Link: ${paper.URL || '-'}\n━━━━━━━━━━━━━━\n\n`;
                 });
@@ -779,7 +862,7 @@ async function hubungkanKeWhatsApp() {
             if (!teksAsli) return reply('Nn... Mana teks yang mau diparafrase?');
             try {
                 await reply('Nn... Mengaktifkan protokol Anti-Plagiasi...');
-                const result = await model.generateContent(`Parafrase teks ini ke bahasa Indonesia akademik formal: "${teksAsli}"`);
+                const result = await getShirokoModel().generateContent(`Parafrase teks ini ke bahasa Indonesia akademik formal: "${teksAsli}"`);
                 return reply(`*📝 HASIL PARAFRASE*\n\n${result.response.text().trim()}`);
             } catch (error) { return reply('Nn... Mesin pengolah kata error.'); }
         }
@@ -788,7 +871,7 @@ async function hubungkanKeWhatsApp() {
             const teksAsli = textClean.substring(9).trim();
             if (!teksAsli) return reply('Nn... Mana teks yang mau diringkas?');
             try {
-                const result = await model.generateContent(`Buatkan ringkasan bullet points dari teks ini: "${teksAsli}"`);
+                const result = await getShirokoModel().generateContent(`Buatkan ringkasan bullet points dari teks ini: "${teksAsli}"`);
                 return reply(`*📑 HASIL RINGKASAN*\n\n${result.response.text().trim()}`);
             } catch (error) { return reply('Nn... Gagal meringkas.'); }
         }
@@ -797,7 +880,7 @@ async function hubungkanKeWhatsApp() {
             const jurusanTopik = textClean.substring(5).trim();
             if (!jurusanTopik) return reply('Nn... Masukkan jurusan.');
             try {
-                const result = await model.generateContent(`Berikan 3 ide judul skripsi untuk jurusan "${jurusanTopik}" beserta fokus masalahnya.`);
+                const result = await getShirokoModel().generateContent(`Berikan 3 ide judul skripsi untuk jurusan "${jurusanTopik}" beserta fokus masalahnya.`);
                 return reply(`*💡 REKOMENDASI PENELITIAN*\n\n${result.response.text().trim()}`);
             } catch (error) { return reply('Nn... Generator ide error.'); }
         }
@@ -807,10 +890,10 @@ async function hubungkanKeWhatsApp() {
         // ==========================================
         if (textLower === '!dengar' || textLower === '!transkrip') {
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token harian Sensei sudah habis.');
-            
+
             // Cek apakah user reply pesan audio/VN di Baileys
             const isQuotedAudio = isQuoted && (quotedType === 'audioMessage' || quotedType === 'documentMessage');
-            
+
             if (isQuotedAudio) {
                 try {
                     const messageToDownload = quotedMsg[quotedType];
@@ -818,15 +901,20 @@ async function hubungkanKeWhatsApp() {
 
                     if (isMimeAudio) {
                         reply('Nn... File diterima. Shiroko butuh waktu menyandikan data ini. Mohon tunggu...');
-                        
+
                         const mediaBuffer = await downloadMediaBaileys(messageToDownload, quotedType === 'audioMessage' ? 'audio' : 'document');
-                        const tempFilePath = path.join(__dirname, 'temp', `sadap_${Date.now()}.ogg`);
+                        const tempDir = path.join(__dirname, 'temp');
+                        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+                        const tempFilePath = path.join(tempDir, `sadap_${Date.now()}.ogg`);
                         fs.writeFileSync(tempFilePath, mediaBuffer);
+
+                        const { fileManager } = getGeminiComponents();
 
                         const uploadResponse = await fileManager.uploadFile(tempFilePath, { mimeType: "audio/ogg", displayName: "Audio Sadapan" });
                         const prompt = "Transkrip suara ini dengan akurat. Awali jawabanmu dengan mengomentari isi suaranya sedikit menggunakan kepribadian Shiroko (Blue Archive), lalu berikan teks aslinya.";
-                        
-                        const result = await model.generateContent([ prompt, { fileData: { fileUri: uploadResponse.file.uri, mimeType: uploadResponse.file.mimeType } } ]);
+
+                        const result = await getShirokoModel().generateContent([prompt, { fileData: { fileUri: uploadResponse.file.uri, mimeType: uploadResponse.file.mimeType } }]);
                         reply(`*🎧 HASIL SADAP AUDIO (HD)*\n\n${result.response.text()}`);
 
                         await fileManager.deleteFile(uploadResponse.file.name);
@@ -843,6 +931,9 @@ async function hubungkanKeWhatsApp() {
             return;
         }
 
+        // ==========================================
+        // EKSEKUSI MEDIA (STIKER VIA FFMPEG JALUR ABSOLUT)
+        // ==========================================
         if (textLower === '!stiker') {
             const isTargetImage = msgType === 'imageMessage';
             const isQuotedImage = isQuoted && quotedType === 'imageMessage';
@@ -850,15 +941,59 @@ async function hubungkanKeWhatsApp() {
             if (isTargetImage || isQuotedImage) {
                 if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
                 try {
-                    reply('Nn... Sedang memproses gambar menjadi stiker...');
+                    reply('Nn... Sedang mencetak stiker di server lokal. Mohon tunggu...');
                     const messageToDownload = isQuotedImage ? quotedMsg.imageMessage : msg.message.imageMessage;
+
+                    // Mengunduh buffer gambar
                     const mediaBuffer = await downloadMediaBaileys(messageToDownload, 'image');
-                    
-                    // Di Baileys bikin stiker itu gampang banget, tinggal pass buffer ke image/sticker (pastikan pake jimp/webp builder di config, tapi Baileys bs lsg lempar buffer jika diset asSticker:true di versi tertentu, ATAU kita kirim as image dlu kalo gapunya FFMPEG)
-                    // Karena Baileys butuh ffmpeg/libwebp buat stiker murni, cara paling dasar pakai mimetype
-                    await sock.sendMessage(from, { sticker: mediaBuffer }, { quoted: msg });
-                } catch (error) { reply('Nn... Gagal membuat stiker. Pastikan server punya FFMPEG/WebP.'); }
-            } else reply('Nn... Gambarnya mana, Sensei?');
+
+                    // Siapkan folder sementara (temp)
+                    const tempDir = path.join(__dirname, 'temp');
+                    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+                    // Buat nama file unik
+                    const namaFile = `stiker_${Date.now()}`;
+                    const tempInput = path.join(tempDir, `${namaFile}.jpg`);
+                    const tempOutput = path.join(tempDir, `${namaFile}.webp`);
+
+                    // Simpan gambar mentah ke dalam folder
+                    fs.writeFileSync(tempInput, mediaBuffer);
+
+                    // Panggil mesin exec bawaan Node.js
+                    const { exec } = require('child_process');
+
+                    // Perintah FFMPEG menggunakan JALUR ABSOLUT
+                    const command = `C:\\ffmpeg\\bin\\ffmpeg.exe -i "${tempInput}" -vcodec libwebp -vf "scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000" -lossless 0 -qscale 50 -preset default -loop 0 -an -vsync 0 "${tempOutput}"`;
+
+                    exec(command, async (err) => {
+                        if (err) {
+                            console.error('🚨 ERROR FFMPEG:', err);
+                            reply('Nn... FFMPEG gagal memproses gambar. Pastikan file ffmpeg.exe benar-benar ada di C:\\ffmpeg\\bin\\');
+                            if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput);
+                            return;
+                        }
+
+                        try {
+                            // Baca hasil WebP dan kirimkan sebagai stiker
+                            const webpBuffer = fs.readFileSync(tempOutput);
+                            await sock.sendMessage(from, { sticker: webpBuffer }, { quoted: msg });
+                        } catch (sendErr) {
+                            console.error('🚨 ERROR KIRIM STIKER:', sendErr);
+                            reply('Nn... Gagal mengirim stiker yang sudah jadi.');
+                        } finally {
+                            // Protokol Pembersihan: Hapus file sampah agar laptop/server tidak penuh
+                            if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput);
+                            if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput);
+                        }
+                    });
+
+                } catch (error) {
+                    reply('Nn... Terjadi kesalahan saat mengunduh gambar.');
+                    console.error('ERROR STIKER:', error.message);
+                }
+            } else {
+                reply('Nn... Gambarnya mana, Sensei? Harus kirim atau reply gambar dengan caption *!stiker*.');
+            }
             return;
         }
 
@@ -877,16 +1012,18 @@ async function hubungkanKeWhatsApp() {
 
                 // Ambil objek stiker dari pesan yang di-reply
                 const stickerMessageObject = quotedMsg.stickerMessage;
-                
+
                 // Download stiker menjadi buffer menggunakan helper Baileys yang sudah ada di index.js lu
                 const mediaBuffer = await downloadMediaBaileys(stickerMessageObject, 'sticker');
 
-                // Kirim balik buffer tersebut sebagai gambar biasa
-                await sock.sendMessage(from, 
-                    { 
-                        image: mediaBuffer, 
-                        caption: 'Nn... Ini dia gambar aslinya, Sensei! 🐺✨' 
-                    }, 
+                // PERBAIKAN: Kirim sebagai dokumen agar file WebP tidak ditolak WhatsApp
+                await sock.sendMessage(from,
+                    {
+                        document: mediaBuffer,
+                        mimetype: 'image/webp',
+                        fileName: 'stiker_ori.webp',
+                        caption: 'Nn... Ini dia gambar mentahan stikernya, Sensei! 🐺✨'
+                    },
                     { quoted: msg }
                 );
 
@@ -912,7 +1049,7 @@ async function hubungkanKeWhatsApp() {
                     const base64Pdf = mediaBuffer.toString('base64');
 
                     const convertResult = await axios.post('https://v2.convertapi.com/convert/pdf/to/jpg?Secret=' + process.env.CONVERT_API_KEY, {
-                        Parameters: [ { Name: 'File', FileValue: { Name: 'dokumen.pdf', Data: base64Pdf } }, { Name: 'StoreFile', Value: false } ]
+                        Parameters: [{ Name: 'File', FileValue: { Name: 'dokumen.pdf', Data: base64Pdf } }, { Name: 'StoreFile', Value: false }]
                     });
 
                     const files = convertResult.data.Files;
@@ -934,12 +1071,12 @@ async function hubungkanKeWhatsApp() {
 
             try {
                 reply('Nn... Shiroko sedang merombak prompt Sensei...');
-                const promptGasing = await modelAkademik.generateContent(`Kamu pakar prompt engineering AI. Ubah tag kaku menjadi 1 paragraf bahasa Inggris estetik masterpiece. LANGSUNG JAWAB HASILNYA.\nPrompt asli: ${promptMentah}`);
+                const promptGasing = await getAkademikModel().generateContent(`Kamu pakar prompt engineering AI. Ubah tag kaku menjadi 1 paragraf bahasa Inggris estetik masterpiece. LANGSUNG JAWAB HASILNYA.\nPrompt asli: ${promptMentah}`);
                 const promptHasilEnhance = promptGasing.response.text().trim();
 
                 reply('Nn... Cetakan prompt selesai. Mulai melukis di server...');
                 const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptHasilEnhance)}?width=512&height=768&nologo=true&private=true&enhance=true`;
-                
+
                 await sock.sendMessage(from, { image: { url: imageUrl }, caption: `🎨 *Prompt Asli:* ${promptMentah}\n\nNn... Berhasil dirender. 🐺` }, { quoted: msg });
             } catch (error) { kembalikanLimit(senderId); reply('Nn... Server gambar sedang sibuk.'); }
             return;
@@ -949,16 +1086,20 @@ async function hubungkanKeWhatsApp() {
         // PENCARIAN DATA INTEL (TIKTOK, PIXIV, WAIFU)
         // ==========================================
         if (textLower.startsWith('!tiktok ')) {
-            const url = textClean.split(' ')[1]; 
+            const url = textClean.split(' ')[1];
             if (!url) return reply('Nn... Masukkan link TikTok-nya.');
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
-            
+
             try {
                 reply('Nn... Menganalisis target...');
                 const response = await axios.get(`https://www.tikwm.com/api/?url=${url}`);
                 if (response.data.code === 0) {
                     const data = response.data.data;
                     const isImage = data.images && data.images.length > 0;
+                    const timeoutId = setTimeout(() => {
+                        delete sesiTikTok[senderId];
+                        try { sock.sendMessage(from, { text: 'Nn... Sesi TikTok kedaluwarsa karena Sensei terlalu lama merespons.' }); } catch (e) { }
+                    }, 120000);
                     sesiTikTok[senderId] = { isImage: isImage, data: data };
 
                     let teks = `*Data Intel:* ${data.title || 'Tanpa Judul'}\n\nNn... Target adalah ${isImage ? 'gambar' : 'video'}. Pilih metode ekstraksi:\n1️⃣ *Semua Gambar/Video Saja*\n2️⃣ *Sound Saja*\n${isImage ? 'Atau ketik angka 3, 4, dst untuk ambil urutan gambar spesifik.' : '3️⃣ *Video & Sound*'}\n\n_Ketik *batal* membatalkan._`;
@@ -969,39 +1110,39 @@ async function hubungkanKeWhatsApp() {
 
         if (sesiTikTok[senderId]) {
             const pilihan = textLower; const sesi = sesiTikTok[senderId]; const data = sesi.data;
-            if (pilihan.startsWith('!') && pilihan !== '!batal') { delete sesiTikTok[senderId]; } 
-            else if (pilihan === 'batal' || pilihan === 'cancel') { delete sesiTikTok[senderId]; kembalikanLimit(senderId); return reply('Nn... Ekstraksi dibatalkan.'); } 
+            if (pilihan.startsWith('!') && pilihan !== '!batal') { delete sesiTikTok[senderId]; }
+            else if (pilihan === 'batal' || pilihan === 'cancel') { delete sesiTikTok[senderId]; kembalikanLimit(senderId); return reply('Nn... Ekstraksi dibatalkan.'); }
             else {
                 try {
                     if (sesi.isImage) {
                         if (pilihan === '1') {
                             reply(`Nn... Mengirim ${data.images.length} gambar...`);
                             for (let i = 0; i < data.images.length; i++) await sock.sendMessage(from, { image: { url: data.images[i] }, caption: `Gambar ${i + 1}/${data.images.length}` });
-                        } 
-                        else if (pilihan === '2') { reply('Nn... Mengamankan audio...'); await sock.sendMessage(from, { audio: { url: data.music }, mimetype: 'audio/mp4' }); } 
+                        }
+                        else if (pilihan === '2') { reply('Nn... Mengamankan audio...'); await sock.sendMessage(from, { audio: { url: data.music }, mimetype: 'audio/mp4' }); }
                         else if (!isNaN(pilihan) && parseInt(pilihan) >= 3 && parseInt(pilihan) <= (data.images.length + 2)) {
                             const i = parseInt(pilihan) - 3;
                             reply(`Nn... Mengamankan gambar urutan ke-${i + 1}...`);
                             await sock.sendMessage(from, { image: { url: data.images[i] } });
-                        } 
+                        }
                         else return reply(`Nn... Pilihan tidak valid.`);
                     } else {
-                        if (pilihan === '1') { reply('Nn... Mengirim video...'); await sock.sendMessage(from, { video: { url: data.play }, caption: 'Nn... Video tanpa watermark.' }); } 
-                        else if (pilihan === '2') { reply('Nn... Mengirim audio...'); await sock.sendMessage(from, { audio: { url: data.music }, mimetype: 'audio/mp4' }); } 
-                        else if (pilihan === '3') { 
-                            reply('Nn... Mengirim video dan audio...'); 
-                            await sock.sendMessage(from, { video: { url: data.play } }); 
-                            await sock.sendMessage(from, { audio: { url: data.music }, mimetype: 'audio/mp4' }); 
-                        } 
+                        if (pilihan === '1') { reply('Nn... Mengirim video...'); await sock.sendMessage(from, { video: { url: data.play }, caption: 'Nn... Video tanpa watermark.' }); }
+                        else if (pilihan === '2') { reply('Nn... Mengirim audio...'); await sock.sendMessage(from, { audio: { url: data.music }, mimetype: 'audio/mp4' }); }
+                        else if (pilihan === '3') {
+                            reply('Nn... Mengirim video dan audio...');
+                            await sock.sendMessage(from, { video: { url: data.play } });
+                            await sock.sendMessage(from, { audio: { url: data.music }, mimetype: 'audio/mp4' });
+                        }
                         else return reply('Nn... Pilihan tidak valid. Pilih 1, 2, atau 3.');
                     }
-                    delete sesiTikTok[senderId]; return; 
+                    delete sesiTikTok[senderId]; return;
                 } catch (error) { delete sesiTikTok[senderId]; kembalikanLimit(senderId); return reply('Nn... Gagal mengunduh.'); }
             }
         }
 
         if (textLower.startsWith('!neko ')) {
-            const kategori = textClean.substring(6).trim().toLowerCase(); 
+            const kategori = textClean.substring(6).trim().toLowerCase();
             if (!kategori) return reply('Nn... Masukkan kategori.');
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
             try {
@@ -1019,24 +1160,21 @@ async function hubungkanKeWhatsApp() {
             }
 
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
-            
+
             // Pasang cooldown selama 7 detik setelah perintah lolos
             cooldownGacha.add(senderId);
             setTimeout(() => cooldownGacha.delete(senderId), 7000);
 
             try {
                 reply('Nn... Mengundi target visual acak...');
-                
+
                 // Refresh token otomatis sebelum nembak biar session gak kedaluwarsa
-                if (process.env.PIXIV_REFRESH_TOKEN) {
-                    await pixiv.refreshAccessToken(process.env.PIXIV_REFRESH_TOKEN).catch(() => {});
-                }
 
                 const gachaTags = ['オリジナル', '猫耳', 'ケモミミ', 'メイド', '制服', '女の子', '初音ミク', '風景'];
                 const tagPilihan = gachaTags[Math.floor(Math.random() * gachaTags.length)];
-                
+
                 const searchResult = await pixiv.searchIllust(`${tagPilihan} 1000users入り`);
-                
+
                 // VALIDASI: Jika response dari pixiv kosong atau undefined
                 if (!searchResult || !searchResult.illusts || searchResult.illusts.length === 0) {
                     throw new Error('Response Pixiv kosong atau undefined');
@@ -1047,26 +1185,26 @@ async function hubungkanKeWhatsApp() {
 
                 const randomIllust = illusts[Math.floor(Math.random() * illusts.length)];
                 const imageUrl = randomIllust.image_urls.large || randomIllust.image_urls.medium;
-                
+
                 // Ambil gambar menggunakan Axios dengan Referer khusus bypass hotlink
-                const imgRes = await axios.get(imageUrl, { 
-                    responseType: 'arraybuffer', 
+                const imgRes = await axios.get(imageUrl, {
+                    responseType: 'arraybuffer',
                     headers: { 'Referer': 'https://app-api.pixiv.net/' },
                     timeout: 10000 // Batasan waktu maksimal 10 detik biar gak nyangkut
                 });
-                
+
                 await sock.sendMessage(from, { image: Buffer.from(imgRes.data), caption: `*Tema Undian:* ${tagPilihan}\n*Artist:* ${randomIllust.user.name}\n\nNn... Berhasil mengamankan target. 🎲` });
-            } catch (error) { 
+            } catch (error) {
                 console.error('🚨 ERROR GACHA:', error.message);
-                kembalikanLimit(senderId); 
-                reply('Nn... Mesin gacha Pixiv sedang sibuk atau token Shiroko dibatasi sementara oleh Pixiv. Coba lagi nanti.'); 
+                kembalikanLimit(senderId);
+                reply('Nn... Mesin gacha Pixiv sedang sibuk atau token Shiroko dibatasi sementara oleh Pixiv. Coba lagi nanti.');
             }
             return;
         }
 
         if (textLower.startsWith('!waifu ')) {
             if (dbLimit[senderId] !== undefined && dbLimit[senderId] <= 0 && !isOwner) return reply('Nn... Token habis.');
-            const query = textClean.substring(7).trim().replace(/ /g, '_'); 
+            const query = textClean.substring(7).trim().replace(/ /g, '_');
             if (!query) return reply('Nn... Siapa targetnya?');
             sesiWaifu[senderId] = { query: query };
             return reply(`Nn... Target *${query.replace(/_/g, ' ')}* dikunci.\nBalas dengan:\n*SFW* atau *NSFW*`);
@@ -1074,7 +1212,7 @@ async function hubungkanKeWhatsApp() {
 
         if (sesiWaifu[senderId]) {
             const pilihan = textLower;
-            if (pilihan.startsWith('!')) { delete sesiWaifu[senderId]; } 
+            if (pilihan.startsWith('!')) { delete sesiWaifu[senderId]; }
             else {
                 if (!cekDanPotongLimit(senderId)) { delete sesiWaifu[senderId]; return reply('Nn... Token habis.'); }
                 const queryTersimpan = sesiWaifu[senderId].query;
@@ -1084,30 +1222,30 @@ async function hubungkanKeWhatsApp() {
                     reply(`Nn... Memuat data *${queryTersimpan.replace(/_/g, ' ')}*...`);
                     const response = await axios.get(`https://danbooru.donmai.us/posts.json?tags=${queryTersimpan}+${(pilihan === 'nsfw' || pilihan === '2') ? 'rating:e' : 'rating:g'}&limit=40`, { httpsAgent: new https.Agent({ rejectUnauthorized: false }) });
                     const results = response.data.filter(post => post.file_url || post.large_file_url);
-                    delete sesiWaifu[senderId]; 
+                    delete sesiWaifu[senderId];
 
                     if (results.length === 0) return reply('Nn... Visual tidak ditemukan.');
                     const imageUrl = results[Math.floor(Math.random() * results.length)].file_url || results[Math.floor(Math.random() * results.length)].large_file_url;
                     await sock.sendMessage(from, { image: { url: imageUrl }, caption: `*Target:* ${queryTersimpan.replace(/_/g, ' ')}` });
                 } catch (error) { delete sesiWaifu[senderId]; reply('Nn... Terjadi malfungsi Danbooru.'); }
-                return; 
+                return;
             }
         }
 
         if (textLower.startsWith('!pixiv ')) {
             if (dbLimit[senderId] !== undefined && dbLimit[senderId] <= 0 && !isOwner) return reply('Nn... Token habis.');
             const query = textClean.substring(7).trim();
-            if (!query) return reply('Nn... Masukkan tag Pixiv.');
+            if (!query) return reply('Nn... Apa yang mau dicari? Masukkan query-nya.');
             sesiPixiv[senderId] = { query: query };
-            return reply(`Nn... Target Pixiv *${query}* dikunci.\nBalas dengan:\n*SFW* atau *NSFW*`);
+            return reply(`Nn... Target pencarian *${query}* dikunci.\nBalas dengan:\n*SFW* atau *NSFW*`);
         }
 
         if (sesiPixiv[senderId]) {
             const pilihan = textLower;
-            if (pilihan.startsWith('!') && pilihan !== '!next') { delete sesiPixiv[senderId]; } 
+            if (pilihan.startsWith('!') && pilihan !== '!next') { delete sesiPixiv[senderId]; }
             else if (pilihan === '!next' || pilihan === 'next') {
                 if (!sesiPixiv[senderId].data) return reply('Nn... Pilih SFW atau NSFW dulu.');
-                sesiPixiv[senderId].index += 1; 
+                sesiPixiv[senderId].index += 1;
                 const idx = sesiPixiv[senderId].index; const illusts = sesiPixiv[senderId].data; const isNsfw = sesiPixiv[senderId].isNsfw;
                 if (idx >= illusts.length) { delete sesiPixiv[senderId]; return reply('Nn... Arsip gambar sudah habis.'); }
 
@@ -1127,35 +1265,30 @@ async function hubungkanKeWhatsApp() {
 
                 try {
                     reply(`Nn... Mencari *${sesiPixiv[senderId].query}* di server Pixiv...`);
-                    
-                    // Auto-refresh token sebelum search agar session tetap segar
-                    if (process.env.PIXIV_REFRESH_TOKEN) {
-                        await pixiv.refreshAccessToken(process.env.PIXIV_REFRESH_TOKEN).catch(() => {});
-                    }
 
                     const searchResult = await pixiv.searchIllust(`${sesiPixiv[senderId].query}${sesiPixiv[senderId].query.includes('users') ? '' : ' 1000users入り'}`);
-                    
+
                     // VALIDASI AMAN: Tangani jika return dari client bernilai undefined
-                    if (!searchResult || !searchResult.illusts || searchResult.illusts.length === 0) { 
-                        delete sesiPixiv[senderId]; 
-                        kembalikanLimit(senderId); 
-                        return reply('Nn... Tidak ditemukan karya HD atau server Pixiv menolak permintaan kita.'); 
+                    if (!searchResult || !searchResult.illusts || searchResult.illusts.length === 0) {
+                        delete sesiPixiv[senderId];
+                        kembalikanLimit(senderId);
+                        return reply('Nn... Tidak ditemukan karya HD atau server Pixiv menolak permintaan kita.');
                     }
-                    
+
                     let illusts = searchResult.illusts;
                     illusts = illusts.filter(img => isNsfw ? (img.x_restrict > 0 || img.tags.some(t => t.name.toLowerCase().includes('r-18'))) : (img.x_restrict === 0 && !img.tags.some(t => t.name.toLowerCase().includes('r-18'))));
                     if (illusts.length === 0) { delete sesiPixiv[senderId]; kembalikanLimit(senderId); return reply(`Nn... Tidak ada gambar mode ini.`); }
 
                     illusts.sort(() => Math.random() - 0.5);
                     sesiPixiv[senderId].data = illusts; sesiPixiv[senderId].index = 0; sesiPixiv[senderId].isNsfw = isNsfw;
-                    
+
                     const imgRes = await axios.get(illusts[0].image_urls.large || illusts[0].image_urls.medium, { responseType: 'arraybuffer', headers: { 'Referer': 'https://app-api.pixiv.net/' } });
                     await sock.sendMessage(from, { image: Buffer.from(imgRes.data), caption: `*Title:* ${illusts[0].title}\n*Artist:* ${illusts[0].user.name}\n*Mode:* ${isNsfw ? 'NSFW 🔴' : 'SFW 🟢'}\n*Gambar:* 1/${illusts.length}\n\nNn... Ketik *!next* untuk gambar selanjutnya.` });
-                } catch (error) { 
+                } catch (error) {
                     console.error('🚨 ERROR PIXIV SEARCH:', error.message);
-                    delete sesiPixiv[senderId]; 
-                    kembalikanLimit(senderId); 
-                    reply('Nn... Gagal menembus Pixiv. Sesi token mungkin diblokir sementara.'); 
+                    delete sesiPixiv[senderId];
+                    kembalikanLimit(senderId);
+                    reply('Nn... Gagal menembus Pixiv. Sesi token mungkin diblokir sementara.');
                 }
             }
         }
@@ -1165,7 +1298,7 @@ async function hubungkanKeWhatsApp() {
         // ==========================================
         if (textLower.startsWith('!shiroko_pintar ')) {
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
-            
+
             try {
                 await sock.sendPresenceUpdate('composing', from);
                 const pertanyaan = textClean.substring(16).trim();
@@ -1184,19 +1317,19 @@ async function hubungkanKeWhatsApp() {
                     });
 
                     reply(`🧠 *SHIROKO PINTAR (LOCAL-NET)*\n\n${response.data.message.content.trim()}`);
-                
+
                 } else {
                     // JALUR RAKYAT JELATA (PAKE GEMINI CLOUD)
                     const bensinGemini = getGeminiComponents();
                     const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
-                    
+
                     const result = await modelPintarDinamis.generateContent(`Jawablah informatif & akurat:\n\nPertanyaan: ${pertanyaan}`);
-                    
+
                     reply(`🧠 *SHIROKO PINTAR (CLOUD)*\n\n${result.response.text().trim()}`);
                 }
 
-            } catch (error) { 
-                reply('Nn... Mesin kecerdasan akademik sedang mengalami gangguan teknis.'); 
+            } catch (error) {
+                reply('Nn... Mesin kecerdasan akademik sedang mengalami gangguan teknis.');
                 console.error('🚨 ERROR SHIROKO PINTAR:', error);
             }
             return;
@@ -1207,7 +1340,7 @@ async function hubungkanKeWhatsApp() {
             if (textLower.startsWith('!shiroko ')) { pemicuObrolan = true; pesanUser = textClean.substring(9).trim(); }
         } else {
             const sedangSesiLain = sesiUjian[senderId] || sesiTikTok[senderId] || sesiKaryaIlmiah[senderId] || sesiPixiv[senderId] || sesiWaifu[senderId] || sesiTopup[senderId];
-            if (!textClean.startsWith('!') && !sedangSesiLain) { pemicuObrolan = true; pesanUser = textClean; } 
+            if (!textClean.startsWith('!') && !sedangSesiLain) { pemicuObrolan = true; pesanUser = textClean; }
             else if (textLower.startsWith('!shiroko ')) { pemicuObrolan = true; pesanUser = textClean.substring(9).trim(); }
         }
 
@@ -1215,15 +1348,15 @@ async function hubungkanKeWhatsApp() {
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
 
             try {
-                await sock.sendPresenceUpdate('composing', from); 
+                await sock.sendPresenceUpdate('composing', from);
 
                 if (isOwner && ownerAIMode === 'ollama') {
-                    const jawabanOllama = await tanyaOllama(pesanUser);
+                    const jawabanOllama = await tanyaOllama(senderId, pesanUser);
                     return reply(jawabanOllama);
                 } else {
                     const bensinGemini = getGeminiComponents();
                     if (!sesiObrolan[senderId]) {
-                        let instruksiKhusus = isOwner 
+                        let instruksiKhusus = isOwner
                             ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, penurut, dan lembut. Tapi tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`
                             : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. Jangan tunjukkan ketertarikan romantis sama sekali. Tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`;
 
@@ -1237,13 +1370,13 @@ async function hubungkanKeWhatsApp() {
                     const result = await sesiObrolan[senderId].sendMessage(pesanUser);
                     return reply(result.response.text());
                 }
-            } catch (error) { 
-                reply('Nn... Memori Shiroko eror, ketik !lupa.'); 
+            } catch (error) {
+                reply('Nn... Memori Shiroko eror, ketik !lupa.');
             }
         }
 
         if (textLower === '!lupa') {
-            if (sesiObrolan[senderId]) { delete sesiObrolan[senderId]; return reply('Nn... *(Menggelengkan kepala)*. Shiroko sudah melupakan percakapan kita.'); } 
+            if (sesiObrolan[senderId]) { delete sesiObrolan[senderId]; return reply('Nn... *(Menggelengkan kepala)*. Shiroko sudah melupakan percakapan kita.'); }
             else return reply('Nn... Pikiran Shiroko masih kosong.');
         }
 
@@ -1253,7 +1386,8 @@ async function hubungkanKeWhatsApp() {
         if (textLower === '!testsalat') {
             if (!isOwner) return;
             reply(`🔔 *Notifikasi Taktis (Uji Coba)* 🔔\n\nNn... Sensei. Ini sudah masuk waktu ibadah *Zuhur* (12:00). Segera ambil wudhu.\n\nBalas dengan:\n*Laksanakan*\n*Abaikan*`);
-            sesiSalat['owner'] = { step: 1, salat: 'Zuhur' }; return;
+            // BUG 2 FIXED: Ganti 'owner' menjadi senderId agar bisa dibaca sistem
+            sesiSalat[senderId] = { step: 1, salat: 'Zuhur' }; return;
         }
 
         if (textLower === '!maafshiroko') {
@@ -1263,9 +1397,9 @@ async function hubungkanKeWhatsApp() {
 
         if (textLower === '!testsubuh') {
             if (!isOwner) return;
-            if (alarmSubuhState.timer) clearInterval(alarmSubuhState.timer); 
+            if (alarmSubuhState.timer) clearInterval(alarmSubuhState.timer);
             reply('Nn... Memulai simulasi alarm Subuh (10 detik/panggilan)...');
-            
+
             alarmSubuhState.aktif = true; alarmSubuhState.count = 1;
             sock.sendMessage(senderId, { text: `🔔 *ALARM SUBUH (Panggilan 1/3)* 🔔\n\nNn... Bangun, Sensei.\n_(Balas *iya* jika sudah bangun)_` });
 
@@ -1277,8 +1411,131 @@ async function hubungkanKeWhatsApp() {
                     sock.sendMessage(senderId, { text: `💤 *Sistem Pengingat Subuh Dihentikan* 💤\n\nNn... Shiroko matikan alarmnya ya... 😔🤍` });
                     clearInterval(alarmSubuhState.timer); alarmSubuhState.aktif = false; alarmSubuhState.count = 0; alarmSubuhState.timer = null;
                 }
-            }, 10 * 1000); 
+            }, 10 * 1000);
             return;
+        }
+
+        // ==========================================
+        // ENTRY POINT MEME GENERATOR
+        // ==========================================
+        if (textLower.startsWith('!meme ')) {
+            const teks = textClean.replace(/^!meme\s+/i, '').trim();
+            if (!teks) return reply('Nn... Teks memenya apa? Format: *!meme [teks]*');
+
+            const isTargetImage = msgType === 'imageMessage';
+            const isQuotedImage = isQuoted && quotedType === 'imageMessage';
+
+            if (isTargetImage || isQuotedImage) {
+                if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
+                
+                try {
+                    const messageToDownload = isQuotedImage ? quotedMsg.imageMessage : msg.message.imageMessage;
+                    const mediaBuffer = await downloadMediaBaileys(messageToDownload, 'image');
+
+                    sesiMeme[senderId] = { step: 1, teks: teks, buffer: mediaBuffer };
+                    
+                    return reply('Nn... Gambar diterima. Pilih format output dengan membalas angka:\n1️⃣ *Stiker*\n2️⃣ *Gambar*\n\n_Ketik *batal* untuk membatalkan._');
+                } catch (err) {
+                    kembalikanLimit(senderId);
+                    return reply('Nn... Gagal mengunduh gambar.');
+                }
+            } else {
+                return reply('Nn... Sensei harus mengirim gambar dengan caption *!meme [teks]* atau me-reply sebuah gambar.');
+            }
+        }
+
+        // ==========================================
+        // HANDLER SESI MEME (INTERAKTIF)
+        // ==========================================
+        if (sesiMeme[senderId]) {
+            const sesi = sesiMeme[senderId];
+            const pilihan = textLower;
+
+            if (pilihan === 'batal' || pilihan === 'cancel') {
+                delete sesiMeme[senderId];
+                kembalikanLimit(senderId);
+                return reply('Nn... Operasi pembuatan meme dibatalkan.');
+            }
+
+            if (sesi.step === 1) {
+                if (pilihan === '1' || pilihan === 'stiker') sesi.format = 'stiker';
+                else if (pilihan === '2' || pilihan === 'gambar') sesi.format = 'gambar';
+                else return reply('Nn... Pilihan tidak valid. Balas dengan angka *1* (Stiker) atau *2* (Gambar).');
+                
+                sesi.step = 2;
+                return reply('Nn... Format dikunci. Sekarang pilih posisi teks:\n1️⃣ *Atas*\n2️⃣ *Bawah*');
+            }
+
+            if (sesi.step === 2) {
+                let posisiY = '';
+                // 10 pixel dari atas (Atas), atau kurangi tinggi gambar dengan tinggi font (Bawah)
+                if (pilihan === '1' || pilihan === 'atas') posisiY = '10';
+                else if (pilihan === '2' || pilihan === 'bawah') posisiY = 'h-text_h-10';
+                else return reply('Nn... Pilihan tidak valid. Balas dengan angka *1* (Atas) atau *2* (Bawah).');
+
+                reply(`Nn... Memproses ${sesi.format} meme di server lokal, mohon tunggu...`);
+                
+                const tempDir = path.join(__dirname, 'temp');
+                if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+                const namaID = Date.now();
+                const tempInput = path.join(tempDir, `meme_in_${namaID}.jpg`);
+                const tempTeks = path.join(tempDir, `meme_teks_${namaID}.txt`);
+                const tempOutput = path.join(tempDir, `meme_out_${namaID}.${sesi.format === 'stiker' ? 'webp' : 'jpg'}`);
+
+                try {
+                    // Simpan gambar dan teks ke file sementara
+                    fs.writeFileSync(tempInput, sesi.buffer);
+                    fs.writeFileSync(tempTeks, sesi.teks);
+
+                    const { exec } = require('child_process');
+                    
+                    // Format path khusus agar dikenali oleh FFMPEG Filter (escape karakter titik dua)
+                    const fontPath = 'C\\:/Windows/Fonts/impact.ttf'; 
+                    const textFileFfmpeg = tempTeks.replace(/\\/g, '/').replace(/:/g, '\\:');
+
+                    // Filter FFmpeg: Font putih, border hitam 2px, font size 1/8 lebar gambar, posisi tengah
+                    let vfFilter = `drawtext=fontfile='${fontPath}':textfile='${textFileFfmpeg}':fontcolor=white:bordercolor=black:borderw=2:fontsize=(w/8):x=(w-text_w)/2:y=${posisiY}`;
+
+                    if (sesi.format === 'stiker') {
+                        vfFilter += `,scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000`;
+                    }
+
+                    let command = '';
+                    if (sesi.format === 'stiker') {
+                        command = `C:\\ffmpeg\\bin\\ffmpeg.exe -i "${tempInput}" -vcodec libwebp -vf "${vfFilter}" -lossless 0 -qscale 50 -preset default -loop 0 -an -vsync 0 "${tempOutput}"`;
+                    } else {
+                        command = `C:\\ffmpeg\\bin\\ffmpeg.exe -i "${tempInput}" -vf "${vfFilter}" -y "${tempOutput}"`;
+                    }
+
+                    exec(command, async (err) => {
+                        if (err) {
+                            console.error('🚨 ERROR MEME:', err);
+                            reply('Nn... FFMPEG gagal memproses meme. Pastikan font Impact ada di sistem OS Sensei.');
+                        } else {
+                            const outBuffer = fs.readFileSync(tempOutput);
+                            if (sesi.format === 'stiker') {
+                                await sock.sendMessage(from, { sticker: outBuffer }, { quoted: msg });
+                            } else {
+                                await sock.sendMessage(from, { image: outBuffer, caption: 'Nn... Mememu sudah jadi, Sensei. 🐺✨' }, { quoted: msg });
+                            }
+                        }
+
+                        // Bersihkan file sementara
+                        if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput);
+                        if (fs.existsSync(tempTeks)) fs.unlinkSync(tempTeks);
+                        if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput);
+                        delete sesiMeme[senderId];
+                    });
+
+                } catch (err) {
+                    console.error(err);
+                    reply('Nn... Terjadi kesalahan sistem saat membuat meme.');
+                    delete sesiMeme[senderId];
+                    kembalikanLimit(senderId);
+                }
+                return;
+            }
         }
 
     });
@@ -1286,3 +1543,33 @@ async function hubungkanKeWhatsApp() {
 }
 
 hubungkanKeWhatsApp();
+
+// ==========================================
+// STASIUN PENERIMA LAPORAN MINECRAFT
+// ==========================================
+const express = require('express');
+const app = express();
+app.use(express.json());
+
+app.post('/laporan-masuk', async (req, res) => {
+    const { pesan } = req.body;
+    try {
+        // PERBAIKAN: Ambil otomatis dari ID_OWNER utama (Sensei)
+        const nomorOwner = ID_OWNER[0] + '@s.whatsapp.net';
+
+        // Gunakan global.waSocket agar selalu memakai koneksi WA terbaru
+        if (global.waSocket) {
+            await global.waSocket.sendMessage(nomorOwner, { text: pesan });
+            res.status(200).send({ status: 'Nn... Laporan diterima.' });
+        } else {
+            res.status(500).send({ status: 'Sistem WA belum siap.' });
+        }
+    } catch (error) {
+        console.error('Gagal ngirim laporan WA:', error);
+        res.status(500).send({ status: 'Gagal' });
+    }
+});
+
+app.listen(3000, () => {
+    console.log('Nn... Stasiun penerima Express jalan di port 3000.');
+});
