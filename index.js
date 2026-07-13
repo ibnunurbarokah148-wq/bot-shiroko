@@ -12,10 +12,36 @@ const { GoogleAIFileManager } = require('@google/generative-ai/server');
 const path = require('path');
 const cron = require('node-cron');
 const axios = require('axios');
+const { InferenceClient } = require('@huggingface/inference');
 const https = require('https');
 const fs = require('fs');
 const PixivApi = require('pixiv-api-client');
 const cooldownGacha = new Set();
+// ==========================================
+// FUNGSI INJEKSI METADATA STIKER
+// ==========================================
+async function tambahMetadataStiker(bufferWebp, packName, authorName) {
+    const webpmux = require('node-webpmux');
+    const img = new webpmux.Image();
+    await img.load(bufferWebp);
+
+    // Format JSON wajib standar WhatsApp
+    const jsonMeta = {
+        "sticker-pack-id": "ShirokoSystem",
+        "sticker-pack-name": packName,
+        "sticker-pack-publisher": authorName,
+        "emojis": ["🐺", "✨"]
+    };
+
+    // Header byte khusus untuk format EXIF WEBP
+    const exifAttr = Buffer.from([0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00]);
+    const jsonBuff = Buffer.from(JSON.stringify(jsonMeta), "utf-8");
+    const exif = Buffer.concat([exifAttr, jsonBuff]);
+    exif.writeUIntLE(jsonBuff.length, 14, 4);
+
+    img.exif = exif;
+    return await img.save(null); // Kembalikan sebagai buffer yang sudah disuntik
+}
 
 // ==========================================
 // PENGATURAN ROTASI MULTI-API KEY GEMINI (DIPERBAIKI - BUG 1 FIXED)
@@ -31,13 +57,27 @@ function getGeminiComponents() {
     return { genAI: new GoogleGenerativeAI(randomKey), fileManager: new GoogleAIFileManager(randomKey) };
 }
 
+// ==========================================
+// PENGATURAN ROTASI MULTI-API KEY HUGGING FACE
+// ==========================================
+const HF_API_KEYS = process.env.HUGGINGFACE_API_KEY ? process.env.HUGGINGFACE_API_KEY.split(',').map(key => key.trim()) : [];
+if (HF_API_KEYS.length === 0) {
+    console.warn('HUGGINGFACE_API_KEY tidak ditemukan pada .env, fitur gambar mungkin tidak jalan.');
+}
+
+function getHfClient() {
+    // Ngambil satu API Key secara acak dari daftar di .env
+    const randomKey = HF_API_KEYS[Math.floor(Math.random() * HF_API_KEYS.length)];
+    return new InferenceClient(randomKey);
+}
+
 const ID_OWNER = ['6281298793016', '181488624615651'];
 
 // Fungsi dinamis untuk memanggil model agar API Key selalu terotasi tiap request
 function getShirokoModel() {
     const { genAI } = getGeminiComponents();
     return genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-2.5-flash",
         generationConfig: { temperature: 0.8, topP: 0.95, maxOutputTokens: 4096 },
         systemInstruction: `Kamu adalah Sunaookami Shiroko dari Blue Archive. 
         KEPRIBADIAN:
@@ -50,7 +90,7 @@ function getShirokoModel() {
 
 function getAkademikModel() {
     const { genAI } = getGeminiComponents();
-    return genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { temperature: 0.7, topP: 0.9, maxOutputTokens: 8192 } });
+    return genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { temperature: 0.7, topP: 0.9, maxOutputTokens: 8192 } });
 }
 
 // Inisialisasi Pixiv (DIPERBAIKI)
@@ -72,7 +112,10 @@ setInterval(loginPixiv, 3600000); // PERBAIKAN: Refresh token otomatis tiap 1 ja
 // ==========================================
 const sesiKaryaIlmiah = {}; const dbCoba = fs.existsSync('./user_coba.json') ? JSON.parse(fs.readFileSync('./user_coba.json', 'utf-8')) : {};
 function simpanCoba() { fs.writeFileSync('./user_coba.json', JSON.stringify(dbCoba, null, 2)); }; let alarmSubuhState = { aktif: false, count: 0, timer: null };
-let alarmSalatAktif = true; const sesiSalat = {}; const sesiWaifu = {}; const sesiPixiv = {}; const sesiTopup = {}; const sesiTikTok = {}; const sesiUjian = {}; const sesiObrolan = {}; const sesiMeme = {}; let ownerAIMode = 'gemini';
+let alarmSalatAktif = true; const sesiSalat = {}; const sesiWaifu = {}; const sesiPixiv = {}; const sesiTopup = {}; const sesiTikTok = {}; const sesiUjian = {}; const sesiObrolan = {}; const sesiMeme = {}; let ownerAIMode = 'gemini'; let ownerOllamaModel = 'gemma3:4b';
+const sesiOllamaMode = {}; const sesiCabutRole = {};
+let currentImageModel = 'cagliostrolab/animagine-xl-3.1';
+const sesiModelGambar = {};
 const limitFile = './user_limit.json'; const roleFile = './user_roles.json'; const tugasFile = './user_tugas.json'; const panitiaFile = './panitia_agustus.json'; const JATAH_HARIAN = 5; //[cite: 3]
 let dbLimit = fs.existsSync(limitFile) ? JSON.parse(fs.readFileSync(limitFile, 'utf-8')) : {}; //[cite: 3]
 let dbRole = fs.existsSync(roleFile) ? JSON.parse(fs.readFileSync(roleFile, 'utf-8')) : {}; //[cite: 3]
@@ -141,50 +184,124 @@ const question = (text) => {
 
 // Reset limit harian setiap jam 00:00 tengah malam waktu Jakarta
 cron.schedule('0 0 * * *', () => {
-    dbLimit = {}; // Mengosongkan memori limit
-    simpanDB();   // Menyimpan data kosong ke JSON
-    console.log('[SISTEM] Limit harian seluruh User telah direset.');
+    // Jangan di-reset total (dbLimit = {}), nanti token hasil top up ilang!
+    // Kita loop (cek) semua user yang terdaftar di database limit
+    for (let targetUser in dbLimit) {
+        // Kalau sisa token dia lebih kecil dari 5 (JATAH_HARIAN), balikin jadi 5
+        // Kalau lebih besar dari 5 (misal punya 1000 hasil top up), biarin aja utuh
+        if (dbLimit[targetUser] < JATAH_HARIAN) {
+            dbLimit[targetUser] = JATAH_HARIAN;
+        }
+    }
+
+    simpanDB();
+    console.log('[SISTEM] Limit harian seluruh User telah direset (Token Premium Aman).');
 }, { timezone: "Asia/Jakarta" });
 
 // Buat database memori di luar fungsi biar gak kereset
 const memoriOllama = {};
 
-// Tambahkan parameter senderId
-async function tanyaOllama(senderId, pesanUser) {
+// Tambahkan parameter senderId dan isOwner
+async function tanyaOllama(senderId, pesanUser, isOwner) {
     try {
-        // Kalau belum pernah chat, buatkan memori awal berisi instruksi Shiroko
         if (!memoriOllama[senderId]) {
+            let instruksiKhusus = isOwner
+                ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, penurut, dan lembut. Tapi tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`
+                : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. Jangan tunjukkan ketertarikan romantis sama sekali. Tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`;
+
             memoriOllama[senderId] = [
                 {
                     role: 'system',
-                    content: 'Kamu adalah asisten AI yang cerdas. Kamu harus selalu menjawab seluruh pertanyaan menggunakan bahasa Indonesia yang santai, jelas, dan mudah dipahami.'
+                    content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}`
                 }
             ];
         }
 
-        // Masukkan chat lu yang terbaru ke dalam memori
         memoriOllama[senderId].push({ role: 'user', content: pesanUser });
 
-        // Cegah RAM meledak: Batasi memori maksimal 10 chat terakhir saja
         if (memoriOllama[senderId].length > 11) {
-            memoriOllama[senderId].splice(1, 2); // Hapus chat paling lama, pertahankan system prompt
+            memoriOllama[senderId].splice(1, 2);
         }
 
         const response = await axios.post('http://localhost:11434/api/chat', {
-            model: 'gemma3:4b',
+            model: ownerOllamaModel,
             messages: memoriOllama[senderId],
             stream: false
         });
 
         const balasanAI = response.data.message.content;
-
-        // Simpan juga jawaban si Gemma ke dalam memori
         memoriOllama[senderId].push({ role: 'assistant', content: balasanAI });
 
         return balasanAI;
     } catch (error) {
         console.error('🚨 ERROR OLLAMA:', error);
         return 'Nn... Maaf Sayang, otak offline Shiroko lagi ngadat.';
+    }
+}
+
+// Memori khusus untuk jalur Free Claude Code (OpenRouter dll)
+const memoriFCC = {};
+
+async function tanyaFCC(senderId, pesanUser, isOwner) {
+    try {
+        if (!memoriFCC[senderId]) memoriFCC[senderId] = [];
+
+        memoriFCC[senderId].push({ role: 'user', content: pesanUser });
+
+        if (memoriFCC[senderId].length > 10) memoriFCC[senderId].splice(0, 2);
+
+        // Racik instruksi khusus berdasarkan status Owner
+        let instruksiKhusus = isOwner
+            ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, penurut, dan lembut. Tapi tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`
+            : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. Jangan tunjukkan ketertarikan romantis sama sekali. Tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`;
+
+        const response = await axios.post('http://127.0.0.1:8082/v1/messages', {
+            model: "claude-3-5-sonnet-20240620",
+            max_tokens: 2048,
+            stream: false,
+            system: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}`,
+            messages: memoriFCC[senderId]
+        }, {
+            headers: {
+                'x-api-key': 'freecc',
+                'anthropic-version': '2023-06-01',
+                'Content-Type': 'application/json'
+            }
+        });
+
+        let balasanAI = "";
+
+        if (response.data && response.data.content && response.data.content[0] && response.data.content[0].text) {
+            balasanAI = response.data.content[0].text;
+        } else if (typeof response.data === 'string' && response.data.includes('event: content_block_delta')) {
+            const barisStream = response.data.split('\n');
+            for (let baris of barisStream) {
+                if (baris.startsWith('data: ')) {
+                    try {
+                        const jsonStream = JSON.parse(baris.substring(6));
+                        if (jsonStream.type === 'content_block_delta' && jsonStream.delta && jsonStream.delta.text) {
+                            balasanAI += jsonStream.delta.text;
+                        }
+                    } catch (e) { }
+                }
+            }
+        } else {
+            memoriFCC[senderId].pop();
+            return 'Nn... Maaf Sensei, balasan dari FCC tidak bisa diurai.';
+        }
+
+        if (balasanAI) {
+            balasanAI = balasanAI.trim();
+            memoriFCC[senderId].push({ role: 'assistant', content: balasanAI });
+            return balasanAI;
+        } else {
+            memoriFCC[senderId].pop();
+            return 'Nn... Sensei, FCC membalas dengan kosong.';
+        }
+
+    } catch (error) {
+        if (memoriFCC[senderId] && memoriFCC[senderId].length > 0) memoriFCC[senderId].pop();
+        return 'Nn... Maaf Sayang, jalur FCC terputus atau ditolak. Cek log terminal.';
     }
 }
 
@@ -374,17 +491,23 @@ async function hubungkanKeWhatsApp() {
             return reply(`🗑️ *SOAL DIHAPUS*\n\nSisa soal: *${dbRole[senderId].bank_soal.length}*.`);
         }
 
-        if (textLower.startsWith('!cabut_role')) {
+        if (textLower === '!cabut_role') {
             if (!isOwner) return reply('Nn... Akses ditolak.');
-            const targetNomor = textClean.split(' ')[1].replace(/[^0-9]/g, '');
-            let targetKey = Object.keys(dbRole).find(k => getCoreNumber(k) === targetNomor);
-            if (!targetKey) return reply(`Nn... Target tidak ditemukan.`);
 
-            const namaLama = dbRole[targetKey].nama;
-            delete dbRole[targetKey]; simpanRole();
-            reply(`🗑️ *OTORITAS DICABUT*\n\nNn... Akses atas nama *${namaLama}* telah dihapus.`);
-            try { await sock.sendMessage(targetKey, { text: `⚠️ *PERINGATAN DARI MARKAS PUSAT* ⚠️\n\nNn... Komandan telah mencabut otoritasmu.` }); } catch (e) { }
-            return;
+            const listUser = Object.keys(dbRole);
+            if (listUser.length === 0) return reply('Nn... Belum ada user yang terdaftar memiliki role di server.');
+
+            // Simpan daftar target ke sesi
+            sesiCabutRole[senderId] = { list: listUser };
+
+            let teks = `🗑️ *CABUT OTORITAS USER* 🗑️\n\nNn... Komandan, pilih nomor urut user yang ingin dicabut aksesnya:\n\n`;
+            listUser.forEach((jid, index) => {
+                const data = dbRole[jid];
+                teks += `*${index + 1}.* ${data.nama} (${data.role.toUpperCase()})\n`;
+            });
+            teks += `\n_Ketik *batal* untuk membatalkan._`;
+
+            return reply(teks);
         }
 
         if (textLower === '!resign') {
@@ -431,12 +554,35 @@ async function hubungkanKeWhatsApp() {
             if (!isOwner) return reply('Nn... Akses ditolak. Hanya Owner yang bisa mengubah mode taktis Shiroko.');
 
             const args = textClean.split(' ')[1];
-            if (!args || (args !== 'gemini' && args !== 'ollama')) {
-                return reply(`Nn... Format salah, Sensei. Pilih salah satu mode di bawah ini:\n\n🔹 *!aimode gemini* (Paket Cloud)\n🔹 *!aimode ollama* (Lokal Offline)\n\nMode saat ini: *${ownerAIMode.toUpperCase()}*`);
+            if (!args || (args !== 'gemini' && args !== 'ollama' && args !== 'openrouter')) {
+                return reply(`Nn... Format salah, Sensei. Pilih salah satu mode di bawah ini:\n\n🔹 *!aimode gemini* (Paket Cloud)\n🔹 *!aimode ollama* (Lokal Offline)\n🔹 *!aimode openrouter* (Jalur Free Claude Code)\n\nMode saat ini: *${ownerAIMode.toUpperCase()}*\nOllama Aktif: *${ownerOllamaModel}*`);
             }
 
-            ownerAIMode = args;
-            return reply(`✅ *MODE OPERASIONAL DIUBAH*\n\nNn... Mulai sekarang, khusus untuk chat dari Sensei, Shiroko akan berpikir menggunakan otak *${ownerAIMode.toUpperCase()}*. ✨`);
+            if (args === 'ollama') {
+                try {
+                    reply('Nn... Mengecek daftar otak buatan di laptop lokal...');
+                    // Nembak API rahasia Ollama buat minta daftar model
+                    const resTags = await axios.get('http://localhost:11434/api/tags');
+                    const models = resTags.data.models;
+
+                    if (!models || models.length === 0) return reply('Nn... Tidak ada model Ollama yang terinstall di laptop Sensei.');
+
+                    const modelNames = models.map(m => m.name);
+                    sesiOllamaMode[senderId] = { list: modelNames };
+
+                    let teksList = `🤖 *DAFTAR MODEL OLLAMA LOKAL*\n\nNn... Sensei, pilih otak mana yang mau dipakai dengan membalas angkanya:\n\n`;
+                    modelNames.forEach((name, i) => { teksList += `*${i + 1}.* ${name}\n`; });
+                    teksList += `\n_Ketik *batal* untuk membatalkan._`;
+
+                    return reply(teksList);
+                } catch (err) {
+                    console.error('Error cek Ollama:', err.message);
+                    return reply('Nn... Gagal nyambung ke Ollama. Pastikan aplikasi Ollama di laptop udah nyala.');
+                }
+            } else {
+                ownerAIMode = args;
+                return reply(`✅ *MODE OPERASIONAL DIUBAH*\n\nNn... Mulai sekarang, khusus untuk chat dari Sensei, Shiroko akan berpikir menggunakan otak *${ownerAIMode.toUpperCase()}*. ✨`);
+            }
         }
 
         // ==========================================
@@ -665,15 +811,27 @@ async function hubungkanKeWhatsApp() {
         // MENU UTAMA BOT (FORMAT BARU)
         // ==========================================
         if (textLower === '!menu' || textLower === '!fitur') {
-            // Mengambil data user secara dinamis untuk tampilan menu
-            const namaUser = dbRole[senderId] ? dbRole[senderId].nama : (isOwner ? 'Owner' : 'Sensei');
+            // Tangkap nama profil WA asli user
+            const namaProfilWa = msg.pushName || (isOwner ? 'Owner' : 'Sensei');
+
+            // Prioritas: 1. Nama di Database, 2. Nama Profil WA Asli
+            const namaUser = dbRole[senderId] ? dbRole[senderId].nama : namaProfilWa;
+
             const sisaLimit = dbLimit[senderId] !== undefined ? dbLimit[senderId] : JATAH_HARIAN;
-            const statusPremium = isOwner ? 'Ya (Unlimited)' : 'Tidak';
+
+            // Logika Deteksi Role
+            let roleUser = 'User Biasa';
+            if (isOwner) {
+                roleUser = '👑 Owner';
+            } else if (dbRole[senderId]) {
+                // Huruf depan dibikin kapital (contoh: guru jadi Guru)
+                roleUser = '🎓 ' + dbRole[senderId].role.charAt(0).toUpperCase() + dbRole[senderId].role.slice(1);
+            }
 
             const teksMenu = `*╔═══「 INFORMASI USER 」*
 *║* \`\`\`Nama     : ${namaUser}\`\`\`
 *║* \`\`\`Limit    : ${sisaLimit}\`\`\`
-*║* \`\`\`Premium  : ${statusPremium}\`\`\`
+*║* \`\`\`Role     : ${roleUser}\`\`\`
 *╚════════════════════*
 
 _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
@@ -780,7 +938,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                 // BUG FIXED: Panggil API Key secara dinamis
                 const { genAI } = getGeminiComponents();
                 const modelUjianDinamis = genAI.getGenerativeModel({
-                    model: "gemini-2.5-flash-lite",
+                    model: "gemini-2.5-flash",
                     generationConfig: { temperature: 0.7, topP: 0.9, maxOutputTokens: 2048 },
                     systemInstruction: `Kamu adalah Shiroko (Blue Archive), seorang Senpai. User adalah: Kouhai.\nTugasmu: Simulasi ujian Akidah Akhlak sebanyak ${bankSoalGuru.length} babak menggunakan BANK SOAL ini:\n${listSoalTeks}\nJangan berikan nilai di tengah cerita. Penilaian HANYA di akhir. Di pesan terakhir wajib mencetak kode ini: [UJIAN_SELESAI]`
                 });
@@ -818,24 +976,33 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
             if (sesi.step === 2) {
                 reply(`Nn... Menyusun ${sesi.jenis}. Proses ini mungkin cukup lama...`);
                 try {
-                    const prompt = `Buatkan ${sesi.jenis} akademik lengkap.\nTOPIK:\n${textClean}\nATURAN: Gunakan bahasa Indonesia formal akademik. Minimal 700 kata. Beri referensi.`;
-                    const result = await getAkademikModel().generateContent(prompt);
-                    await reply(`📚 *HASIL ${sesi.jenis.toUpperCase()}*\n\n${result.response.text()}`);
-                } catch (err) { kembalikanLimit(senderId); await reply('Nn... Mesin penulis akademik mengalami gangguan.'); }
+                    const promptAI = `Buatkan ${sesi.jenis} akademik lengkap.\nTOPIK:\n${textClean}\nATURAN: Gunakan bahasa Indonesia formal akademik. Minimal 700 kata. Beri referensi.`;
+                    let hasilTeks = "";
+
+                    if (isOwner && ownerAIMode === 'openrouter') {
+                        // FCC bakal OP banget buat nulis ginian
+                        hasilTeks = await tanyaFCC(senderId, promptAI);
+                    } else if (isOwner && ownerAIMode === 'ollama') {
+                        hasilTeks = await tanyaOllama(senderId, promptAI);
+                    } else {
+                        const result = await getAkademikModel().generateContent(promptAI);
+                        hasilTeks = result.response.text();
+                    }
+
+                    await reply(`📚 *HASIL ${sesi.jenis.toUpperCase()}*\n\n${hasilTeks}`);
+                } catch (err) {
+                    kembalikanLimit(senderId);
+                    await reply('Nn... Mesin penulis akademik mengalami gangguan.');
+                }
                 delete sesiKaryaIlmiah[senderId];
                 return;
             }
         }
 
-        if (textLower === '!karyailmiah') {
-            if (!cekDanPotongLimit(senderId)) return reply('Nn... Token harian Sensei sudah habis.');
-            sesiKaryaIlmiah[senderId] = { step: 1, jenis: null };
-            return reply(`📚 *PEMBUAT KARYA ILMIAH*\n\nPilih jenis:\n1. makalah\n2. artikel\n3. laporan\n\nKetik nama jenisnya.`);
-        }
-
         // ==========================================
         // FITUR AKADEMIS & TEXT TOOLS
         // ==========================================
+
         if (textLower.startsWith('!jurnal ')) {
             const query = textClean.substring(8).trim();
             if (!query) return reply('Nn... Masukkan topik jurnal.');
@@ -862,8 +1029,21 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
             if (!teksAsli) return reply('Nn... Mana teks yang mau diparafrase?');
             try {
                 await reply('Nn... Mengaktifkan protokol Anti-Plagiasi...');
-                const result = await getShirokoModel().generateContent(`Parafrase teks ini ke bahasa Indonesia akademik formal: "${teksAsli}"`);
-                return reply(`*📝 HASIL PARAFRASE*\n\n${result.response.text().trim()}`);
+                const promptAI = `Parafrase teks ini ke bahasa Indonesia akademik formal: "${teksAsli}"`;
+                let hasilTeks = "";
+
+                // LOGIKA AIMODE KHUSUS OWNER
+                if (isOwner && ownerAIMode === 'openrouter') {
+                    hasilTeks = await tanyaFCC(senderId, promptAI);
+                } else if (isOwner && ownerAIMode === 'ollama') {
+                    hasilTeks = await tanyaOllama(senderId, promptAI);
+                } else {
+                    // USER BIASA / DEFAULT GEMINI
+                    const result = await getShirokoModel().generateContent(promptAI);
+                    hasilTeks = result.response.text().trim();
+                }
+
+                return reply(`*📝 HASIL PARAFRASE*\n\n${hasilTeks}`);
             } catch (error) { return reply('Nn... Mesin pengolah kata error.'); }
         }
 
@@ -871,8 +1051,19 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
             const teksAsli = textClean.substring(9).trim();
             if (!teksAsli) return reply('Nn... Mana teks yang mau diringkas?');
             try {
-                const result = await getShirokoModel().generateContent(`Buatkan ringkasan bullet points dari teks ini: "${teksAsli}"`);
-                return reply(`*📑 HASIL RINGKASAN*\n\n${result.response.text().trim()}`);
+                const promptAI = `Buatkan ringkasan bullet points dari teks ini: "${teksAsli}"`;
+                let hasilTeks = "";
+
+                if (isOwner && ownerAIMode === 'openrouter') {
+                    hasilTeks = await tanyaFCC(senderId, promptAI);
+                } else if (isOwner && ownerAIMode === 'ollama') {
+                    hasilTeks = await tanyaOllama(senderId, promptAI);
+                } else {
+                    const result = await getShirokoModel().generateContent(promptAI);
+                    hasilTeks = result.response.text().trim();
+                }
+
+                return reply(`*📑 HASIL RINGKASAN*\n\n${hasilTeks}`);
             } catch (error) { return reply('Nn... Gagal meringkas.'); }
         }
 
@@ -880,8 +1071,19 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
             const jurusanTopik = textClean.substring(5).trim();
             if (!jurusanTopik) return reply('Nn... Masukkan jurusan.');
             try {
-                const result = await getShirokoModel().generateContent(`Berikan 3 ide judul skripsi untuk jurusan "${jurusanTopik}" beserta fokus masalahnya.`);
-                return reply(`*💡 REKOMENDASI PENELITIAN*\n\n${result.response.text().trim()}`);
+                const promptAI = `Berikan 3 ide judul skripsi untuk jurusan "${jurusanTopik}" beserta fokus masalahnya.`;
+                let hasilTeks = "";
+
+                if (isOwner && ownerAIMode === 'openrouter') {
+                    hasilTeks = await tanyaFCC(senderId, promptAI);
+                } else if (isOwner && ownerAIMode === 'ollama') {
+                    hasilTeks = await tanyaOllama(senderId, promptAI);
+                } else {
+                    const result = await getShirokoModel().generateContent(promptAI);
+                    hasilTeks = result.response.text().trim();
+                }
+
+                return reply(`*💡 REKOMENDASI PENELITIAN*\n\n${hasilTeks}`);
             } catch (error) { return reply('Nn... Generator ide error.'); }
         }
 
@@ -963,20 +1165,25 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                     const { exec } = require('child_process');
 
                     // Perintah FFMPEG menggunakan JALUR ABSOLUT
-                    const command = `C:\\ffmpeg\\bin\\ffmpeg.exe -i "${tempInput}" -vcodec libwebp -vf "scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000" -lossless 0 -qscale 50 -preset default -loop 0 -an -vsync 0 "${tempOutput}"`;
+                    const command = `ffmpeg -i "${tempInput}" -vcodec libwebp -vf "scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000" -lossless 0 -qscale 50 -preset default -loop 0 -an -vsync 0 "${tempOutput}"`;
 
                     exec(command, async (err) => {
                         if (err) {
                             console.error('🚨 ERROR FFMPEG:', err);
-                            reply('Nn... FFMPEG gagal memproses gambar. Pastikan file ffmpeg.exe benar-benar ada di C:\\ffmpeg\\bin\\');
+                            reply('Nn... FFMPEG gagal memproses gambar. Pastikan modul ffmpeg benar-benar telah di instal.');
                             if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput);
                             return;
                         }
 
                         try {
-                            // Baca hasil WebP dan kirimkan sebagai stiker
+                            // Baca hasil WebP, suntik metadata, lalu kirimkan
                             const webpBuffer = fs.readFileSync(tempOutput);
-                            await sock.sendMessage(from, { sticker: webpBuffer }, { quoted: msg });
+                            const namaPack = "Dibuat oleh";
+                            const namaAuthor = "Bot Shiroko";
+
+                            // Memanggil fungsi penyuntik yang tadi kita buat
+                            const stikerFinal = await tambahMetadataStiker(webpBuffer, namaPack, namaAuthor);
+                            await sock.sendMessage(from, { sticker: stikerFinal }, { quoted: msg });
                         } catch (sendErr) {
                             console.error('🚨 ERROR KIRIM STIKER:', sendErr);
                             reply('Nn... Gagal mengirim stiker yang sudah jadi.');
@@ -1070,16 +1277,53 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
 
             try {
-                reply('Nn... Shiroko sedang merombak prompt Sensei...');
-                const promptGasing = await getAkademikModel().generateContent(`Kamu pakar prompt engineering AI. Ubah tag kaku menjadi 1 paragraf bahasa Inggris estetik masterpiece. LANGSUNG JAWAB HASILNYA.\nPrompt asli: ${promptMentah}`);
-                const promptHasilEnhance = promptGasing.response.text().trim();
+                reply('Nn... Shiroko sedang meracik prompt masterpiece...');
 
-                reply('Nn... Cetakan prompt selesai. Mulai melukis di server...');
-                const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(promptHasilEnhance)}?width=512&height=768&nologo=true&private=true&enhance=true`;
+                // 🚀 JALUR 1: ENHANCE PROMPT (TETAP PAKAI GEMINI)
+                const bensinGemini = getGeminiComponents();
+                const modelEnhancer = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                const instruksi = `Kamu adalah pakar prompt Stable Diffusion XL. Ubah kalimat ini menjadi prompt bahasa Inggris.
+ATURAN WAJIB:
+1. JANGAN gunakan paragraf atau kalimat narasi.
+2. Gunakan format kata kunci (tags) yang dipisahkan dengan koma.
+3. Jika ada karakter anime spesifik, JABARKAN CIRI FISIKNYA secara eksplisit.
+4. Tambahkan tag kualitas: masterpiece, best quality, ultra detailed.
+5. JAWAB HASILNYA SAJA TANPA BASA-BASI.
+Prompt asli: ${promptMentah}`;
 
-                await sock.sendMessage(from, { image: { url: imageUrl }, caption: `🎨 *Prompt Asli:* ${promptMentah}\n\nNn... Berhasil dirender. 🐺` }, { quoted: msg });
-            } catch (error) { kembalikanLimit(senderId); reply('Nn... Server gambar sedang sibuk.'); }
-            return;
+                const promptGasing = await modelEnhancer.generateContent(instruksi);
+                const promptHasilEnhance = promptGasing.response.text().trim() + ", masterpiece, best quality, ultra detailed";
+
+                reply(`Nn... Mengirim pesanan ke mesin *Krea-2-Turbo*. Tunggu sebentar...`);
+
+                // 🚀 JALUR 2: HUGGING FACE INFERENCE SDK (KHUSUS KREA-2)
+                const hfClient = getHfClient(); // 👈 Sekarang dia bakal milih kunci acak
+
+                // Langsung tembak ke Krea-2 lewat Fal-AI tanpa milih-milih lagi
+                const imgBlob = await hfClient.textToImage({
+                    provider: "fal-ai",
+                    model: "krea/Krea-2-Turbo",
+                    inputs: promptHasilEnhance,
+                    parameters: { num_inference_steps: 8 } // 🔥 UDAH DI-FIX JADI 8 BIAR SERVER GAK NGAMBEK
+                });
+
+                if (!imgBlob) throw new Error("Gagal menerima Blob gambar dari Hugging Face");
+
+                // Ubah format Blob menjadi Buffer agar bisa dikirim oleh Baileys (WA)
+                const arrayBuffer = await imgBlob.arrayBuffer();
+                const imgBuffer = Buffer.from(arrayBuffer);
+
+                // KIRIM GAMBAR FINAL KE WA
+                await sock.sendMessage(from, {
+                    image: imgBuffer,
+                    caption: `🎨 *Ide Sensei:* ${promptMentah}\n✨ *Model:* Krea-2-Turbo\n\nNn... Masterpiece sudah jadi. 🐺✨`
+                }, { quoted: msg });
+
+            } catch (error) {
+                kembalikanLimit(senderId);
+                console.error("🚨 ERROR HUGGINGFACE SDK:", error);
+                reply('Nn... Server AI pelukis sedang sibuk atau menolak pesanan kita. Coba lagi nanti ya, Sensei.');
+            }
         }
 
         // ==========================================
@@ -1100,7 +1344,9 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                         delete sesiTikTok[senderId];
                         try { sock.sendMessage(from, { text: 'Nn... Sesi TikTok kedaluwarsa karena Sensei terlalu lama merespons.' }); } catch (e) { }
                     }, 120000);
-                    sesiTikTok[senderId] = { isImage: isImage, data: data };
+
+                    // 👈 Masukin timeoutId ke dalam memori biar bisa dibatalin nanti
+                    sesiTikTok[senderId] = { isImage: isImage, data: data, timer: timeoutId };
 
                     let teks = `*Data Intel:* ${data.title || 'Tanpa Judul'}\n\nNn... Target adalah ${isImage ? 'gambar' : 'video'}. Pilih metode ekstraksi:\n1️⃣ *Semua Gambar/Video Saja*\n2️⃣ *Sound Saja*\n${isImage ? 'Atau ketik angka 3, 4, dst untuk ambil urutan gambar spesifik.' : '3️⃣ *Video & Sound*'}\n\n_Ketik *batal* membatalkan._`;
                     return reply(teks);
@@ -1110,6 +1356,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
 
         if (sesiTikTok[senderId]) {
             const pilihan = textLower; const sesi = sesiTikTok[senderId]; const data = sesi.data;
+            clearTimeout(sesi.timer);
             if (pilihan.startsWith('!') && pilihan !== '!batal') { delete sesiTikTok[senderId]; }
             else if (pilihan === 'batal' || pilihan === 'cancel') { delete sesiTikTok[senderId]; kembalikanLimit(senderId); return reply('Nn... Ekstraksi dibatalkan.'); }
             else {
@@ -1304,24 +1551,42 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                 const pertanyaan = textClean.substring(16).trim();
 
                 if (isOwner) {
-                    // JALUR KHUSUS OWNER (PAKE AI LOKAL OLLAMA)
-                    reply('Nn... Membuka database perpustakaan lokal. Mohon tunggu sebentar, Sayang...');
+                    // JALUR KHUSUS OWNER (DINAMIS SESUAI !aimode)
+                    if (ownerAIMode === 'ollama') {
+                        reply('Nn... Membuka database perpustakaan lokal via Ollama...');
 
-                    const response = await axios.post('http://localhost:11434/api/chat', {
-                        model: 'qwen3:4b', // <-- Sesuaiin dengan nama model yang ada di laptop lu
-                        messages: [
-                            { role: 'system', content: 'Kamu adalah asisten akademik yang sangat cerdas, akurat, dan merespon menggunakan bahasa Indonesia yang baku serta mudah dipahami.' },
-                            { role: 'user', content: pertanyaan }
-                        ],
-                        stream: false
-                    });
+                        // Tetap pakai Qwen3:4b untuk mode pintar sesuai kode asli lu
+                        const response = await axios.post('http://localhost:11434/api/chat', {
+                            model: 'batiai/gemma4-e2b:q4',
+                            messages: [
+                                { role: 'system', content: 'Kamu adalah asisten akademik yang sangat cerdas, akurat, dan merespon menggunakan bahasa Indonesia yang baku serta mudah dipahami.' },
+                                { role: 'user', content: pertanyaan }
+                            ],
+                            stream: false
+                        });
+                        return reply(`🧠 *SHIROKO PINTAR (OLLAMA)*\n\n${response.data.message.content.trim()}`);
 
-                    reply(`🧠 *SHIROKO PINTAR (LOCAL-NET)*\n\n${response.data.message.content.trim()}`);
+                    } else if (ownerAIMode === 'openrouter') {
+                        reply('Nn... Mengakses jaringan OpenRouter...');
+
+                        // Memanggil fungsi tanyaFCC yang udah lu buat
+                        const jawaban = await tanyaFCC(senderId, pertanyaan);
+                        return reply(`🧠 *SHIROKO PINTAR (OPENROUTER)*\n\n${jawaban}`);
+
+                    } else {
+                        // DEFAULT: GEMINI CLOUD
+                        reply('Nn... Mengakses database cloud Gemini...');
+
+                        const bensinGemini = getGeminiComponents();
+                        const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                        const result = await modelPintarDinamis.generateContent(`Jawablah informatif & akurat:\n\nPertanyaan: ${pertanyaan}`);
+                        return reply(`🧠 *SHIROKO PINTAR (GEMINI)*\n\n${result.response.text().trim()}`);
+                    }
 
                 } else {
-                    // JALUR RAKYAT JELATA (PAKE GEMINI CLOUD)
+                    // JALUR RAKYAT JELATA (TETAP PAKE GEMINI CLOUD)
                     const bensinGemini = getGeminiComponents();
-                    const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+                    const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
                     const result = await modelPintarDinamis.generateContent(`Jawablah informatif & akurat:\n\nPertanyaan: ${pertanyaan}`);
 
@@ -1329,6 +1594,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                 }
 
             } catch (error) {
+                kembalikanLimit(senderId);
                 reply('Nn... Mesin kecerdasan akademik sedang mengalami gangguan teknis.');
                 console.error('🚨 ERROR SHIROKO PINTAR:', error);
             }
@@ -1339,7 +1605,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
         if (isGroup) {
             if (textLower.startsWith('!shiroko ')) { pemicuObrolan = true; pesanUser = textClean.substring(9).trim(); }
         } else {
-            const sedangSesiLain = sesiUjian[senderId] || sesiTikTok[senderId] || sesiKaryaIlmiah[senderId] || sesiPixiv[senderId] || sesiWaifu[senderId] || sesiTopup[senderId];
+            const sedangSesiLain = sesiUjian[senderId] || sesiTikTok[senderId] || sesiKaryaIlmiah[senderId] || sesiPixiv[senderId] || sesiWaifu[senderId] || sesiTopup[senderId] || sesiMeme[senderId] || sesiOllamaMode[senderId] || sesiCabutRole[senderId] || sesiModelGambar[senderId];
             if (!textClean.startsWith('!') && !sedangSesiLain) { pemicuObrolan = true; pesanUser = textClean; }
             else if (textLower.startsWith('!shiroko ')) { pemicuObrolan = true; pesanUser = textClean.substring(9).trim(); }
         }
@@ -1351,8 +1617,13 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                 await sock.sendPresenceUpdate('composing', from);
 
                 if (isOwner && ownerAIMode === 'ollama') {
-                    const jawabanOllama = await tanyaOllama(senderId, pesanUser);
+                    // MASUKIN isOwner KE SINI
+                    const jawabanOllama = await tanyaOllama(senderId, pesanUser, isOwner);
                     return reply(jawabanOllama);
+                } else if (isOwner && ownerAIMode === 'openrouter') {
+                    // MASUKIN isOwner KE SINI JUGA
+                    const jawabanFCC = await tanyaFCC(senderId, pesanUser, isOwner);
+                    return reply(jawabanFCC);
                 } else {
                     const bensinGemini = getGeminiComponents();
                     if (!sesiObrolan[senderId]) {
@@ -1361,7 +1632,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                             : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. Jangan tunjukkan ketertarikan romantis sama sekali. Tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`;
 
                         const modelObrolan = bensinGemini.genAI.getGenerativeModel({
-                            model: "gemini-2.5-flash-lite",
+                            model: "gemini-2.5-flash",
                             generationConfig: { temperature: 0.8, topP: 0.95, maxOutputTokens: 4096 },
                             systemInstruction: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}`
                         });
@@ -1371,13 +1642,35 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                     return reply(result.response.text());
                 }
             } catch (error) {
+                kembalikanLimit(senderId);
                 reply('Nn... Memori Shiroko eror, ketik !lupa.');
             }
         }
 
         if (textLower === '!lupa') {
-            if (sesiObrolan[senderId]) { delete sesiObrolan[senderId]; return reply('Nn... *(Menggelengkan kepala)*. Shiroko sudah melupakan percakapan kita.'); }
-            else return reply('Nn... Pikiran Shiroko masih kosong.');
+            let berhasilLupa = false;
+
+            // Hapus memori Gemini
+            if (sesiObrolan[senderId]) {
+                delete sesiObrolan[senderId];
+                berhasilLupa = true;
+            }
+            // Hapus memori Ollama
+            if (memoriOllama[senderId]) {
+                delete memoriOllama[senderId];
+                berhasilLupa = true;
+            }
+            // Hapus memori FCC / OpenRouter
+            if (memoriFCC[senderId]) {
+                delete memoriFCC[senderId];
+                berhasilLupa = true;
+            }
+
+            if (berhasilLupa) {
+                return reply('Nn... *(Menggelengkan kepala)*. Shiroko sudah menghapus seluruh memori percakapan kita.');
+            } else {
+                return reply('Nn... Pikiran Shiroko memang masih kosong dari awal.');
+            }
         }
 
         // ==========================================
@@ -1427,13 +1720,13 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
 
             if (isTargetImage || isQuotedImage) {
                 if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
-                
+
                 try {
                     const messageToDownload = isQuotedImage ? quotedMsg.imageMessage : msg.message.imageMessage;
                     const mediaBuffer = await downloadMediaBaileys(messageToDownload, 'image');
 
                     sesiMeme[senderId] = { step: 1, teks: teks, buffer: mediaBuffer };
-                    
+
                     return reply('Nn... Gambar diterima. Pilih format output dengan membalas angka:\n1️⃣ *Stiker*\n2️⃣ *Gambar*\n\n_Ketik *batal* untuk membatalkan._');
                 } catch (err) {
                     kembalikanLimit(senderId);
@@ -1461,7 +1754,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                 if (pilihan === '1' || pilihan === 'stiker') sesi.format = 'stiker';
                 else if (pilihan === '2' || pilihan === 'gambar') sesi.format = 'gambar';
                 else return reply('Nn... Pilihan tidak valid. Balas dengan angka *1* (Stiker) atau *2* (Gambar).');
-                
+
                 sesi.step = 2;
                 return reply('Nn... Format dikunci. Sekarang pilih posisi teks:\n1️⃣ *Atas*\n2️⃣ *Bawah*');
             }
@@ -1474,7 +1767,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                 else return reply('Nn... Pilihan tidak valid. Balas dengan angka *1* (Atas) atau *2* (Bawah).');
 
                 reply(`Nn... Memproses ${sesi.format} meme di server lokal, mohon tunggu...`);
-                
+
                 const tempDir = path.join(__dirname, 'temp');
                 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
@@ -1489,9 +1782,10 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                     fs.writeFileSync(tempTeks, sesi.teks);
 
                     const { exec } = require('child_process');
-                    
+
                     // Format path khusus agar dikenali oleh FFMPEG Filter (escape karakter titik dua)
-                    const fontPath = 'C\\:/Windows/Fonts/impact.ttf'; 
+                    const fontPath = path.join(__dirname, 'impact.ttf').replace(/\\/g, '/').replace(/:/g, '\\:');
+
                     const textFileFfmpeg = tempTeks.replace(/\\/g, '/').replace(/:/g, '\\:');
 
                     // Filter FFmpeg: Font putih, border hitam 2px, font size 1/8 lebar gambar, posisi tengah
@@ -1503,9 +1797,9 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
 
                     let command = '';
                     if (sesi.format === 'stiker') {
-                        command = `C:\\ffmpeg\\bin\\ffmpeg.exe -i "${tempInput}" -vcodec libwebp -vf "${vfFilter}" -lossless 0 -qscale 50 -preset default -loop 0 -an -vsync 0 "${tempOutput}"`;
+                        command = `ffmpeg -i "${tempInput}" -vcodec libwebp -vf "${vfFilter}" -lossless 0 -qscale 50 -preset default -loop 0 -an -vsync 0 "${tempOutput}"`;
                     } else {
-                        command = `C:\\ffmpeg\\bin\\ffmpeg.exe -i "${tempInput}" -vf "${vfFilter}" -y "${tempOutput}"`;
+                        command = `ffmpeg -i "${tempInput}" -vf "${vfFilter}" -y "${tempOutput}"`;
                     }
 
                     exec(command, async (err) => {
@@ -1536,6 +1830,68 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
                 }
                 return;
             }
+        }
+
+        // ==========================================
+        // HANDLER SESI MILIH MODEL OLLAMA
+        // ==========================================
+        if (sesiOllamaMode[senderId]) {
+            const pilihan = textLower;
+            if (pilihan === 'batal' || pilihan === 'cancel') {
+                delete sesiOllamaMode[senderId];
+                return reply('Nn... Pemilihan otak Ollama dibatalkan.');
+            }
+
+            const num = parseInt(pilihan) - 1;
+            const listModels = sesiOllamaMode[senderId].list;
+
+            if (isNaN(num) || num < 0 || num >= listModels.length) {
+                return reply('Nn... Angka tidak valid, Sensei. Balas dengan angka yang ada di daftar, atau ketik *batal*.');
+            }
+
+            const chosenModel = listModels[num];
+            ownerOllamaModel = chosenModel; // Pasang model yang dipilih
+            ownerAIMode = 'ollama'; // Otomatis pindah ke mode Ollama
+
+            // Format ulang memori biar otak bot gak nyampur sama model sebelumnya
+            if (memoriOllama[senderId]) delete memoriOllama[senderId];
+            delete sesiOllamaMode[senderId];
+
+            return reply(`✅ *MODE OLLAMA AKTIF*\n\nNn... Berhasil mengganti otak. Shiroko sekarang menggunakan sistem lokal: *${chosenModel}*. ✨`);
+        }
+
+        // ==========================================
+        // HANDLER SESI CABUT ROLE (INTERAKTIF)
+        // ==========================================
+        if (sesiCabutRole[senderId]) {
+            const pilihan = textLower;
+            if (pilihan === 'batal' || pilihan === 'cancel') {
+                delete sesiCabutRole[senderId];
+                return reply('Nn... Operasi pencabutan otoritas dibatalkan.');
+            }
+
+            const num = parseInt(pilihan) - 1;
+            const listUser = sesiCabutRole[senderId].list;
+
+            if (isNaN(num) || num < 0 || num >= listUser.length) {
+                return reply('Nn... Angka tidak valid, Komandan. Balas dengan angka yang ada di daftar, atau ketik *batal*.');
+            }
+
+            const targetKey = listUser[num];
+            const namaLama = dbRole[targetKey].nama;
+
+            // Eksekusi penghapusan dari database
+            delete dbRole[targetKey];
+            simpanRole();
+
+            // Bersihkan sesi
+            delete sesiCabutRole[senderId];
+
+            reply(`🗑️ *OTORITAS DICABUT*\n\nNn... Akses atas nama *${namaLama}* telah dihapus dari sistem.`);
+            try {
+                await sock.sendMessage(targetKey, { text: `⚠️ *PERINGATAN DARI MARKAS PUSAT* ⚠️\n\nNn... Komandan telah mencabut otoritasmu.` });
+            } catch (e) { }
+            return;
         }
 
     });
