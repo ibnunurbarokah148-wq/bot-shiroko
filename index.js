@@ -116,11 +116,15 @@ let alarmSalatAktif = true; const sesiSalat = {}; const sesiWaifu = {}; const se
 const sesiOllamaMode = {}; const sesiCabutRole = {};
 let currentImageModel = 'cagliostrolab/animagine-xl-3.1';
 const sesiModelGambar = {};
-const limitFile = './user_limit.json'; const roleFile = './user_roles.json'; const tugasFile = './user_tugas.json'; const panitiaFile = './panitia_agustus.json'; const JATAH_HARIAN = 5; //[cite: 3]
-let dbLimit = fs.existsSync(limitFile) ? JSON.parse(fs.readFileSync(limitFile, 'utf-8')) : {}; //[cite: 3]
-let dbRole = fs.existsSync(roleFile) ? JSON.parse(fs.readFileSync(roleFile, 'utf-8')) : {}; //[cite: 3]
-let dbTugas = fs.existsSync(tugasFile) ? JSON.parse(fs.readFileSync(tugasFile, 'utf-8')) : {}; //[cite: 3]
-let dbPanitia = fs.existsSync(panitiaFile) ? JSON.parse(fs.readFileSync(panitiaFile, 'utf-8')) : { "ketua": { "anggota": [], "timeline": [] } }; //[cite: 3]
+const limitFile = './user_limit.json'; const roleFile = './user_roles.json'; const tugasFile = './user_tugas.json'; const panitiaFile = './panitia_agustus.json'; const JATAH_HARIAN = 5; 
+let dbLimit = fs.existsSync(limitFile) ? JSON.parse(fs.readFileSync(limitFile, 'utf-8')) : {}; 
+let dbRole = fs.existsSync(roleFile) ? JSON.parse(fs.readFileSync(roleFile, 'utf-8')) : {}; 
+let dbTugas = fs.existsSync(tugasFile) ? JSON.parse(fs.readFileSync(tugasFile, 'utf-8')) : {}; 
+let dbPanitia = fs.existsSync(panitiaFile) ? JSON.parse(fs.readFileSync(panitiaFile, 'utf-8')) : { "ketua": { "anggota": [], "timeline": [] } }; 
+
+// VARIABEL GLOBAL UNTUK ANTREAN COMFYUI
+const antrianGambar = [];
+let sedangRender = false;
 
 // BUG 3 FIXED: Penanganan Error pada File System
 function simpanAman(namaFile, data) {
@@ -145,7 +149,7 @@ const DAFTAR_PAKET = {
     '4': { token: 1500, harga: 50000 }
 };
 
-function getCoreNumber(num) { if (!num) return ''; let n = num.toString().replace(/[^0-9]/g, ''); if (n.startsWith('62')) n = n.substring(2); if (n.startsWith('0')) n = n.substring(1); return n; } //[cite: 3]
+function getCoreNumber(num) { if (!num) return ''; let n = num.toString().replace(/[^0-9]/g, ''); if (n.startsWith('62')) n = n.substring(2); if (n.startsWith('0')) n = n.substring(1); return n; } 
 function cekDanPotongLimit(targetID) {
     const coreTarget = getCoreNumber(targetID);
     if (ID_OWNER.some(owner => getCoreNumber(owner) === coreTarget)) return true;
@@ -166,6 +170,150 @@ function kembalikanLimit(targetID) {
         dbLimit[targetID] += 1;
         simpanDB();
     }
+}
+
+// ==========================================
+// MESIN PEMROSES ANTREAN COMFYUI
+// ==========================================
+// ==========================================
+// MESIN PEMROSES ANTREAN COMFYUI
+// ==========================================
+async function prosesAntrianGambar() {
+    // Kalau mesin lagi jalan, atau antrean kosong, batalkan eksekusi
+    if (sedangRender || antrianGambar.length === 0) return;
+    
+    // Kunci mesin (Lock)
+    sedangRender = true;
+
+    while (antrianGambar.length > 0) {
+        // Ambil pesanan paling depan (Shift)
+        const pesanan = antrianGambar.shift();
+        const { from, msg, promptMentah, senderId, reply } = pesanan;
+
+        try {
+            await reply('Nn... Giliran Sensei tiba. Memanaskan mesin RTX Vast.ai lokal...');
+
+            const fs = require('fs');
+            const path = require('path');
+            const workflow = JSON.parse(fs.readFileSync('./Workflow gacor.json', 'utf-8'));
+
+            if (workflow["59"] && workflow["59"]["inputs"]) {
+                const promptAkhir = `${promptMentah}, masterpiece, best quality, ultra detailed, absurdres`;
+                workflow["59"]["inputs"]["wildcard_text"] = promptAkhir;
+                workflow["59"]["inputs"]["populated_text"] = promptAkhir;
+            }
+
+            const randomSeed = Math.floor(Math.random() * 99999999999999);
+            for (let key in workflow) {
+                let node = workflow[key];
+                if (node.inputs) {
+                    for (let param in node.inputs) {
+                        if (param.toLowerCase().includes('seed') && !Array.isArray(node.inputs[param])) {
+                            node.inputs[param] = randomSeed;
+                        } else if (typeof node.inputs[param] === 'number' && node.inputs[param] > 100000) {
+                            node.inputs[param] = randomSeed;
+                        }
+                    }
+                }
+            }
+
+            let finalImageLink = null;
+            for (let key in workflow) {
+                let node = workflow[key];
+                if (node.class_type === "Image Saver" || node.class_type === "SaveImageExtended") {
+                    if (node.inputs && node.inputs.images) {
+                        finalImageLink = node.inputs.images; 
+                    }
+                    delete workflow[key];
+                }
+            }
+
+            if (!finalImageLink) {
+                throw new Error("Kabel output gambar tidak ditemukan di file JSON!");
+            }
+
+            // ANTI-TABRAKAN: Kasih tanda 'WA' dan angka acak ekstra biar gak bentrok sama pesanan Discord
+            const prefixAman = `Shiroko_WA_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+            workflow["9999"] = {
+                "inputs": {
+                    "filename_prefix": prefixAman,
+                    "images": finalImageLink
+                },
+                "class_type": "SaveImage"
+            };
+
+            const res = await axios.post('http://127.0.0.1:18188/prompt', { prompt: workflow });
+            const promptId = res.data.prompt_id;
+
+            let isDone = false;
+            let outputFileName = "";
+            let outputSubfolder = "";
+            let loopCount = 0; // COUNTER WAKTU TUNGGU
+            
+            while (!isDone) {
+                // DETEKTOR KOMA: Kalau render lebih dari 5 menit (150 cek), batalkan!
+                if (loopCount > 150) { 
+                    throw new Error("Waktu habis! Mesin ComfyUI nyangkut atau VRAM penuh.");
+                }
+
+                await new Promise(r => setTimeout(r, 2000));
+                loopCount++; // NAIKKAN COUNTER
+
+                const histRes = await axios.get(`http://127.0.0.1:18188/history/${promptId}`);
+                const history = histRes.data[promptId];
+
+                if (history) {
+                    isDone = true;
+                    if (history.status && history.status.status_str === 'error') {
+                        throw new Error("ComfyUI mengalami error internal saat ngerender. (VRAM Habis / Node Bentrok)");
+                    }
+
+                    const outputs = history.outputs;
+                    if (outputs && outputs["9999"] && outputs["9999"].images && outputs["9999"].images.length > 0) {
+                        outputFileName = outputs["9999"].images[0].filename;
+                        outputSubfolder = outputs["9999"].images[0].subfolder || "";
+                    } else {
+                        throw new Error("Mesin ComfyUI selesai jalan tapi gagal mengeluarkan file gambar!");
+                    }
+                }
+            }
+
+            const imagePath = outputSubfolder 
+                ? `/workspace/ComfyUI/output/${outputSubfolder}/${outputFileName}`
+                : `/workspace/ComfyUI/output/${outputFileName}`;
+                
+            const imgBuffer = fs.readFileSync(imagePath);
+
+            // Karena kita di luar event messages.upsert, pakai global.waSocket
+            await global.waSocket.sendMessage(from, {
+                image: imgBuffer,
+                caption: `🎨 *Ide Sensei:* ${promptMentah}\n✨ *Mesin:* ComfyUI (Lokal RTX)\n\nNn... Render berhasil diselesaikan! 🐺✨`
+            }, { quoted: msg });
+
+            // 🧹 PROTOKOL TUKANG SAPU: Hapus gambar dari server Vast.ai setelah 1 menit (60000 ms)
+            setTimeout(() => {
+                try {
+                    if (fs.existsSync(imagePath)) {
+                        fs.unlinkSync(imagePath);
+                        console.log(`🧹 [CLEANUP WA] File selesai dihapus: ${outputFileName}`);
+                    }
+                } catch (e) {
+                    console.error(`🚨 Gagal menghapus file ${outputFileName}:`, e.message);
+                }
+            }, 60000);
+
+        } catch (error) {
+            kembalikanLimit(senderId);
+            console.error("🚨 ERROR COMFYUI API:", error.message);
+            await reply(`Nn... Gagal membuat gambar. \n*Laporan Sistem:* ${error.message}`);
+        }
+
+        // Beri jeda 3 detik biar GPU Vast.ai istirahat sejenak sebelum ngerjain pesanan berikutnya
+        await new Promise(r => setTimeout(r, 3000));
+    }
+
+    // Buka kunci (Unlock) kalau semua antrean udah habis
+    sedangRender = false;
 }
 
 // ==========================================
@@ -201,8 +349,8 @@ cron.schedule('0 0 * * *', () => {
 // Buat database memori di luar fungsi biar gak kereset
 const memoriOllama = {};
 
-// Tambahkan parameter senderId dan isOwner
-async function tanyaOllama(senderId, pesanUser, isOwner) {
+// Tambahkan parameter gambarBase64 di belakang
+async function tanyaOllama(senderId, pesanUser, isOwner, gambarBase64 = null) {
     try {
         if (!memoriOllama[senderId]) {
             let instruksiKhusus = isOwner
@@ -217,7 +365,15 @@ async function tanyaOllama(senderId, pesanUser, isOwner) {
             ];
         }
 
-        memoriOllama[senderId].push({ role: 'user', content: pesanUser });
+        // Siapkan objek pesan
+        let objekPesan = { role: 'user', content: pesanUser };
+        
+        // 🚀 SUNTIKKAN GAMBAR JIKA ADA
+        if (gambarBase64) {
+            objekPesan.images = [gambarBase64];
+        }
+
+        memoriOllama[senderId].push(objekPesan);
 
         if (memoriOllama[senderId].length > 11) {
             memoriOllama[senderId].splice(1, 2);
@@ -235,7 +391,7 @@ async function tanyaOllama(senderId, pesanUser, isOwner) {
         return balasanAI;
     } catch (error) {
         console.error('🚨 ERROR OLLAMA:', error);
-        return 'Nn... Maaf Sayang, otak offline Shiroko lagi ngadat.';
+        return 'Nn... Maaf Sayang, otak offline Shiroko lagi ngadat atau VRAM penuh.';
     }
 }
 
@@ -1276,54 +1432,15 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
             if (!promptMentah) return reply('Nn... Masukkan deskripsi gambarnya.');
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
 
-            try {
-                reply('Nn... Shiroko sedang meracik prompt masterpiece...');
-
-                // 🚀 JALUR 1: ENHANCE PROMPT (TETAP PAKAI GEMINI)
-                const bensinGemini = getGeminiComponents();
-                const modelEnhancer = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-                const instruksi = `Kamu adalah pakar prompt Stable Diffusion XL. Ubah kalimat ini menjadi prompt bahasa Inggris.
-ATURAN WAJIB:
-1. JANGAN gunakan paragraf atau kalimat narasi.
-2. Gunakan format kata kunci (tags) yang dipisahkan dengan koma.
-3. Jika ada karakter anime spesifik, JABARKAN CIRI FISIKNYA secara eksplisit.
-4. Tambahkan tag kualitas: masterpiece, best quality, ultra detailed.
-5. JAWAB HASILNYA SAJA TANPA BASA-BASI.
-Prompt asli: ${promptMentah}`;
-
-                const promptGasing = await modelEnhancer.generateContent(instruksi);
-                const promptHasilEnhance = promptGasing.response.text().trim() + ", masterpiece, best quality, ultra detailed";
-
-                reply(`Nn... Mengirim pesanan ke mesin *Krea-2-Turbo*. Tunggu sebentar...`);
-
-                // 🚀 JALUR 2: HUGGING FACE INFERENCE SDK (KHUSUS KREA-2)
-                const hfClient = getHfClient(); // 👈 Sekarang dia bakal milih kunci acak
-
-                // Langsung tembak ke Krea-2 lewat Fal-AI tanpa milih-milih lagi
-                const imgBlob = await hfClient.textToImage({
-                    provider: "fal-ai",
-                    model: "krea/Krea-2-Turbo",
-                    inputs: promptHasilEnhance,
-                    parameters: { num_inference_steps: 8 } // 🔥 UDAH DI-FIX JADI 8 BIAR SERVER GAK NGAMBEK
-                });
-
-                if (!imgBlob) throw new Error("Gagal menerima Blob gambar dari Hugging Face");
-
-                // Ubah format Blob menjadi Buffer agar bisa dikirim oleh Baileys (WA)
-                const arrayBuffer = await imgBlob.arrayBuffer();
-                const imgBuffer = Buffer.from(arrayBuffer);
-
-                // KIRIM GAMBAR FINAL KE WA
-                await sock.sendMessage(from, {
-                    image: imgBuffer,
-                    caption: `🎨 *Ide Sensei:* ${promptMentah}\n✨ *Model:* Krea-2-Turbo\n\nNn... Masterpiece sudah jadi. 🐺✨`
-                }, { quoted: msg });
-
-            } catch (error) {
-                kembalikanLimit(senderId);
-                console.error("🚨 ERROR HUGGINGFACE SDK:", error);
-                reply('Nn... Server AI pelukis sedang sibuk atau menolak pesanan kita. Coba lagi nanti ya, Sensei.');
-            }
+            // Dorong pesanan ke dalam Array Antrean Global
+            antrianGambar.push({ from, msg, promptMentah, senderId, reply });
+            
+            // Beri notifikasi ke user posisi mereka
+            reply(`Nn... Pesanan masuk ke dalam sistem. Posisi antrean Sensei: *${antrianGambar.length}*.\nMohon bersabar ya. 🐺☕`);
+            
+            // Panggil pemroses antrean (dia akan jalan kalau mesin lagi nganggur)
+            prosesAntrianGambar();
+            return;
         }
 
         // ==========================================
@@ -1546,7 +1663,7 @@ Prompt asli: ${promptMentah}`;
         if (textLower.startsWith('!shiroko_pintar ')) {
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
 
-            try {
+                        try {
                 await sock.sendPresenceUpdate('composing', from);
                 const pertanyaan = textClean.substring(16).trim();
 
@@ -1555,25 +1672,16 @@ Prompt asli: ${promptMentah}`;
                     if (ownerAIMode === 'ollama') {
                         reply('Nn... Membuka database perpustakaan lokal via Ollama...');
 
-                        // Tetap pakai Qwen3:4b untuk mode pintar sesuai kode asli lu
-                        const response = await axios.post('http://localhost:11434/api/chat', {
-                            model: 'batiai/gemma4-e2b:q4',
-                            messages: [
-                                { role: 'system', content: 'Kamu adalah asisten akademik yang sangat cerdas, akurat, dan merespon menggunakan bahasa Indonesia yang baku serta mudah dipahami.' },
-                                { role: 'user', content: pertanyaan }
-                            ],
-                            stream: false
-                        });
-                        return reply(`🧠 *SHIROKO PINTAR (OLLAMA)*\n\n${response.data.message.content.trim()}`);
+                        // Menggunakan sistem yang sama persis dengan obrolan biasa (Saran Sensei)
+                        const pesanInstruksi = `[TOLONG JAWAB PERTANYAAN INI SEBAGAI ASISTEN AKADEMIK YANG CERDAS DAN FORMAL]: ${pertanyaan}`;
+                        const jawaban = await tanyaOllama(senderId, pesanInstruksi, isOwner);
+                        
+                        return reply(`🧠 *SHIROKO PINTAR (OLLAMA)*\n\n${jawaban}`);
 
-                    } else if (ownerAIMode === 'openrouter') {
-                        reply('Nn... Mengakses jaringan OpenRouter...');
+                    }
 
-                        // Memanggil fungsi tanyaFCC yang udah lu buat
-                        const jawaban = await tanyaFCC(senderId, pertanyaan);
-                        return reply(`🧠 *SHIROKO PINTAR (OPENROUTER)*\n\n${jawaban}`);
 
-                    } else {
+                    else {
                         // DEFAULT: GEMINI CLOUD
                         reply('Nn... Mengakses database cloud Gemini...');
 
@@ -1598,6 +1706,7 @@ Prompt asli: ${promptMentah}`;
                 reply('Nn... Mesin kecerdasan akademik sedang mengalami gangguan teknis.');
                 console.error('🚨 ERROR SHIROKO PINTAR:', error);
             }
+
             return;
         }
 
@@ -1610,18 +1719,41 @@ Prompt asli: ${promptMentah}`;
             else if (textLower.startsWith('!shiroko ')) { pemicuObrolan = true; pesanUser = textClean.substring(9).trim(); }
         }
 
-        if (pemicuObrolan && pesanUser) {
+        // ==========================================
+        // 🚀 RADAR PENANGKAP GAMBAR UNTUK NGOBROL
+        // ==========================================
+        let chatImageBuffer = null;
+        if (pemicuObrolan) {
+            const isTargetImage = msgType === 'imageMessage';
+            const isQuotedImage = isQuoted && quotedType === 'imageMessage';
+
+            if (isTargetImage || isQuotedImage) {
+                const messageToDownload = isQuotedImage ? quotedMsg?.imageMessage : msg?.message?.imageMessage;
+                if (messageToDownload) {
+                    try {
+                        chatImageBuffer = await downloadMediaBaileys(messageToDownload, 'image');
+                        // Kalau Sensei cuma kirim gambar tanpa teks, Shiroko inisiatif tanya
+                        if (!pesanUser) pesanUser = "Nn... Tolong deskripsikan gambar ini dengan detail.";
+                    } catch (e) {
+                        console.error("Gagal download gambar chat:", e);
+                    }
+                }
+            }
+        }
+
+        // Jalankan mesin obrolan jika ada pesan ATAU gambar
+        if (pemicuObrolan && (pesanUser || chatImageBuffer)) {
             if (!cekDanPotongLimit(senderId)) return reply('Nn... Token habis.');
 
             try {
                 await sock.sendPresenceUpdate('composing', from);
 
                 if (isOwner && ownerAIMode === 'ollama') {
-                    // MASUKIN isOwner KE SINI
-                    const jawabanOllama = await tanyaOllama(senderId, pesanUser, isOwner);
+                    // Ubah Buffer jadi Base64 tanpa prefix untuk Ollama
+                    let base64Img = chatImageBuffer ? chatImageBuffer.toString('base64') : null;
+                    const jawabanOllama = await tanyaOllama(senderId, pesanUser, isOwner, base64Img);
                     return reply(jawabanOllama);
                 } else if (isOwner && ownerAIMode === 'openrouter') {
-                    // MASUKIN isOwner KE SINI JUGA
                     const jawabanFCC = await tanyaFCC(senderId, pesanUser, isOwner);
                     return reply(jawabanFCC);
                 } else {
