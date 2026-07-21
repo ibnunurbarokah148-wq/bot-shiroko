@@ -1,0 +1,44 @@
+# ==========================================
+# 1. UPDATE COMFYUI & INSTALL MANAGER
+# ==========================================
+cd /workspace/ComfyUI
+git pull
+cd /workspace/ComfyUI/custom_nodes
+git clone https://github.com/ltdrdata/ComfyUI-Manager.git
+
+# ==========================================
+# 2. CLONE SEMUA CUSTOM NODES
+# ==========================================
+git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git
+git clone https://github.com/yolain/ComfyUI-Easy-Use.git
+git clone https://github.com/rgthree/rgthree-comfy.git
+git clone https://github.com/kijai/ComfyUI-KJNodes.git
+git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git
+git clone https://github.com/ltdrdata/ComfyUI-Image-Saver.git
+git clone https://github.com/Fannovel16/comfyui_controlnet_aux.git
+git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus.git
+
+# ==========================================
+# 3. INSTALL REQUIREMENTS UNTUK SEMUA NODE
+# ==========================================
+pip install -r ComfyUI-Impact-Pack/requirements.txt
+pip install -r ComfyUI-Easy-Use/requirements.txt
+pip install -r rgthree-comfy/requirements.txt
+pip install -r ComfyUI-KJNodes/requirements.txt
+pip install -r comfyui_controlnet_aux/requirements.txt
+pip install -r ComfyUI_IPAdapter_plus/requirements.txt
+
+# ==========================================
+# 4. DOWNLOAD MODEL (PASTIKAN DISK > 40GB)
+# ==========================================
+# Checkpoint FabricatedXL
+mkdir -p /workspace/ComfyUI/models/checkpoints/
+wget -c -O /workspace/ComfyUI/models/checkpoints/fabricatedXL_v70.safetensors "https://huggingface.co/Bryan32/IllustriousPonyXL/resolve/99eb7398c7f98d657fc2ac81d1387e70f30b87a9/fabricatedXL_v70.safetensors"
+
+# YOLO Face Bbox
+mkdir -p /workspace/ComfyUI/models/ultralytics/bbox/
+wget -c -O /workspace/ComfyUI/models/ultralytics/bbox/face_yolov9c.pt "https://huggingface.co/SimonJoz/comfy/resolve/main/bbox/face_yolov9c.pt"
+
+# Upscaler Remacri
+mkdir -p /workspace/ComfyUI/models/upscale_models/
+wget -c -O /workspace/ComfyUI/models/upscale_models/4x_foolhardy_Remacri.pth "https://huggingface.co/FacehugmanIII/4x_foolhardy_Remacri/resolve/main/4x_foolhardy_Remacri.pth"
