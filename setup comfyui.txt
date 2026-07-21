@@ -42,3 +42,7 @@ wget -c -O /workspace/ComfyUI/models/ultralytics/bbox/face_yolov9c.pt "https://h
 # Upscaler Remacri
 mkdir -p /workspace/ComfyUI/models/upscale_models/
 wget -c -O /workspace/ComfyUI/models/upscale_models/4x_foolhardy_Remacri.pth "https://huggingface.co/FacehugmanIII/4x_foolhardy_Remacri/resolve/main/4x_foolhardy_Remacri.pth"
+
+# SAM Model (Segment Anything)
+mkdir -p /workspace/ComfyUI/models/sams/
+wget -c -O /workspace/ComfyUI/models/sams/sam_vit_b_01ec64.pth "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
