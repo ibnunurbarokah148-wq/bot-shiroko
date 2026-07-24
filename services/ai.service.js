@@ -167,6 +167,8 @@ async function tanyaArisu(senderId, pesanUser, isOwner, modelEndpoint) {
         console.error('🚨 ERROR ARISU:', error.message);
         return 'Nn... Maaf Sayang, jalur Arisu terputus (Timeout/Error).';
     }
+}
+
 // OPENROUTER & CLOUDFLARE MULTI-KEY ROTATION
 const OPENROUTER_API_KEYS = process.env.OPENROUTER_API_KEY ? process.env.OPENROUTER_API_KEY.split(',').map(k => k.trim()) : [];
 const CLOUDFLARE_API_TOKENS = process.env.CLOUDFLARE_API_TOKEN ? process.env.CLOUDFLARE_API_TOKEN.split(',').map(k => k.trim()) : [];
