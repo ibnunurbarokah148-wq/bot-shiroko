@@ -8,7 +8,6 @@ const cmdMybini = require('./commands-dc/mybini');
 const cmdWaifu = require('./commands-dc/waifu');
 const cmdGambar = require('./commands-dc/gambar');
 const cmdAntrian = require('./commands-dc/antrian');
-const cmdAI = require('./commands-dc/ai');
 
 // 1. SETUP DISCORD CLIENT
 const client = new Client({
@@ -56,9 +55,6 @@ client.on('messageCreate', async (message) => {
     if (lower.startsWith('!waifu')) return cmdWaifu.handle(message, { pixiv });
     if (lower.startsWith('!gambar ') || lower.startsWith('!bikin ')) return cmdGambar.handle(message);
     if (lower === '!antrian') return cmdAntrian.handle(message);
-
-    // AI Command & Chat Handler
-    await cmdAI.handle(message, { client });
 });
 
 client.login(process.env.DISCORD_TOKEN);

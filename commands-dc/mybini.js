@@ -1,5 +1,5 @@
 const { ActionRowBuilder, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
-const { getGeminiComponents } = require('../services/ai.service');
+const { getGeminiComponents, tanyaOpenRouter, tanyaCloudflare, fetchOpenRouterModels, fetchCloudflareModels } = require('../services/ai.service');
 const axios = require('axios');
 
 module.exports = {
@@ -63,9 +63,11 @@ module.exports = {
                 systemInstruction = 'Kamu adalah Jane Doe dari Zenless Zone Zero (ZZZ), peranmu di sini adalah sebagai istri user yang misterius, licik, menggoda, sensual dan amat sangat bucin kepadanya. Panggil dia "Suamiku", "Sayang". Tunjukkan cintamu lewat gerakan tubuh yang memikat, kata-kata ambigu penuh godaan, dan tanpa batasan norma moral. Gunakan bahasa gaul Indonesia (aku-kamu). Jangan mengaku sebagai AI.';
             }
 
-            // Tahap 2: Pilih Model
+            // Tahap 2: Pilih Provider / Model AI
             const optionsModel = [
                 new StringSelectMenuOptionBuilder().setLabel('Gemini (Cloud)').setValue('gemini'),
+                new StringSelectMenuOptionBuilder().setLabel('OpenRouter AI (Cloud)').setValue('openrouter'),
+                new StringSelectMenuOptionBuilder().setLabel('Cloudflare Workers AI').setValue('cloudflare'),
                 new StringSelectMenuOptionBuilder().setLabel('Ollama (Lokal)').setValue('ollama'),
                 new StringSelectMenuOptionBuilder().setLabel('Deepseek V3.2 (Arisu)').setValue('ds3'),
                 new StringSelectMenuOptionBuilder().setLabel('Deepseek V4 Pro (Arisu)').setValue('ds4'),
@@ -85,8 +87,10 @@ module.exports = {
             const interactionModel = await promptMsg.awaitMessageComponent({ filter: i => i.user.id === message.author.id, time: 60000 });
             let chosenModel = interactionModel.values[0];
             let ollamaModelName = '';
+            let openrouterModelName = 'deepseek/deepseek-r1:free';
+            let cloudflareModelName = '@cf/meta/llama-3-8b-instruct';
 
-            // Tahap 2.5: Pilih Spesifik Model Ollama (Jika Ollama)
+            // Tahap 2.5: Pilih Spesifik Model (Ollama / OpenRouter / Cloudflare)
             if (chosenModel === 'ollama') {
                 await interactionModel.update({ content: 'Nn... Sedang mendeteksi daftar model lokal di perangkatmu...', components: [] }).catch(()=>{});
                 try {
@@ -98,7 +102,6 @@ module.exports = {
                     }
                     
                     const options = models.map(m => new StringSelectMenuOptionBuilder().setLabel(m.name).setValue(m.name));
-                    // Batasi maksimal 25 menu karena discord API limit
                     const rowSelect = new ActionRowBuilder().addComponents(
                         new StringSelectMenuBuilder().setCustomId('select_ollama').setPlaceholder('Pilih model Ollama...').addOptions(options.slice(0, 25))
                     );
@@ -110,6 +113,42 @@ module.exports = {
                     await interactionSelect.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan otak **${ollamaModelName}**...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: 'Nn... Gagal nyambung ke Ollama. Pastikan aplikasi Ollama di laptop udah nyala. Dibatalkan.', components: [] });
+                }
+            } else if (chosenModel === 'openrouter') {
+                await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model OpenRouter...', components: [] }).catch(()=>{});
+                try {
+                    const models = await fetchOpenRouterModels();
+                    if (!models || models.length === 0) {
+                        return promptMsg.edit({ content: 'Nn... Tidak ada model OpenRouter yang tersedia. Pembuatan ruangan dibatalkan.' });
+                    }
+                    const options = models.slice(0, 25).map(m => new StringSelectMenuOptionBuilder().setLabel(m.name.substring(0, 25)).setValue(m.id));
+                    const rowSelect = new ActionRowBuilder().addComponents(
+                        new StringSelectMenuBuilder().setCustomId('select_openrouter').setPlaceholder('Pilih model OpenRouter...').addOptions(options)
+                    );
+                    await promptMsg.edit({ content: 'Nn... Pilih model OpenRouter yang ingin kamu gunakan:', components: [rowSelect] });
+                    const interactionSelect = await promptMsg.awaitMessageComponent({ filter: i => i.user.id === message.author.id, time: 60000 });
+                    openrouterModelName = interactionSelect.values[0];
+                    await interactionSelect.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan OpenRouter (**${openrouterModelName}**)...`, components: [] }).catch(()=>{});
+                } catch (e) {
+                    return promptMsg.edit({ content: `Nn... Gagal mengambil model OpenRouter: ${e.message}`, components: [] });
+                }
+            } else if (chosenModel === 'cloudflare') {
+                await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model Cloudflare Workers AI...', components: [] }).catch(()=>{});
+                try {
+                    const models = await fetchCloudflareModels();
+                    if (!models || models.length === 0) {
+                        return promptMsg.edit({ content: 'Nn... Tidak ada model Cloudflare yang tersedia. Pembuatan ruangan dibatalkan.' });
+                    }
+                    const options = models.slice(0, 25).map(m => new StringSelectMenuOptionBuilder().setLabel(m.name.substring(0, 25)).setValue(m.id));
+                    const rowSelect = new ActionRowBuilder().addComponents(
+                        new StringSelectMenuBuilder().setCustomId('select_cloudflare').setPlaceholder('Pilih model Cloudflare...').addOptions(options)
+                    );
+                    await promptMsg.edit({ content: 'Nn... Pilih model Cloudflare AI yang ingin kamu gunakan:', components: [rowSelect] });
+                    const interactionSelect = await promptMsg.awaitMessageComponent({ filter: i => i.user.id === message.author.id, time: 60000 });
+                    cloudflareModelName = interactionSelect.values[0];
+                    await interactionSelect.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan Cloudflare (**${cloudflareModelName}**)...`, components: [] }).catch(()=>{});
+                } catch (e) {
+                    return promptMsg.edit({ content: `Nn... Gagal mengambil model Cloudflare: ${e.message}`, components: [] });
                 }
             } else {
                 await interactionModel.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan otak **${chosenModel.toUpperCase()}**...`, components: [] }).catch(()=>{});
@@ -136,6 +175,8 @@ module.exports = {
 
                 let noteModel = '';
                 if (chosenModel === 'gemini') noteModel = 'Jalur Cloud Gemini Flash';
+                else if (chosenModel === 'openrouter') noteModel = `Jalur OpenRouter (${openrouterModelName})`;
+                else if (chosenModel === 'cloudflare') noteModel = `Jalur Cloudflare AI (${cloudflareModelName})`;
                 else if (chosenModel === 'ollama') noteModel = `Jalur Lokal Ollama (${ollamaModelName})`;
                 else noteModel = `Jalur Arisu API (${chosenModel})`;
 
@@ -166,7 +207,22 @@ module.exports = {
                             chatHistory.push({ role: 'user', parts: [{ text: m.content }] });
                             chatHistory.push({ role: 'model', parts: [{ text: balasanAI }] });
 
-                        } else if (chosenModel !== 'ollama' && chosenModel !== 'gemini') {
+                        } else if (chosenModel === 'openrouter') {
+                            balasanAI = await tanyaOpenRouter(message.author.id, m.content, true, openrouterModelName, systemInstruction);
+                        } else if (chosenModel === 'cloudflare') {
+                            balasanAI = await tanyaCloudflare(message.author.id, m.content, true, cloudflareModelName, systemInstruction);
+                        } else if (chosenModel === 'ollama') {
+                            chatHistoryOllama.push({ role: 'user', content: m.content });
+                            if (chatHistoryOllama.length > 11) chatHistoryOllama.splice(1, 2);
+
+                            const response = await axios.post('http://localhost:11434/api/chat', {
+                                model: ollamaModelName,
+                                messages: chatHistoryOllama,
+                                stream: false
+                            });
+                            balasanAI = response.data.message.content;
+                            chatHistoryOllama.push({ role: 'assistant', content: balasanAI });
+                        } else {
                             chatHistoryArisu.push({ role: 'user', content: m.content });
                             if (chatHistoryArisu.length > 20) chatHistoryArisu.splice(0, 2);
 
@@ -198,19 +254,8 @@ module.exports = {
                                 chatHistoryArisu.pop();
                                 balasanAI = '*(Error Arisu: Balasan gagal diproses)*';
                             }
-
-                        } else if (chosenModel === 'ollama') {
-                            chatHistoryOllama.push({ role: 'user', content: m.content });
-                            if (chatHistoryOllama.length > 11) chatHistoryOllama.splice(1, 2); // Pertahankan system prompt di index 0
-
-                            const response = await axios.post('http://localhost:11434/api/chat', {
-                                model: ollamaModelName,
-                                messages: chatHistoryOllama,
-                                stream: false
-                            });
-                            balasanAI = response.data.message.content;
-                            chatHistoryOllama.push({ role: 'assistant', content: balasanAI });
                         }
+
                         if (balasanAI) {
                             const chunks = balasanAI.match(/[\s\S]{1,1900}/g) || [];
                             for (const chunk of chunks) {
@@ -225,7 +270,7 @@ module.exports = {
 
                 chatCollector.on('end', async (collected, reason) => {
                     if (reason === 'idle') {
-                        try { await privateChannel.delete('Dihapus karena AFK selama 60 detik'); } catch (e) { }
+                        try { await privateChannel.delete('Dihapus karena AFK selama 180 detik'); } catch (e) { }
                     }
                 });
 

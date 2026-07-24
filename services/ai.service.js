@@ -286,7 +286,7 @@ function cleanThinkingLogs(text) {
     return cleaned.trim();
 }
 
-async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deepseek/deepseek-r1:free') {
+async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deepseek/deepseek-r1:free', customSystemPrompt = null) {
     if (OPENROUTER_API_KEYS.length === 0) {
         throw new Error('OPENROUTER_API_KEY tidak ditemukan pada .env');
     }
@@ -296,11 +296,15 @@ async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deep
         memoriOpenRouter[senderId] = { messages: [], lastActive: Date.now() };
     }
 
-    let instruksiKhusus = isOwner
-        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, dan lembut, khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...".]`
-        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Jawablah dengan dingin, cuek, dan profesional khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...".]`;
+    let instruksiKhusus = customSystemPrompt;
+    if (!instruksiKhusus) {
+        let rolePrompt = isOwner
+            ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, dan lembut, khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...".]`
+            : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Jawablah dengan dingin, cuek, dan profesional khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...".]`;
+        instruksiKhusus = `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${rolePrompt}`;
+    }
 
-    const systemMessage = { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` };
+    const systemMessage = { role: 'system', content: instruksiKhusus };
 
     memoriOpenRouter[senderId].messages.push({ role: 'user', content: promptInput });
     memoriOpenRouter[senderId].lastActive = Date.now();
@@ -344,18 +348,22 @@ async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deep
     }
 }
 
-async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/meta/llama-3-8b-instruct') {
+async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/meta/llama-3-8b-instruct', customSystemPrompt = null) {
     const { accountId, token } = getCloudflarePair();
     
     if (!memoriCloudflare[senderId]) {
         memoriCloudflare[senderId] = { messages: [], lastActive: Date.now() };
     }
 
-    let instruksiKhusus = isOwner
-        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang". Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...".]`
-        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...".]`;
+    let instruksiKhusus = customSystemPrompt;
+    if (!instruksiKhusus) {
+        let rolePrompt = isOwner
+            ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang". Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...".]`
+            : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...".]`;
+        instruksiKhusus = `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${rolePrompt}`;
+    }
 
-    const systemMessage = { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` };
+    const systemMessage = { role: 'system', content: instruksiKhusus };
 
     memoriCloudflare[senderId].messages.push({ role: 'user', content: promptInput });
     memoriCloudflare[senderId].lastActive = Date.now();
