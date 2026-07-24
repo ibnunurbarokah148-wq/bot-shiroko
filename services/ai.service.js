@@ -286,6 +286,47 @@ function cleanThinkingLogs(text) {
     return cleaned.trim();
 }
 
+function extractCloudflareText(result) {
+    if (!result) return '';
+    if (typeof result === 'string') return result;
+    if (result.response && typeof result.response === 'string') return result.response;
+    if (result.text && typeof result.text === 'string') return result.text;
+    if (result.description && typeof result.description === 'string') return result.description;
+    
+    if (Array.isArray(result.choices) && result.choices.length > 0) {
+        const choice = result.choices[0];
+        if (choice.message) {
+            if (typeof choice.message.content === 'string') return choice.message.content;
+            if (Array.isArray(choice.message.content)) {
+                return choice.message.content.map(c => c.text || c.content || '').join('');
+            }
+        }
+        if (typeof choice.text === 'string') return choice.text;
+    }
+
+    if (Array.isArray(result) && result.length > 0) {
+        return extractCloudflareText(result[0]);
+    }
+
+    return typeof result === 'object' ? JSON.stringify(result) : String(result);
+}
+
+function extractOpenRouterText(data) {
+    if (!data) return '';
+    if (data.choices && data.choices.length > 0) {
+        const choice = data.choices[0];
+        if (choice.message) {
+            if (typeof choice.message.content === 'string') return choice.message.content;
+            if (Array.isArray(choice.message.content)) {
+                return choice.message.content.map(c => c.text || c.content || '').join('');
+            }
+            if (typeof choice.message.text === 'string') return choice.message.text;
+        }
+        if (typeof choice.text === 'string') return choice.text;
+    }
+    return typeof data === 'string' ? data : JSON.stringify(data);
+}
+
 async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deepseek/deepseek-r1:free', customSystemPrompt = null) {
     if (OPENROUTER_API_KEYS.length === 0) {
         throw new Error('OPENROUTER_API_KEY tidak ditemukan pada .env');
@@ -315,6 +356,9 @@ async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deep
 
     const payloadMessages = [systemMessage, ...memoriOpenRouter[senderId].messages];
 
+    let rawData = null;
+
+    // Attempt 1: Standar request
     try {
         const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
             model: modelName,
@@ -330,22 +374,41 @@ async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deep
             },
             timeout: 60000
         });
+        rawData = response.data;
+    } catch (e1) {
+        // Attempt 2: Fallback tanpa parameter non-standar jika model menolak
+        try {
+            const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+                model: modelName,
+                messages: payloadMessages
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://github.com/ibnunurbarokah148-wq/bot-shiroko',
+                    'X-Title': 'Shiroko Bot'
+                },
+                timeout: 60000
+            });
+            rawData = response.data;
+        } catch (e2) {
+            memoriOpenRouter[senderId].messages.pop();
+            const errMsg = e2.response?.data?.error?.message || e2.message;
+            throw new Error(`OpenRouter Error (${modelName}): ${errMsg}`);
+        }
+    }
 
-        const choices = response.data.choices;
-        if (choices && choices.length > 0 && choices[0].message) {
-            const rawContent = choices[0].message.content || '';
-            const cleanedAns = cleanThinkingLogs(rawContent);
+    if (rawData) {
+        const extracted = extractOpenRouterText(rawData);
+        if (extracted) {
+            const cleanedAns = cleanThinkingLogs(extracted);
             memoriOpenRouter[senderId].messages.push({ role: 'assistant', content: cleanedAns });
             return cleanedAns;
         }
-        memoriOpenRouter[senderId].messages.pop();
-        throw new Error('Respons OpenRouter tidak valid');
-    } catch (err) {
-        if (memoriOpenRouter[senderId] && memoriOpenRouter[senderId].messages.length > 0) {
-            memoriOpenRouter[senderId].messages.pop();
-        }
-        throw err;
     }
+
+    memoriOpenRouter[senderId].messages.pop();
+    throw new Error(`Respons OpenRouter (${modelName}) tidak valid atau kosong`);
 }
 
 async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/meta/llama-3-8b-instruct', customSystemPrompt = null) {
@@ -373,34 +436,72 @@ async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/
     }
 
     const payloadMessages = [systemMessage, ...memoriCloudflare[senderId].messages];
-
     const cleanModel = modelName.startsWith('@cf/') ? modelName : `@cf/${modelName}`;
-    try {
-        const response = await axios.post(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`, {
-            messages: payloadMessages,
-            max_tokens: 4096
-        }, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            timeout: 60000
-        });
+    const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`;
+    const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
 
-        if (response.data.success && response.data.result) {
-            const rawRes = (response.data.result.response || response.data.result.description || JSON.stringify(response.data.result));
-            const cleanedAns = cleanThinkingLogs(rawRes);
+    let resData = null;
+
+    // Attempt 1: Standard messages array dengan system role
+    try {
+        const response = await axios.post(url, {
+            messages: payloadMessages,
+            max_tokens: 2048
+        }, { headers, timeout: 60000 });
+        if (response.data?.success && response.data?.result) {
+            resData = response.data.result;
+        }
+    } catch (e1) {
+        // Attempt 2: Fallback gabungkan system prompt ke pesan user pertama (untuk model yang menolak role 'system')
+        try {
+            const mergedMessages = memoriCloudflare[senderId].messages.map((m, idx) => {
+                if (idx === 0) {
+                    return { role: 'user', content: `${instruksiKhusus}\n\n${m.content}` };
+                }
+                return m;
+            });
+            const response = await axios.post(url, {
+                messages: mergedMessages,
+                max_tokens: 2048
+            }, { headers, timeout: 60000 });
+            if (response.data?.success && response.data?.result) {
+                resData = response.data.result;
+            }
+        } catch (e2) {
+            // Attempt 3: Fallback string prompt (untuk model completion lama)
+            try {
+                let promptStr = `${instruksiKhusus}\n\n`;
+                memoriCloudflare[senderId].messages.forEach(m => {
+                    promptStr += `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}\n`;
+                });
+                const response = await axios.post(url, {
+                    prompt: promptStr
+                }, { headers, timeout: 60000 });
+                if (response.data?.success && response.data?.result) {
+                    resData = response.data.result;
+                }
+            } catch (e3) {
+                memoriCloudflare[senderId].messages.pop();
+                const errMsg = e3.response?.data?.errors?.[0]?.message || e3.message;
+                throw new Error(`Cloudflare Error (${cleanModel}): ${errMsg}`);
+            }
+        }
+    }
+
+    if (resData) {
+        const extracted = extractCloudflareText(resData);
+        if (extracted) {
+            const cleanedAns = cleanThinkingLogs(extracted);
             memoriCloudflare[senderId].messages.push({ role: 'assistant', content: cleanedAns });
             return cleanedAns;
         }
-        memoriCloudflare[senderId].messages.pop();
-        throw new Error('Respons Cloudflare API gagal');
-    } catch (err) {
-        if (memoriCloudflare[senderId] && memoriCloudflare[senderId].messages.length > 0) {
-            memoriCloudflare[senderId].messages.pop();
-        }
-        throw err;
     }
+
+    memoriCloudflare[senderId].messages.pop();
+    throw new Error(`Respons Cloudflare AI (${cleanModel}) gagal atau kosong`);
 }
 
 module.exports = {
