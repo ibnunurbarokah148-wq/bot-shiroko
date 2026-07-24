@@ -256,10 +256,23 @@ async function fetchCloudflareModels() {
 
 function cleanThinkingLogs(text) {
     if (!text || typeof text !== 'string') return text;
-    let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    let cleaned = text;
+    
+    // 1. Hapus blok <think>...</think>, <thought>...</thought>, <reasoning>...</reasoning>
+    cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
     cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
     cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
-    cleaned = cleaned.replace(/^think\s*[\s\S]*?\n\n/i, '');
+
+    // 2. Hapus jika ada tag <think> atau <thought> yang tidak tertutup hingga akhir atau hingga baris tertentu
+    cleaned = cleaned.replace(/<think>[\s\S]*/gi, '');
+    cleaned = cleaned.replace(/<thought>[\s\S]*/gi, '');
+
+    // 3. Hapus format pemikiran khas OpenRouter/Cloudflare seperti "Thinking Process: ..." atau "Thought: ..."
+    cleaned = cleaned.replace(/^(Thought|Thinking Process|Thinking|Reasoning):\s*[\s\S]*?\n\n/i, '');
+
+    // 4. Hapus jika pemikiran dibungkus ```think ... ``` atau ```thought ... ```
+    cleaned = cleaned.replace(/```(?:think|thought|reasoning)[\s\S]*?```/gi, '');
+
     return cleaned.trim();
 }
 
