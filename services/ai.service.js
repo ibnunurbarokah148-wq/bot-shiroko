@@ -208,17 +208,26 @@ async function fetchCloudflareModels() {
     }
     
     const token = CLOUDFLARE_API_TOKENS[Math.floor(Math.random() * CLOUDFLARE_API_TOKENS.length)];
-    const res = await axios.get(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search`, {
+    const res = await axios.get(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?task=Text%20Generation`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     
     let result = res.data.result || [];
+    
+    // Filter ketat KHUSUS model Text Generation (LLM/Chat)
     let textModels = result.filter(m => {
-        const taskName = m.task ? (m.task.name || '').toLowerCase() : '';
-        const name = (m.name || '').toLowerCase();
-        return taskName.includes('text') || taskName.includes('generation') || name.includes('llama') || name.includes('deepseek') || name.includes('qwen') || name.includes('gemma') || name.includes('mistral') || name.includes('phi');
+        if (!m) return false;
+        const taskName = m.task ? (typeof m.task === 'object' ? (m.task.name || '') : m.task).toLowerCase() : '';
+        return taskName.includes('text generation') || taskName.includes('text-generation');
     });
-    if (textModels.length === 0) textModels = result;
+    
+    // Fallback jika API Cloudflare tidak mengirimkan struktur task.name
+    if (textModels.length === 0) {
+        textModels = result.filter(m => {
+            const name = (m.name || '').toLowerCase();
+            return name.includes('llama') || name.includes('deepseek') || name.includes('qwen') || name.includes('gemma') || name.includes('mistral') || name.includes('phi') || name.includes('hermes');
+        });
+    }
     
     return textModels.map(m => {
         let parts = m.name.replace(/^@cf\//i, '').split('/');
