@@ -171,7 +171,32 @@ async function tanyaArisu(senderId, pesanUser, isOwner, modelEndpoint) {
 
 // OPENROUTER & CLOUDFLARE MULTI-KEY ROTATION
 const OPENROUTER_API_KEYS = process.env.OPENROUTER_API_KEY ? process.env.OPENROUTER_API_KEY.split(',').map(k => k.trim()) : [];
-const CLOUDFLARE_API_TOKENS = process.env.CLOUDFLARE_API_TOKEN ? process.env.CLOUDFLARE_API_TOKEN.split(',').map(k => k.trim()) : [];
+
+function getCloudflarePair() {
+    const rawAccountIds = process.env.CLOUDFLARE_ACCOUNT_ID ? process.env.CLOUDFLARE_ACCOUNT_ID.split(',').map(s => s.trim()) : [];
+    const rawTokens = process.env.CLOUDFLARE_API_TOKEN ? process.env.CLOUDFLARE_API_TOKEN.split(',').map(s => s.trim()) : [];
+
+    const validPairs = [];
+
+    rawTokens.forEach((tokenStr, idx) => {
+        if (!tokenStr || tokenStr.includes('masukkan')) return;
+        if (tokenStr.includes(':')) {
+            const [acc, tok] = tokenStr.split(':');
+            if (acc && tok) validPairs.push({ accountId: acc.trim(), token: tok.trim() });
+        } else if (rawAccountIds.length > 0) {
+            const acc = rawAccountIds[idx] || rawAccountIds[0];
+            if (acc && !acc.includes('masukkan')) {
+                validPairs.push({ accountId: acc, token: tokenStr });
+            }
+        }
+    });
+
+    if (validPairs.length === 0) {
+        throw new Error('Konfigurasi CLOUDFLARE_ACCOUNT_ID atau CLOUDFLARE_API_TOKEN belum di-set di .env.');
+    }
+
+    return validPairs[Math.floor(Math.random() * validPairs.length)];
+}
 
 async function fetchOpenRouterModels() {
     if (OPENROUTER_API_KEYS.length === 0) {
@@ -199,15 +224,7 @@ async function fetchOpenRouterModels() {
 }
 
 async function fetchCloudflareModels() {
-    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-    if (!accountId || accountId.includes('masukkan')) {
-        throw new Error('CLOUDFLARE_ACCOUNT_ID belum di-set pada .env');
-    }
-    if (CLOUDFLARE_API_TOKENS.length === 0 || CLOUDFLARE_API_TOKENS[0].includes('masukkan')) {
-        throw new Error('CLOUDFLARE_API_TOKEN belum di-set pada .env');
-    }
-    
-    const token = CLOUDFLARE_API_TOKENS[Math.floor(Math.random() * CLOUDFLARE_API_TOKENS.length)];
+    const { accountId, token } = getCloudflarePair();
     const res = await axios.get(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?task=Text%20Generation`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -273,11 +290,7 @@ async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deep
 }
 
 async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/meta/llama-3-8b-instruct') {
-    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-    if (!accountId || accountId.includes('masukkan')) throw new Error('CLOUDFLARE_ACCOUNT_ID belum disetel.');
-    if (CLOUDFLARE_API_TOKENS.length === 0 || CLOUDFLARE_API_TOKENS[0].includes('masukkan')) throw new Error('CLOUDFLARE_API_TOKEN belum disetel.');
-    
-    const token = CLOUDFLARE_API_TOKENS[Math.floor(Math.random() * CLOUDFLARE_API_TOKENS.length)];
+    const { accountId, token } = getCloudflarePair();
     
     let instruksiKhusus = isOwner
         ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang". Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn..."]`
