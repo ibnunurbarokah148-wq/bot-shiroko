@@ -341,6 +341,5 @@ module.exports = {
     memoriArisu,
     GEMINI_API_KEYS,
     HF_API_KEYS,
-    OPENROUTER_API_KEYS,
-    CLOUDFLARE_API_TOKENS
+    OPENROUTER_API_KEYS
 };
