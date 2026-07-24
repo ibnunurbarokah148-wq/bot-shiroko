@@ -1,5 +1,5 @@
 const ID_OWNER = ['6281298793016', '181488624615651'];
-const JATAH_HARIAN = 5;
+const JATAH_HARIAN = 20;
 
 const DAFTAR_PAKET = {
     '1': { token: 50, harga: 5000 },

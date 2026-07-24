@@ -26,6 +26,8 @@ module.exports = {
     sesiObrolan: {},
     sesiMeme: {},
     sesiTopup: {},
+    sesiPremium: {},
+    sesiJadibot: {},
     sesiOllamaMode: {},
     sesiCabutRole: {},
     sesiModelGambar: {},

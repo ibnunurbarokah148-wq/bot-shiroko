@@ -138,7 +138,7 @@ async function tanyaArisu(senderId, pesanUser, isOwner, modelEndpoint) {
         }
         combinedMessage += `${isOwner ? 'Suamiku' : 'Sensei'}: ${pesanUser}`;
 
-        const apiKey = process.env.ARISU_API_KEY || 'sk_eed200cde9dfe0d7f7eabd67c66eb4c2359a3158dcc3a523733ad7b01383f532';
+        const apiKey = process.env.ARISU_API_KEY;
 
         const response = await axios.post(`https://api.arisusoft.com/api/v2/llm/${modelEndpoint}`, {
             message: combinedMessage,

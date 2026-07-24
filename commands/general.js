@@ -72,7 +72,7 @@ async function handle(ctx) {
 *║* \`\`\`Role     : ${roleUser}\`\`\`
 *╚════════════════════*
 
-_Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
+_Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 
 *╔═══「 AI ASSISTANT 」*
 *║* ➸ \`!shiroko [pesan]\`
@@ -94,8 +94,9 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
 *║* ➸ !divisi [nama]
 *║* ➸ !daftar_anggota
 *║* ➸ !daftar_tugas
-*║* ➸ !tambah_tugas
+*║* ➸ !tambah_panitia
 *║* ➸ !cabut_divisi
+*║* ➸ !tambah_tugas
 *║* ➸ !selesai_tugas
 *║*
 *╠═══「 MANAJEMEN TUGAS 」*
@@ -113,6 +114,8 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
 *╠═══「 EKSEKUSI MEDIA 」*
 *║* ➸ \`!pdf2jpg\` (Reply PDF)
 *║* ➸ \`!stiker\` (Kirim Gambar)
+*║* ➸ \`!toimg\` (Reply Stiker)
+*║* ➸ \`!meme [teks]\` (Reply Gambar)
 *║* ➸ \`!tiktok [link]\`
 *║* ➸ \`!dengar\` (Reply VN)
 *║*
@@ -123,9 +126,16 @@ _Command yang ditandai dengan backtick ( \` ) memakan 1 Token Limit_
 *║* ➸ \`!neko [kategori]\`
 *║* ➸ \`!gambar [prompt]\`
 *║*
-*╠═══「 MENU BOT & TOP UP 」*
-*║* ➸ !limit
+*╠═══「 LAYANAN PREMIUM & BOT 」*
+*║* ➸ !premium
 *║* ➸ !topup
+*║* ➸ !bukti (Upload Struk)
+*║* ➸ !jadibot
+*║* ➸ !stopbot (Mati Bot)
+*║* ➸ !kepo (VIP)
+*║*
+*╠═══「 MENU BOT 」*
+*║* ➸ !limit
 *║* ➸ !aimode [mode]
 *║*
 *╚═══▼△▼△▼△▼△▼*`;

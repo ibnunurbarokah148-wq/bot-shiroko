@@ -72,8 +72,18 @@ async function handle(ctx) {
             if (pilihan === 'batal' || pilihan === 'cancel') { delete state.sesiWaifu[senderId]; kembalikanLimit(senderId); await reply('Nn... Operasi dibatalkan.'); return true; }
 
             try {
+                const { dbPremium } = require('../config/db');
+                const isPremium = dbPremium[senderId] && (dbPremium[senderId] === true || dbPremium[senderId] > Date.now());
+                const isNsfw = pilihan === 'nsfw' || pilihan === '2';
+                
+                if (isNsfw && !isPremium && !isOwner) {
+                    delete state.sesiWaifu[senderId]; kembalikanLimit(senderId);
+                    await reply('❌ Nn... Mode NSFW (R-18) dikunci secara eksklusif untuk pengguna *VIP Premium*.\n\nKetik *!premium* untuk berlangganan.');
+                    return true;
+                }
+
                 await reply(`Nn... Memuat data *${queryTersimpan.replace(/_/g, ' ')}*...`);
-                const response = await axios.get(`https://danbooru.donmai.us/posts.json?tags=${queryTersimpan}+${(pilihan === 'nsfw' || pilihan === '2') ? 'rating:e' : 'rating:g'}&limit=40`, { httpsAgent: new https.Agent({ rejectUnauthorized: false }) });
+                const response = await axios.get(`https://danbooru.donmai.us/posts.json?tags=${queryTersimpan}+${isNsfw ? 'rating:e' : 'rating:g'}&limit=40`, { httpsAgent: new https.Agent({ rejectUnauthorized: false }) });
                 const results = response.data.filter(post => post.file_url || post.large_file_url);
                 delete state.sesiWaifu[senderId];
 
@@ -114,6 +124,14 @@ async function handle(ctx) {
             const isNsfw = (pilihan === 'nsfw' || pilihan === '2');
             if (pilihan !== 'sfw' && pilihan !== '1' && !isNsfw) { await reply('Nn... Balas dengan *SFW* atau *NSFW*.'); return true; }
             if (!cekDanPotongLimit(senderId)) { delete state.sesiPixiv[senderId]; await reply('Nn... Token habis.'); return true; }
+
+            const { dbPremium } = require('../config/db');
+            const isPremium = dbPremium[senderId] && (dbPremium[senderId] === true || dbPremium[senderId] > Date.now());
+            if (isNsfw && !isPremium && !isOwner) {
+                delete state.sesiPixiv[senderId]; kembalikanLimit(senderId);
+                await reply('❌ Nn... Mode NSFW (R-18) dikunci secara eksklusif untuk pengguna *VIP Premium*.\n\nKetik *!premium* untuk berlangganan.');
+                return true;
+            }
 
             try {
                 await reply(`Nn... Mencari *${state.sesiPixiv[senderId].query}* di server Pixiv...`);
@@ -194,7 +212,17 @@ async function handle(ctx) {
     // ==========================================
     // GACHA PIXIV
     // ==========================================
-    if (textLower === '!gacha') {
+    if (textLower.startsWith('!gacha')) {
+        const isNsfwRequest = textLower.includes('nsfw');
+        if (isNsfwRequest) {
+            const { dbPremium } = require('../config/db');
+            const isPremium = dbPremium[senderId] && (dbPremium[senderId] === true || dbPremium[senderId] > Date.now());
+            if (!isPremium && !isOwner) {
+                await reply('❌ Nn... Mode *!gacha nsfw* dikunci secara eksklusif untuk pengguna *VIP Premium*.\n\nKetik *!premium* untuk berlangganan.');
+                return true;
+            }
+        }
+
         if (state.cooldownGacha.has(senderId)) {
             await reply('Nn... Jangan terburu-buru, Sensei. Tunggu 5-10 detik lagi agar server Pixiv tidak memblokir kita.');
             return true;
@@ -208,7 +236,10 @@ async function handle(ctx) {
         try {
             await reply('Nn... Mengundi target visual acak...');
 
-            const gachaTags = ['オリジナル', '猫耳', 'ケモミミ', 'メイド', '制服', '女の子', '初音ミク', '風景'];
+            let gachaTags = ['オリジナル', '猫耳', 'ケモミミ', 'メイド', '制服', '女の子', '初音ミク', '風景'];
+            if (isNsfwRequest) {
+                gachaTags = ['魅惑の谷間', '極上の女体', '尻神様', '触手', 'おっぱい', 'R-18'];
+            }
             const tagPilihan = gachaTags[Math.floor(Math.random() * gachaTags.length)];
 
             const searchResult = await pixiv.searchIllust(`${tagPilihan} 1000users入り`);
@@ -217,8 +248,8 @@ async function handle(ctx) {
                 throw new Error('Response Pixiv kosong atau undefined');
             }
 
-            let illusts = searchResult.illusts.filter(img => img.x_restrict === 0 && !img.tags.some(t => t.name.toLowerCase().includes('r-18')));
-            if (illusts.length === 0) throw new Error('Tidak ada ilustrasi SFW yang lolos filter');
+            let illusts = searchResult.illusts.filter(img => isNsfwRequest ? (img.x_restrict > 0 || img.tags.some(t => t.name.toLowerCase().includes('r-18'))) : (img.x_restrict === 0 && !img.tags.some(t => t.name.toLowerCase().includes('r-18'))));
+            if (illusts.length === 0) throw new Error('Tidak ada ilustrasi yang lolos filter');
 
             const randomIllust = illusts[Math.floor(Math.random() * illusts.length)];
             const imageUrl = randomIllust.image_urls.large || randomIllust.image_urls.medium;

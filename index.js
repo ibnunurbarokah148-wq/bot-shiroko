@@ -16,6 +16,8 @@ const { dbLimit, simpanDB } = require('./config/db');
 const state = require('./config/state');
 const { registerMessageHandler } = require('./handlers/message');
 const { getCoreNumber } = require('./utils/helpers');
+const { setSocket, getSocket } = require('./utils/socket');
+const jadibotService = require('./services/jadibot.service');
 
 // Services (auto-init saat di-require: Pixiv login, AI memory cleanup)
 require('./services/pixiv.service');
@@ -46,8 +48,8 @@ async function startBot() {
         browser: Browsers.ubuntu('Chrome')
     });
 
-    // Simpan ke global untuk akses dari services (ComfyUI, cron, express, dll)
-    global.waSocket = sock;
+    // Simpan ke module untuk akses dari services (ComfyUI, cron, express, dll)
+    setSocket(sock);
 
     // Simpan kredensial otomatis
     sock.ev.on('creds.update', saveCreds);
@@ -57,12 +59,14 @@ async function startBot() {
     // ==========================================
     if (!sock.authState.creds.registered) {
         setTimeout(async () => {
-            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-            const nomorTelepon = await new Promise(resolve => rl.question('Masukkan nomor telepon (contoh: 6281234567890): ', resolve));
-            rl.close();
+            let nomorTelepon = process.env.WA_PHONE_NUMBER;
+            if (!nomorTelepon) {
+                console.error('\n🚨 WA_PHONE_NUMBER tidak ditemukan di .env! Bot tidak bisa login tanpa QR. Tambahkan WA_PHONE_NUMBER di .env lalu jalankan ulang.');
+                return;
+            }
 
             try {
-                const formattedNumber = nomorTelepon.replace(/[^0-9]/g, '');
+                const formattedNumber = nomorTelepon.toString().replace(/[^0-9]/g, '');
                 const code = await sock.requestPairingCode(formattedNumber);
                 console.log(`\n🔗 KODE PAIRING: ${code}\n`);
                 console.log('Buka WhatsApp > Perangkat Tertaut > Tautkan Perangkat > Masukkan kode di atas.');
@@ -104,11 +108,17 @@ async function startBot() {
 // Dijalankan SEKALI di luar startBot()
 // ==========================================
 cron.schedule('0 0 * * *', () => {
+    const { dbPremium } = require('./config/db');
     for (let id in dbLimit) {
-        dbLimit[id] = JATAH_HARIAN;
+        const isPremium = dbPremium[id] && (dbPremium[id] === true || dbPremium[id] > Date.now());
+        if (isPremium) {
+            dbLimit[id] = 1000;
+        } else if (dbLimit[id] < JATAH_HARIAN) {
+            dbLimit[id] = JATAH_HARIAN;
+        }
     }
     simpanDB();
-    console.log('🔄 [CRON] Semua limit user telah di-reset.');
+    console.log('🔄 [CRON] Semua limit user telah di-reset (Premium & Topup saldo terlindungi).');
 }, { timezone: "Asia/Jakarta" });
 
 // ==========================================
@@ -129,7 +139,7 @@ const idOwnerJid = ID_OWNER[0] + '@s.whatsapp.net';
 jadwalSalat.forEach(({ jam, nama, waktu }) => {
     cron.schedule(jam, async () => {
         if (!state.alarmSalatAktif) return;
-        const sock = global.waSocket; // Selalu ambil koneksi terbaru
+        const sock = getSocket(); // Selalu ambil koneksi terbaru
         if (!sock) return;
 
         if (nama === 'Subuh') {
@@ -139,10 +149,10 @@ jadwalSalat.forEach(({ jam, nama, waktu }) => {
 
             try {
                 await sock.sendMessage(idOwnerJid, { text: `🔔 *ALARM SUBUH (Panggilan 1/3)* 🔔\n\nNn... Bangun, Sensei.\n_(Balas *iya* jika sudah bangun)_` });
-            } catch (e) { }
+            } catch (e) { console.error('Gagal mengirim alarm Subuh:', e.message); }
 
             state.alarmSubuhState.timer = setInterval(async () => {
-                const s = global.waSocket; // Ambil koneksi terbaru di setiap interval
+                const s = getSocket(); // Ambil koneksi terbaru di setiap interval
                 if (!s) return;
                 state.alarmSubuhState.count++;
                 try {
@@ -155,7 +165,7 @@ jadwalSalat.forEach(({ jam, nama, waktu }) => {
                         state.alarmSubuhState.count = 0;
                         state.alarmSubuhState.timer = null;
                     }
-                } catch (e) { }
+                } catch (e) { console.error('Gagal mengirim loop alarm Subuh:', e.message); }
             }, 5 * 60 * 1000);
         } else {
             try {
@@ -163,7 +173,7 @@ jadwalSalat.forEach(({ jam, nama, waktu }) => {
                     text: `🔔 *Notifikasi Taktis* 🔔\n\nNn... Sensei. Ini sudah masuk waktu ibadah *${nama}* (${waktu}). Segera ambil wudhu.\n\nBalas dengan:\n*Laksanakan*\n*Abaikan*`
                 });
                 state.sesiSalat[getCoreNumber(idOwnerJid)] = { step: 1, salat: nama };
-            } catch (e) { }
+            } catch (e) { console.error(`Gagal mengirim notifikasi salat ${nama}:`, e.message); }
         }
     }, { timezone: "Asia/Jakarta" });
 });
@@ -184,7 +194,7 @@ app.post('/laporan-masuk', async (req, res) => {
     if (!pesan) return res.status(400).json({ status: 'error', message: 'Field "pesan" wajib diisi.' });
 
     try {
-        const sock = global.waSocket; // Selalu ambil koneksi terbaru
+        const sock = getSocket(); // Selalu ambil koneksi terbaru
         if (!sock) return res.status(503).json({ status: 'error', message: 'Bot WhatsApp belum terhubung.' });
         await sock.sendMessage(idOwnerJid, { text: `🚨 *LAPORAN MASUK DARI SERVER* 🚨\n\n${pesan}` });
         res.json({ status: 'ok', message: 'Laporan terkirim ke WhatsApp Owner.' });
@@ -198,9 +208,11 @@ app.listen(3000, () => {
 });
 
 // ==========================================
-// MULAI BOT WHATSAPP
+// MULAI BOT WHATSAPP & JADIBOT
 // ==========================================
-startBot();
+startBot().then(() => {
+    if (jadibotService.resumeAllJadibots) jadibotService.resumeAllJadibots();
+}).catch(console.error);
 
 // ==========================================
 // MULAI BOT DISCORD (SHARED MEMORY)

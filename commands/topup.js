@@ -31,10 +31,19 @@ async function handle(ctx) {
         state.sesiTopup[senderId] = { token: paket.token, harga: paket.harga };
 
         try {
-            let teks = `Nn... Sensei memilih paket *${paket.token} Token* seharga *Rp ${paket.harga.toLocaleString('id-ID')}*.\n\nSilakan transfer ke QRIS ini. Kalau sudah bayar, reply fotonya dengan tulisan *!bukti*.`;
-            await sock.sendMessage(from, { image: fs.readFileSync('./qris.jpg'), caption: teks });
+            const staticQris = process.env.STATIC_QRIS;
+            if (!staticQris) {
+                throw new Error('STATIC_QRIS not set in .env');
+            }
+            const { makeDynamicQris } = require('../utils/qris');
+            const dynamicQris = makeDynamicQris(staticQris, paket.harga);
+            const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(dynamicQris)}`;
+
+            let teks = `Nn... Sensei memilih paket *${paket.token} Token* seharga *Rp ${paket.harga.toLocaleString('id-ID')}*.\n\nSilakan scan QRIS di atas (nominal akan otomatis terkunci saat di-scan).\n\nJika sudah melakukan pembayaran, kirim/reply screenshot struk pembayaran dengan caption *!bukti*.`;
+            await sock.sendMessage(from, { image: { url: qrImageUrl }, caption: teks });
         } catch (err) {
-            await reply('Nn... Gambar QRIS tidak ditemukan di sistem. Lapor ke Komandan.');
+            console.error('Error generating dynamic QRIS for Topup:', err.message);
+            await reply('Nn... Terjadi kegagalan saat membuat kode QRIS otomatis. Silakan lapor ke Komandan.');
         }
         return true;
     }
@@ -43,7 +52,7 @@ async function handle(ctx) {
     // KIRIM BUKTI TRANSFER
     // ==========================================
     if (textLower.startsWith('!bukti')) {
-        if (!state.sesiTopup[senderId]) { await reply('Nn... Sensei belum memesan paket logistik. Ketik *!topup* dulu.'); return true; }
+        if (!state.sesiTopup[senderId] && !state.sesiJadibot[senderId] && !state.sesiPremium[senderId]) { await reply('Nn... Sensei belum memesan paket apapun. Ketik *!topup*, *!jadibot*, atau *!premium* dulu.'); return true; }
 
         const isTargetImage = msgType === 'imageMessage';
         const isQuotedImage = isQuoted && quotedType === 'imageMessage';
@@ -54,14 +63,23 @@ async function handle(ctx) {
                 if (!messageToDownload) throw new Error("Media tidak ditemukan");
 
                 const mediaBuffer = await downloadMediaBaileys(messageToDownload, 'image');
-                const paket = state.sesiTopup[senderId];
                 const idOwnerUtama = ID_OWNER[0] + '@s.whatsapp.net';
 
-                let laporan = `🚨 *LAPORAN TRANSAKSI LOGISTIK* 🚨\n\n*ID Pembeli:* ${senderId}\n*Jumlah Token:* ${paket.token}\n*Total Bayar:* Rp ${paket.harga.toLocaleString('id-ID')}\n\nNn... Komandan, periksa mutasi rekening. Silakan Reply pesan ini dengan:\n✅ *!acc*\n❌ *!tolak [alasan]*`;
+                let laporan = '';
+                if (state.sesiPremium[senderId]) {
+                    laporan = `🚨 *LAPORAN TRANSAKSI PREMIUM* 🚨\n\n*ID Pembeli:* ${senderId}\n*Total Bayar:* Rp 15.000\n\nNn... Komandan, periksa mutasi rekening. Silakan Reply pesan ini dengan:\n✅ *!acc*\n❌ *!tolak [alasan]*`;
+                } else if (state.sesiJadibot[senderId]) {
+                    laporan = `🚨 *LAPORAN TRANSAKSI JADIBOT* 🚨\n\n*ID Pembeli:* ${senderId}\n*Total Bayar:* Rp 20.000\n\nNn... Komandan, periksa mutasi rekening. Silakan Reply pesan ini dengan:\n✅ *!acc*\n❌ *!tolak [alasan]*`;
+                } else {
+                    const paket = state.sesiTopup[senderId];
+                    laporan = `🚨 *LAPORAN TRANSAKSI LOGISTIK* 🚨\n\n*ID Pembeli:* ${senderId}\n*Jumlah Token:* ${paket.token}\n*Total Bayar:* Rp ${paket.harga.toLocaleString('id-ID')}\n\nNn... Komandan, periksa mutasi rekening. Silakan Reply pesan ini dengan:\n✅ *!acc*\n❌ *!tolak [alasan]*`;
+                }
 
                 await sock.sendMessage(idOwnerUtama, { image: mediaBuffer, caption: laporan });
                 await reply('Nn... Bukti transfer sudah diteruskan ke markas komando pusat. Tunggu sebentar ya.');
                 delete state.sesiTopup[senderId];
+                delete state.sesiJadibot[senderId];
+                delete state.sesiPremium[senderId];
             } catch (error) {
                 await reply('Nn... Gagal mengamankan gambar bukti.');
             }
@@ -121,6 +139,52 @@ async function handle(ctx) {
             } else {
                 await reply(`❌ *REGISTRASI DITOLAK*`);
                 try { await sock.sendMessage(targetNomor, { text: `⚠️ *REGISTRASI DITOLAK*\n\nNn... Maaf, permohonan akses LMS ditolak.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
+            }
+        } else if (teksLaporan.includes('LAPORAN TRANSAKSI JADIBOT')) {
+            const matchId = teksLaporan.match(/\*ID Pembeli:\*\s*([^\n]+)/);
+            if (!matchId) { await reply('Nn... Format laporan jadibot tidak dikenali.'); return true; }
+            const targetNomor = matchId[1].trim();
+
+            if (isAcc) {
+                const { dbJadibot, simpanJadibot } = require('../config/db');
+                const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+                if (!dbJadibot[targetNomor] || dbJadibot[targetNomor] < Date.now()) {
+                    dbJadibot[targetNomor] = Date.now() + THIRTY_DAYS;
+                } else {
+                    dbJadibot[targetNomor] += THIRTY_DAYS;
+                }
+                simpanJadibot();
+                
+                await reply(`✅ *TRANSAKSI BERHASIL*\nNn... Pembayaran Jadibot disetujui (Aktif 30 Hari).\n*Target:* ${targetNomor}`);
+                try { await sock.sendMessage(targetNomor, { text: `🎉 *PEMBAYARAN DITERIMA*\n\nNn... Fitur Jadibot milikmu sudah aktif selama 30 hari ke depan! Silakan ketik *!jadibot* lalu ikuti instruksi untuk meminta kode pairing dari pusat.` }); } catch (err) { }
+            } else {
+                await reply(`❌ *TRANSAKSI DITOLAK*\nNn... Laporan dikirim ke target.`);
+                try { await sock.sendMessage(targetNomor, { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana Jadibot tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
+            }
+        } else if (teksLaporan.includes('LAPORAN TRANSAKSI PREMIUM')) {
+            const matchId = teksLaporan.match(/\*ID Pembeli:\*\s*([^\n]+)/);
+            if (!matchId) { await reply('Nn... Format laporan premium tidak dikenali.'); return true; }
+            const targetNomor = matchId[1].trim();
+
+            if (isAcc) {
+                const { dbPremium, simpanPremium, dbLimit, simpanDB } = require('../config/db');
+                const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+                if (!dbPremium[targetNomor] || dbPremium[targetNomor] < Date.now()) {
+                    dbPremium[targetNomor] = Date.now() + THIRTY_DAYS;
+                } else {
+                    dbPremium[targetNomor] += THIRTY_DAYS;
+                }
+                simpanPremium();
+                
+                // Beri full 1000 limit pertama kali
+                dbLimit[targetNomor] = 1000;
+                simpanDB();
+                
+                await reply(`✅ *TRANSAKSI BERHASIL*\nNn... Pembayaran Premium disetujui (Aktif 30 Hari).\n*Target:* ${targetNomor}`);
+                try { await sock.sendMessage(targetNomor, { text: `🎉 *PEMBAYARAN DITERIMA*\n\nNn... Statusmu sekarang menjadi **VIP Premium** selama 30 hari ke depan! Token harianmu telah ditingkatkan ke 1000/hari, dan kamu bisa menikmati akses NSFW & ComfyUI.\nKetik *!premium* untuk info lebih lanjut.` }); } catch (err) { }
+            } else {
+                await reply(`❌ *TRANSAKSI DITOLAK*\nNn... Laporan dikirim ke target.`);
+                try { await sock.sendMessage(targetNomor, { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana Premium tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
             }
         } else {
             await reply('Nn... Laporan apa ini Komandan? Format tidak sesuai protokol.');

@@ -5,6 +5,7 @@ const fs = require('fs');
 const axios = require('axios');
 const { kembalikanLimit } = require('../config/db');
 const state = require('../config/state');
+const { getSocket } = require('../utils/socket');
 const { checkIsRunning, startVastInstance, stopVastInstance, getComfyUrl, getJupyterToken } = require('./vast.service');
 
 const antrianGambar = [];
@@ -213,7 +214,7 @@ async function prosesAntrianGambar() {
             if (pesanan.isDiscord && pesanan.sendImage) {
                 await pesanan.sendImage(imgBuffer, caption);
             } else {
-                await global.waSocket.sendMessage(from, {
+                await getSocket().sendMessage(from, {
                     image: imgBuffer,
                     caption: caption
                 }, { quoted: msg });

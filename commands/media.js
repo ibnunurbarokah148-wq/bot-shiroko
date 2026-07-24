@@ -32,7 +32,8 @@ async function handle(ctx) {
         await reply('Nn... Pilih mesin render gambar dengan membalas angka:\n' +
             '1️⃣ *ComfyUI* (biaya 4 limit) — _Support konten NSFW_ 🔞\n' +
             '2️⃣ *Arisu SDXL* (biaya 3 limit)\n' +
-            '3️⃣ *Arisu lainnya* (biaya 2 limit)\n' +
+            '3️⃣ *Agnes 2.0* (biaya 2 limit)\n' +
+            '4️⃣ *Agnes 2.1* (biaya 2 limit)\n' +
             '\nKetik *batal* untuk membatalkan.');
         return true;
     }
@@ -56,6 +57,13 @@ async function handle(ctx) {
         let endpointModel = '';
 
         if (pilihan === '1') {
+            const { dbPremium } = require('../config/db');
+            const dbEntry = dbPremium[senderId];
+            const isPremium = dbEntry && (typeof dbEntry === 'boolean' || dbEntry > Date.now());
+            if (!isPremium && !isOwner) {
+                await reply('❌ Nn... Mesin ComfyUI ini mengkonsumsi daya render yang sangat besar. Akses ke mesin ini hanya diizinkan untuk pelanggan *VIP Premium*.\n\nKetik *!premium* untuk berlangganan.');
+                return true;
+            }
             cost = 4;
             namaModel = 'ComfyUI (Vast.ai RTX)';
             useComfy = true;
@@ -67,8 +75,12 @@ async function handle(ctx) {
             cost = 2;
             endpointModel = 'agnes-2.0';
             namaModel = 'Agnes 2.0';
+        } else if (pilihan === '4') {
+            cost = 2;
+            endpointModel = 'agnes-2.1';
+            namaModel = 'Agnes 2.1';
         } else {
-            await reply('Nn... Pilihan tidak valid. Balas dengan angka 1, 2, atau 3. Atau ketik *batal*.');
+            await reply('Nn... Pilihan tidak valid. Balas dengan angka 1, 2, 3, atau 4. Atau ketik *batal*.');
             return true;
         }
 

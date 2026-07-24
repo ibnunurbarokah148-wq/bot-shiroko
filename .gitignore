@@ -7,6 +7,9 @@ user_roles.json
 user_tugas.json
 panitia_agustus.json
 temp/
+session_*/
+user_jadibot.json
+user_premium.json
 api open router.txt
 gemma-3-4b-it-uncensored-v2_Q4_K_M.gguf
 Modelfile
