@@ -186,7 +186,7 @@ async function fetchOpenRouterModels() {
     let freeModels = allModels.filter(m => m.id && m.id.includes(':free'));
     if (freeModels.length === 0) freeModels = allModels;
     
-    return freeModels.slice(0, 12).map(m => ({
+    return freeModels.slice(0, 25).map(m => ({
         id: m.id,
         name: m.name || m.id
     }));
@@ -207,12 +207,16 @@ async function fetchCloudflareModels() {
     });
     
     let result = res.data.result || [];
-    let textModels = result.filter(m => m.task && (m.task.name.toLowerCase().includes('text') || m.name.toLowerCase().includes('llama')));
+    let textModels = result.filter(m => {
+        const taskName = m.task ? (m.task.name || '').toLowerCase() : '';
+        const name = (m.name || '').toLowerCase();
+        return taskName.includes('text') || taskName.includes('generation') || name.includes('llama') || name.includes('deepseek') || name.includes('qwen') || name.includes('gemma') || name.includes('mistral') || name.includes('phi');
+    });
     if (textModels.length === 0) textModels = result;
     
-    return textModels.slice(0, 12).map(m => ({
+    return textModels.slice(0, 25).map(m => ({
         id: m.name,
-        name: m.name
+        name: m.name.replace(/^@cf\//i, '')
     }));
 }
 
