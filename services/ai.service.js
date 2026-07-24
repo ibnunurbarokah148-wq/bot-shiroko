@@ -186,10 +186,16 @@ async function fetchOpenRouterModels() {
     let freeModels = allModels.filter(m => m.id && m.id.includes(':free'));
     if (freeModels.length === 0) freeModels = allModels;
     
-    return freeModels.slice(0, 25).map(m => ({
-        id: m.id,
-        name: m.name || m.id
-    }));
+    return freeModels.map(m => {
+        let cleanName = m.id;
+        if (m.id && m.id.includes('/')) {
+            cleanName = m.id.split('/')[1];
+        }
+        return {
+            id: m.id,
+            name: cleanName
+        };
+    });
 }
 
 async function fetchCloudflareModels() {
@@ -214,10 +220,14 @@ async function fetchCloudflareModels() {
     });
     if (textModels.length === 0) textModels = result;
     
-    return textModels.slice(0, 25).map(m => ({
-        id: m.name,
-        name: m.name.replace(/^@cf\//i, '')
-    }));
+    return textModels.map(m => {
+        let parts = m.name.replace(/^@cf\//i, '').split('/');
+        let cleanName = parts[parts.length - 1];
+        return {
+            id: m.name,
+            name: cleanName
+        };
+    });
 }
 
 async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deepseek/deepseek-r1:free') {

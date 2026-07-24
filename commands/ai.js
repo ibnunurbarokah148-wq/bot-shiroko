@@ -153,7 +153,7 @@ async function handle(ctx) {
                 state.sesiOpenRouterMode[senderId] = { list: models };
 
                 let teksList = `🌐 *DAFTAR MODEL OPENROUTER LIVE*\n\nNn... Sensei, pilih otak OpenRouter yang mau dipakai dengan membalas angkanya:\n\n`;
-                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name}\n   \`${m.id}\`\n`; });
+                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name}\n`; });
                 teksList += `\n_Ketik *batal* untuk membatalkan._`;
 
                 await reply(teksList);
