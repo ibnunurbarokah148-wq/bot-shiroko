@@ -1,0 +1,58 @@
+==========================================
+CARA LOGIN KE VPS & CHEAT SHEET PERINTAH
+==========================================
+
+1. CARA LOGIN SSH VIA CMD (WINDOWS)
+------------------------------------------
+- Buka pencarian di Windows (ikon kaca pembesar di taskbar), ketik CMD lalu buka Command Prompt.
+- Ketik atau paste perintah ini:
+  ssh root@103.253.213.252
+
+- Jika muncul pertanyaan (yes/no/[fingerprint])?, ketik: yes lalu Enter.
+- Saat diminta password, paste password di bawah ini (klik kanan 1x di layar CMD).
+  *Catatan: Password tidak akan kelihatan bintang/hurufnya (keamanan Linux). Langsung tekan Enter.*
+
+  PW ROOT: W81KT%6%aHghSL
+
+
+2. PERINTAH UPDATE BOT SHIROKO DI VPS
+------------------------------------------
+Setelah berhasil masuk ke VPS, jalankan perintah ini secara berurutan:
+
+A. Masuk ke folder bot:
+   cd /root/bot-shiroko
+
+B. Tarik pembaruan terbaru dari GitHub:
+   git pull origin main
+
+C. Restart bot (Force Reload):
+   pm2 reload all --force
+
+
+3. PERINTAH MANAGEMEN & TROUBLESHOOTING PM2
+------------------------------------------
+- Cek Status Bot:
+  pm2 status
+
+- Cek Log Realtime (Melihat aktivitas/eror):
+  pm2 logs
+
+- Cek Log Khusus Eror:
+  pm2 logs index --err --lines 50
+
+- Restart Ulang Bot:
+  pm2 restart all
+
+
+4. CARA EDIT FILE .ENV DI VPS
+------------------------------------------
+- Buka file .env dengan editor Nano:
+  nano .env
+
+- Navigasi menggunakan tombol panah di keyboard.
+- Edit/paste isi yang diinginkan.
+- Simpan & Keluar:
+  Tekan Ctrl + O -> Tekan Enter -> Tekan Ctrl + X
+
+- Setelah edit .env, wajib restart bot:
+  pm2 restart all

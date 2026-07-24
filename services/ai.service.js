@@ -256,22 +256,24 @@ async function fetchCloudflareModels() {
 
 function cleanThinkingLogs(text) {
     if (!text || typeof text !== 'string') return text;
-    let cleaned = text;
+    let original = text.trim();
+    let cleaned = original;
     
     // 1. Hapus blok <think>...</think>, <thought>...</thought>, <reasoning>...</reasoning>
     cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
     cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
     cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
 
-    // 2. Hapus jika ada tag <think> atau <thought> yang tidak tertutup hingga akhir atau hingga baris tertentu
-    cleaned = cleaned.replace(/<think>[\s\S]*/gi, '');
-    cleaned = cleaned.replace(/<thought>[\s\S]*/gi, '');
-
-    // 3. Hapus format pemikiran khas OpenRouter/Cloudflare seperti "Thinking Process: ..." atau "Thought: ..."
+    // 2. Hapus format pemikiran khas OpenRouter/Cloudflare seperti "Thinking Process: ..." atau "Thought: ..."
     cleaned = cleaned.replace(/^(Thought|Thinking Process|Thinking|Reasoning):\s*[\s\S]*?\n\n/i, '');
 
-    // 4. Hapus jika pemikiran dibungkus ```think ... ``` atau ```thought ... ```
+    // 3. Hapus jika pemikiran dibungkus ```think ... ``` atau ```thought ... ```
     cleaned = cleaned.replace(/```(?:think|thought|reasoning)[\s\S]*?```/gi, '');
+
+    // 4. Fallback jika hasil pembersihan menjadi KOSONG ("") (misal karena respons terpotong sebelum tag </think> tertutup)
+    if (!cleaned.trim()) {
+        cleaned = original.replace(/<\/?(?:think|thought|reasoning)>/gi, '').trim();
+    }
 
     return cleaned.trim();
 }
@@ -283,12 +285,13 @@ async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deep
     const apiKey = OPENROUTER_API_KEYS[Math.floor(Math.random() * OPENROUTER_API_KEYS.length)];
     
     let instruksiKhusus = isOwner
-        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, dan lembut, khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...". DILARANG KERAS mengeluarkan tag <think>...</think> atau log penalaran, langsung berikan jawaban akhir.]`
-        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Jawablah dengan dingin, cuek, dan profesional khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...". DILARANG KERAS mengeluarkan tag <think>...</think> atau log penalaran, langsung berikan jawaban akhir.]`;
+        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, dan lembut, khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...".]`
+        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Jawablah dengan dingin, cuek, dan profesional khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...".]`;
 
     const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
         model: modelName,
         include_reasoning: false,
+        max_tokens: 4096,
         messages: [
             { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` },
             { role: 'user', content: promptInput }
@@ -315,15 +318,16 @@ async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/
     const { accountId, token } = getCloudflarePair();
     
     let instruksiKhusus = isOwner
-        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang". Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...". DILARANG KERAS mengeluarkan tag <think> atau log penalaran.]`
-        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...". DILARANG KERAS mengeluarkan tag <think> atau log penalaran.]`;
+        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang". Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...".]`
+        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...".]`;
 
     const cleanModel = modelName.startsWith('@cf/') ? modelName : `@cf/${modelName}`;
     const response = await axios.post(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`, {
         messages: [
             { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` },
             { role: 'user', content: promptInput }
-        ]
+        ],
+        max_tokens: 4096
     }, {
         headers: {
             'Authorization': `Bearer ${token}`,
