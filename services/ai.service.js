@@ -167,6 +167,115 @@ async function tanyaArisu(senderId, pesanUser, isOwner, modelEndpoint) {
         console.error('🚨 ERROR ARISU:', error.message);
         return 'Nn... Maaf Sayang, jalur Arisu terputus (Timeout/Error).';
     }
+// OPENROUTER & CLOUDFLARE MULTI-KEY ROTATION
+const OPENROUTER_API_KEYS = process.env.OPENROUTER_API_KEY ? process.env.OPENROUTER_API_KEY.split(',').map(k => k.trim()) : [];
+const CLOUDFLARE_API_TOKENS = process.env.CLOUDFLARE_API_TOKEN ? process.env.CLOUDFLARE_API_TOKEN.split(',').map(k => k.trim()) : [];
+
+async function fetchOpenRouterModels() {
+    if (OPENROUTER_API_KEYS.length === 0) {
+        throw new Error('OPENROUTER_API_KEY tidak ditemukan pada .env');
+    }
+    const apiKey = OPENROUTER_API_KEYS[Math.floor(Math.random() * OPENROUTER_API_KEYS.length)];
+    const res = await axios.get('https://openrouter.ai/api/v1/models', {
+        headers: { 'Authorization': `Bearer ${apiKey}` }
+    });
+    
+    let allModels = res.data.data || [];
+    let freeModels = allModels.filter(m => m.id && m.id.includes(':free'));
+    if (freeModels.length === 0) freeModels = allModels;
+    
+    return freeModels.slice(0, 12).map(m => ({
+        id: m.id,
+        name: m.name || m.id
+    }));
+}
+
+async function fetchCloudflareModels() {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    if (!accountId || accountId.includes('masukkan')) {
+        throw new Error('CLOUDFLARE_ACCOUNT_ID belum di-set pada .env');
+    }
+    if (CLOUDFLARE_API_TOKENS.length === 0 || CLOUDFLARE_API_TOKENS[0].includes('masukkan')) {
+        throw new Error('CLOUDFLARE_API_TOKEN belum di-set pada .env');
+    }
+    
+    const token = CLOUDFLARE_API_TOKENS[Math.floor(Math.random() * CLOUDFLARE_API_TOKENS.length)];
+    const res = await axios.get(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    let result = res.data.result || [];
+    let textModels = result.filter(m => m.task && (m.task.name.toLowerCase().includes('text') || m.name.toLowerCase().includes('llama')));
+    if (textModels.length === 0) textModels = result;
+    
+    return textModels.slice(0, 12).map(m => ({
+        id: m.name,
+        name: m.name
+    }));
+}
+
+async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deepseek/deepseek-r1:free') {
+    if (OPENROUTER_API_KEYS.length === 0) {
+        throw new Error('OPENROUTER_API_KEY tidak ditemukan pada .env');
+    }
+    const apiKey = OPENROUTER_API_KEYS[Math.floor(Math.random() * OPENROUTER_API_KEYS.length)];
+    
+    let instruksiKhusus = isOwner
+        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, dan lembut, khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn..."]`
+        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Jawablah dengan dingin, cuek, dan profesional khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn..."]`;
+
+    const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+        model: modelName,
+        messages: [
+            { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` },
+            { role: 'user', content: promptInput }
+        ]
+    }, {
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://github.com/ibnunurbarokah148-wq/bot-shiroko',
+            'X-Title': 'Shiroko Bot'
+        },
+        timeout: 60000
+    });
+
+    const choices = response.data.choices;
+    if (choices && choices.length > 0 && choices[0].message) {
+        return choices[0].message.content.trim();
+    }
+    throw new Error('Respons OpenRouter tidak valid');
+}
+
+async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/meta/llama-3-8b-instruct') {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    if (!accountId || accountId.includes('masukkan')) throw new Error('CLOUDFLARE_ACCOUNT_ID belum disetel.');
+    if (CLOUDFLARE_API_TOKENS.length === 0 || CLOUDFLARE_API_TOKENS[0].includes('masukkan')) throw new Error('CLOUDFLARE_API_TOKEN belum disetel.');
+    
+    const token = CLOUDFLARE_API_TOKENS[Math.floor(Math.random() * CLOUDFLARE_API_TOKENS.length)];
+    
+    let instruksiKhusus = isOwner
+        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang". Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn..."]`
+        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn..."]`;
+
+    const cleanModel = modelName.startsWith('@cf/') ? modelName : `@cf/${modelName}`;
+    const response = await axios.post(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`, {
+        messages: [
+            { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` },
+            { role: 'user', content: promptInput }
+        ]
+    }, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        timeout: 60000
+    });
+
+    if (response.data.success && response.data.result) {
+        return (response.data.result.response || response.data.result.description || JSON.stringify(response.data.result)).trim();
+    }
+    throw new Error('Respons Cloudflare API gagal');
 }
 
 module.exports = {
@@ -176,8 +285,14 @@ module.exports = {
     getAkademikModel,
     tanyaOllama,
     tanyaArisu,
+    tanyaOpenRouter,
+    tanyaCloudflare,
+    fetchOpenRouterModels,
+    fetchCloudflareModels,
     memoriOllama,
     memoriArisu,
     GEMINI_API_KEYS,
-    HF_API_KEYS
+    HF_API_KEYS,
+    OPENROUTER_API_KEYS,
+    CLOUDFLARE_API_TOKENS
 };

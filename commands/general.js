@@ -77,6 +77,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *╔═══「 AI ASSISTANT 」*
 *║* ➸ \`!shiroko [pesan]\`
 *║* ➸ \`!shiroko_pintar [tanya]\`
+*║* ➸ !aimode (Ganti Otak AI)
 *║* ➸ !lupa
 *║* ➸ !ping
 *║* ➸ !cekid

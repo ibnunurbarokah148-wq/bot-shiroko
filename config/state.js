@@ -29,9 +29,15 @@ module.exports = {
     sesiPremium: {},
     sesiJadibot: {},
     sesiOllamaMode: {},
+    sesiOpenRouterMode: {},
+    sesiCloudflareMode: {},
     sesiCabutRole: {},
     sesiModelGambar: {},
     sesiArisu: {},
+
+    // Model AI Pilihan User
+    userOpenRouterModel: {},
+    userCloudflareModel: {},
 
     // Cooldown anti-spam
     cooldownGacha: new Set(),
