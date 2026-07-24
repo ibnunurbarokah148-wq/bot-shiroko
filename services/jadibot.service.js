@@ -3,12 +3,12 @@ const pino = require('pino');
 const fs = require('fs');
 const path = require('path');
 const { getSocket } = require('../utils/socket');
-const { registerMessageHandler } = require('../handlers/message');
 const { dbJadibot } = require('../config/db');
 
 const jadibotSockets = new Map();
 
 async function startJadibot(sessionName, phoneNumber, replyFn) {
+    const { registerMessageHandler } = require('../handlers/message');
     if (jadibotSockets.has(sessionName)) {
         if (replyFn) await replyFn('Nn... Bot-mu sudah aktif, Sensei.');
         return;
