@@ -21,6 +21,8 @@ if (HF_API_KEYS.length === 0) {
 // Memori percakapan (di-export agar bisa dihapus via !lupa)
 const memoriOllama = {};
 const memoriArisu = {};
+const memoriOpenRouter = {};
+const memoriCloudflare = {};
 
 // Pembersihan memori otomatis tiap jam untuk mencegah memory leak
 setInterval(() => {
@@ -31,6 +33,12 @@ setInterval(() => {
     }
     for (let id in memoriArisu) {
         if (now - memoriArisu[id].lastActive > TTL) delete memoriArisu[id];
+    }
+    for (let id in memoriOpenRouter) {
+        if (now - memoriOpenRouter[id].lastActive > TTL) delete memoriOpenRouter[id];
+    }
+    for (let id in memoriCloudflare) {
+        if (now - memoriCloudflare[id].lastActive > TTL) delete memoriCloudflare[id];
     }
     console.log('[SISTEM] Pembersihan memori chat otomatis selesai.');
 }, 3600000);
@@ -284,63 +292,107 @@ async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deep
     }
     const apiKey = OPENROUTER_API_KEYS[Math.floor(Math.random() * OPENROUTER_API_KEYS.length)];
     
+    if (!memoriOpenRouter[senderId]) {
+        memoriOpenRouter[senderId] = { messages: [], lastActive: Date.now() };
+    }
+
     let instruksiKhusus = isOwner
         ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, dan lembut, khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...".]`
         : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Jawablah dengan dingin, cuek, dan profesional khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...".]`;
 
-    const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-        model: modelName,
-        include_reasoning: false,
-        max_tokens: 4096,
-        messages: [
-            { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` },
-            { role: 'user', content: promptInput }
-        ]
-    }, {
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://github.com/ibnunurbarokah148-wq/bot-shiroko',
-            'X-Title': 'Shiroko Bot'
-        },
-        timeout: 60000
-    });
+    const systemMessage = { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` };
 
-    const choices = response.data.choices;
-    if (choices && choices.length > 0 && choices[0].message) {
-        const rawContent = choices[0].message.content || '';
-        return cleanThinkingLogs(rawContent);
+    memoriOpenRouter[senderId].messages.push({ role: 'user', content: promptInput });
+    memoriOpenRouter[senderId].lastActive = Date.now();
+
+    if (memoriOpenRouter[senderId].messages.length > 20) {
+        memoriOpenRouter[senderId].messages.splice(0, 2);
     }
-    throw new Error('Respons OpenRouter tidak valid');
+
+    const payloadMessages = [systemMessage, ...memoriOpenRouter[senderId].messages];
+
+    try {
+        const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+            model: modelName,
+            include_reasoning: false,
+            max_tokens: 4096,
+            messages: payloadMessages
+        }, {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://github.com/ibnunurbarokah148-wq/bot-shiroko',
+                'X-Title': 'Shiroko Bot'
+            },
+            timeout: 60000
+        });
+
+        const choices = response.data.choices;
+        if (choices && choices.length > 0 && choices[0].message) {
+            const rawContent = choices[0].message.content || '';
+            const cleanedAns = cleanThinkingLogs(rawContent);
+            memoriOpenRouter[senderId].messages.push({ role: 'assistant', content: cleanedAns });
+            return cleanedAns;
+        }
+        memoriOpenRouter[senderId].messages.pop();
+        throw new Error('Respons OpenRouter tidak valid');
+    } catch (err) {
+        if (memoriOpenRouter[senderId] && memoriOpenRouter[senderId].messages.length > 0) {
+            memoriOpenRouter[senderId].messages.pop();
+        }
+        throw err;
+    }
 }
 
 async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/meta/llama-3-8b-instruct') {
     const { accountId, token } = getCloudflarePair();
     
+    if (!memoriCloudflare[senderId]) {
+        memoriCloudflare[senderId] = { messages: [], lastActive: Date.now() };
+    }
+
     let instruksiKhusus = isOwner
         ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang". Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...".]`
         : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...".]`;
 
-    const cleanModel = modelName.startsWith('@cf/') ? modelName : `@cf/${modelName}`;
-    const response = await axios.post(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`, {
-        messages: [
-            { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` },
-            { role: 'user', content: promptInput }
-        ],
-        max_tokens: 4096
-    }, {
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
-        timeout: 60000
-    });
+    const systemMessage = { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` };
 
-    if (response.data.success && response.data.result) {
-        const rawRes = (response.data.result.response || response.data.result.description || JSON.stringify(response.data.result));
-        return cleanThinkingLogs(rawRes);
+    memoriCloudflare[senderId].messages.push({ role: 'user', content: promptInput });
+    memoriCloudflare[senderId].lastActive = Date.now();
+
+    if (memoriCloudflare[senderId].messages.length > 20) {
+        memoriCloudflare[senderId].messages.splice(0, 2);
     }
-    throw new Error('Respons Cloudflare API gagal');
+
+    const payloadMessages = [systemMessage, ...memoriCloudflare[senderId].messages];
+
+    const cleanModel = modelName.startsWith('@cf/') ? modelName : `@cf/${modelName}`;
+    try {
+        const response = await axios.post(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`, {
+            messages: payloadMessages,
+            max_tokens: 4096
+        }, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 60000
+        });
+
+        if (response.data.success && response.data.result) {
+            const rawRes = (response.data.result.response || response.data.result.description || JSON.stringify(response.data.result));
+            const cleanedAns = cleanThinkingLogs(rawRes);
+            memoriCloudflare[senderId].messages.push({ role: 'assistant', content: cleanedAns });
+            return cleanedAns;
+        }
+        memoriCloudflare[senderId].messages.pop();
+        throw new Error('Respons Cloudflare API gagal');
+    } catch (err) {
+        if (memoriCloudflare[senderId] && memoriCloudflare[senderId].messages.length > 0) {
+            memoriCloudflare[senderId].messages.pop();
+        }
+        throw err;
+    }
 }
 
 module.exports = {
@@ -356,6 +408,8 @@ module.exports = {
     fetchCloudflareModels,
     memoriOllama,
     memoriArisu,
+    memoriOpenRouter,
+    memoriCloudflare,
     GEMINI_API_KEYS,
     HF_API_KEYS,
     OPENROUTER_API_KEYS

@@ -6,7 +6,7 @@
 const axios = require('axios');
 const state = require('../config/state');
 const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
-const { getGeminiComponents, tanyaOllama, tanyaArisu, tanyaOpenRouter, tanyaCloudflare, fetchOpenRouterModels, fetchCloudflareModels, memoriOllama, memoriArisu } = require('../services/ai.service');
+const { getGeminiComponents, tanyaOllama, tanyaArisu, tanyaOpenRouter, tanyaCloudflare, fetchOpenRouterModels, fetchCloudflareModels, memoriOllama, memoriArisu, memoriOpenRouter, memoriCloudflare } = require('../services/ai.service');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, isGroup, textClean, textLower,
@@ -376,6 +376,14 @@ async function handle(ctx) {
         }
         if (memoriArisu[senderId]) {
             delete memoriArisu[senderId];
+            berhasilLupa = true;
+        }
+        if (memoriOpenRouter[senderId]) {
+            delete memoriOpenRouter[senderId];
+            berhasilLupa = true;
+        }
+        if (memoriCloudflare[senderId]) {
+            delete memoriCloudflare[senderId];
             berhasilLupa = true;
         }
 
