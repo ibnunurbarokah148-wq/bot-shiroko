@@ -100,7 +100,7 @@ async function tanyaOllama(senderId, pesanUser, isOwner, gambarBase64 = null) {
             stream: false
         });
 
-        const balasanAI = response.data.message.content;
+        const balasanAI = cleanThinkingLogs(response.data.message.content || '');
         memoriOllama[senderId].messages.push({ role: 'assistant', content: balasanAI });
         memoriOllama[senderId].lastActive = Date.now();
 
@@ -120,14 +120,12 @@ async function tanyaArisu(senderId, pesanUser, isOwner, modelEndpoint) {
         memoriArisu[senderId].messages.push({ role: 'user', content: pesanUser });
         memoriArisu[senderId].lastActive = Date.now();
 
-        // Batasi memori maksimal 10 pasang (20 pesan)
         if (memoriArisu[senderId].messages.length > 20) memoriArisu[senderId].messages.splice(0, 2);
 
         let instruksiKhusus = isOwner
-            ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, penurut, dan lembut. Tapi tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`
-            : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. Jangan tunjukkan ketertarikan romantis sama sekali. Tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`;
+            ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, penurut, dan lembut. Tapi tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). DILARANG KERAS mengeluarkan tag <think>...</think>.]`
+            : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. DILARANG KERAS mengeluarkan tag <think>...</think>.]`;
 
-        // Gabungkan riwayat ke dalam satu string message
         let combinedMessage = '';
         if (memoriArisu[senderId].messages.length > 1) {
             combinedMessage += '[Histori Obrolan Sebelumnya]\n';
@@ -148,11 +146,11 @@ async function tanyaArisu(senderId, pesanUser, isOwner, modelEndpoint) {
                 "Authorization": `Bearer ${apiKey}`,
                 "Content-Type": "application/json"
             },
-            timeout: 300000 // 5 menit
+            timeout: 300000
         });
 
         if (response.data.success && response.data.data && response.data.data.message) {
-            const balasanAI = response.data.data.message.trim();
+            const balasanAI = cleanThinkingLogs(response.data.data.message);
             memoriArisu[senderId].messages.push({ role: 'assistant', content: balasanAI });
             memoriArisu[senderId].lastActive = Date.now();
             return balasanAI;
@@ -256,6 +254,15 @@ async function fetchCloudflareModels() {
     });
 }
 
+function cleanThinkingLogs(text) {
+    if (!text || typeof text !== 'string') return text;
+    let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+    cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
+    cleaned = cleaned.replace(/^think\s*[\s\S]*?\n\n/i, '');
+    return cleaned.trim();
+}
+
 async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deepseek/deepseek-r1:free') {
     if (OPENROUTER_API_KEYS.length === 0) {
         throw new Error('OPENROUTER_API_KEY tidak ditemukan pada .env');
@@ -263,11 +270,12 @@ async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deep
     const apiKey = OPENROUTER_API_KEYS[Math.floor(Math.random() * OPENROUTER_API_KEYS.length)];
     
     let instruksiKhusus = isOwner
-        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, dan lembut, khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn..."]`
-        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Jawablah dengan dingin, cuek, dan profesional khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn..."]`;
+        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, dan lembut, khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...". DILARANG KERAS mengeluarkan tag <think>...</think> atau log penalaran, langsung berikan jawaban akhir.]`
+        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Jawablah dengan dingin, cuek, dan profesional khas Sunaookami Shiroko dari Blue Archive. Sering awali kalimat dengan "Nn...". DILARANG KERAS mengeluarkan tag <think>...</think> atau log penalaran, langsung berikan jawaban akhir.]`;
 
     const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
         model: modelName,
+        include_reasoning: false,
         messages: [
             { role: 'system', content: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}` },
             { role: 'user', content: promptInput }
@@ -284,7 +292,8 @@ async function tanyaOpenRouter(senderId, promptInput, isOwner, modelName = 'deep
 
     const choices = response.data.choices;
     if (choices && choices.length > 0 && choices[0].message) {
-        return choices[0].message.content.trim();
+        const rawContent = choices[0].message.content || '';
+        return cleanThinkingLogs(rawContent);
     }
     throw new Error('Respons OpenRouter tidak valid');
 }
@@ -293,8 +302,8 @@ async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/
     const { accountId, token } = getCloudflarePair();
     
     let instruksiKhusus = isOwner
-        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang". Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn..."]`
-        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn..."]`;
+        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan "Sayang". Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...". DILARANG KERAS mengeluarkan tag <think> atau log penalaran.]`
+        : `[INSTRUKSI RAHASIA: User ini adalah Sensei. Berperan sebagai Shiroko (Blue Archive). Awali dengan "Nn...". DILARANG KERAS mengeluarkan tag <think> atau log penalaran.]`;
 
     const cleanModel = modelName.startsWith('@cf/') ? modelName : `@cf/${modelName}`;
     const response = await axios.post(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`, {
@@ -311,7 +320,8 @@ async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/
     });
 
     if (response.data.success && response.data.result) {
-        return (response.data.result.response || response.data.result.description || JSON.stringify(response.data.result)).trim();
+        const rawRes = (response.data.result.response || response.data.result.description || JSON.stringify(response.data.result));
+        return cleanThinkingLogs(rawRes);
     }
     throw new Error('Respons Cloudflare API gagal');
 }
