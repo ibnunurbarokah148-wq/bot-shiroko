@@ -509,6 +509,8 @@ async function generateCloudflareImage(promptInput, modelName = '@cf/stabilityai
     const { accountId, token } = getCloudflarePair();
     const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`;
 
+    let rawBuffer = null;
+
     try {
         const response = await axios.post(url, {
             prompt: promptInput
@@ -522,9 +524,8 @@ async function generateCloudflareImage(promptInput, modelName = '@cf/stabilityai
         });
 
         if (response.data && response.data.length > 0) {
-            return Buffer.from(response.data);
+            rawBuffer = Buffer.from(response.data);
         }
-        throw new Error('Cloudflare mengembalikan data gambar kosong');
     } catch (err) {
         // Fallback pair ke-2 jika tersedia
         try {
@@ -541,15 +542,49 @@ async function generateCloudflareImage(promptInput, modelName = '@cf/stabilityai
                 timeout: 60000
             });
             if (response2.data && response2.data.length > 0) {
-                return Buffer.from(response2.data);
+                rawBuffer = Buffer.from(response2.data);
             }
         } catch (err2) {
             const errMsg = err2.response?.data ? err2.response.data.toString() : err2.message;
             throw new Error(`Cloudflare Image Error (${cleanModel}): ${errMsg}`);
         }
-        const errMsg = err.response?.data ? err.response.data.toString() : err.message;
-        throw new Error(`Cloudflare Image Error (${cleanModel}): ${errMsg}`);
     }
+
+    if (!rawBuffer || rawBuffer.length === 0) {
+        throw new Error('Cloudflare mengembalikan data gambar kosong');
+    }
+
+    // Cek jika Cloudflare mengembalikan respons JSON
+    const firstStr = rawBuffer.toString('utf8', 0, 100).trim();
+    if (firstStr.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(rawBuffer.toString('utf8'));
+            if (parsed.result?.image) {
+                return { buffer: Buffer.from(parsed.result.image, 'base64'), mime: 'image/png' };
+            }
+            if (parsed.result?.response) {
+                return { buffer: Buffer.from(parsed.result.response, 'base64'), mime: 'image/png' };
+            }
+            if (parsed.errors && parsed.errors.length > 0) {
+                throw new Error(parsed.errors[0].message);
+            }
+        } catch (e) {
+            throw new Error(`Cloudflare API Error: ${e.message}`);
+        }
+    }
+
+    // Deteksi MIME type akurat dari Magic Bytes buffer
+    let mime = 'image/png';
+    const hex = rawBuffer.subarray(0, 4).toString('hex').toUpperCase();
+    if (hex.startsWith('FFD8')) {
+        mime = 'image/jpeg';
+    } else if (hex.startsWith('8950')) {
+        mime = 'image/png';
+    } else if (hex.startsWith('5249')) {
+        mime = 'image/webp';
+    }
+
+    return { buffer: rawBuffer, mime };
 }
 
 module.exports = {

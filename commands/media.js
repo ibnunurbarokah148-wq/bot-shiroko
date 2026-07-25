@@ -17,36 +17,30 @@ async function handle(ctx) {
             isQuoted, quotedMsg, quotedType, reply, downloadMediaBaileys } = ctx;
 
     // ==========================================
-    // HANDLER !GAMBAR (INTERAKTIF)
+    // HANDLER !GAMBAR (INTERAKTIF STEP 1)
     // ==========================================
     if (textLower.startsWith('!gambar')) {
-        // Extract prompt after command
         const prompt = textClean.split(' ').slice(1).join(' ').trim();
         if (!prompt) {
-            await reply('Nn... Tolong masukkan prompt setelah perintah *!gambar*. Contoh:\n!gambar seorang elf di hutan');
+            await reply('Nn... Tolong masukkan prompt setelah perintah *!gambar*. Contoh:\n!gambar seorang gadis anime di pantai');
             return true;
         }
-        // No limit deducted yet; will deduct after engine selection
-        // Store session for engine selection
-        state.sesiArisu[senderId] = { promptMentah: prompt, from, msg };
-        await reply('Nn... Pilih mesin render gambar dengan membalas angka:\n' +
-            '1️⃣ *ComfyUI* (biaya 4 limit) — _Support konten NSFW_ 🔞\n' +
-            '2️⃣ *Arisu SDXL* (biaya 3 limit)\n' +
-            '3️⃣ *Agnes 2.0* (biaya 2 limit)\n' +
-            '4️⃣ *Agnes 2.1* (biaya 2 limit)\n' +
-            '5️⃣ *Cloudflare SDXL* (biaya 1 limit — Ultra Cepat) ⚡\n' +
-            '6️⃣ *Cloudflare FLUX.1 Schnell* (biaya 1 limit — HD Quality) 🚀\n' +
-            '7️⃣ *Cloudflare DreamShaper 8* (biaya 1 limit — Anime/Art) 🎨\n' +
+        
+        state.sesiArisu[senderId] = { step: 1, promptMentah: prompt, from, msg };
+        await reply('Nn... Pilih Server/Provider Render Gambar dengan membalas angka:\n' +
+            '1️⃣ *ComfyUI* (Vast.ai Cloud GPU — Support NSFW 🔞, 4 limit)\n' +
+            '2️⃣ *ArisuSoft Satelit AI* 🛰️\n' +
+            '3️⃣ *Cloudflare Workers AI* (Super Cepat) ⚡\n' +
             '\nKetik *batal* untuk membatalkan.');
         return true;
     }
 
     // ==========================================
-    // HANDLER SESI ARISU / CLOUDFLARE (INTERAKTIF)
+    // HANDLER SESI RENDER GAMBAR (INTERAKTIF STEP 2)
     // ==========================================
     if (state.sesiArisu[senderId]) {
         const sesi = state.sesiArisu[senderId];
-        const pilihan = textLower;
+        const pilihan = textLower.trim();
         
         if (pilihan === 'batal' || pilihan === 'cancel') {
             delete state.sesiArisu[senderId];
@@ -54,134 +48,169 @@ async function handle(ctx) {
             return true;
         }
 
-        let cost = 0;
-        let namaModel = '';
-        let useComfy = false;
-        let useCloudflare = false;
-        let cfModel = '';
-        let endpointModel = '';
-
-        if (pilihan === '1') {
-            const { dbPremium } = require('../config/db');
-            const dbEntry = dbPremium[senderId];
-            const isPremium = dbEntry && (typeof dbEntry === 'boolean' || dbEntry > Date.now());
-            if (!isPremium && !isOwner) {
-                await reply('❌ Nn... Mesin ComfyUI ini mengkonsumsi daya render yang sangat besar. Akses ke mesin ini hanya diizinkan untuk pelanggan *VIP Premium*.\n\nKetik *!premium* untuk berlangganan.');
-                return true;
-            }
-            cost = 4;
-            namaModel = 'ComfyUI (Vast.ai RTX)';
-            useComfy = true;
-        } else if (pilihan === '2') {
-            cost = 3;
-            endpointModel = 'sdxl-turbo';
-            namaModel = 'SDXL Turbo';
-        } else if (pilihan === '3') {
-            cost = 2;
-            endpointModel = 'agnes-2.0';
-            namaModel = 'Agnes 2.0';
-        } else if (pilihan === '4') {
-            cost = 2;
-            endpointModel = 'agnes-2.1';
-            namaModel = 'Agnes 2.1';
-        } else if (pilihan === '5') {
-            cost = 1;
-            useCloudflare = true;
-            cfModel = '@cf/stabilityai/stable-diffusion-xl-base-1.0';
-            namaModel = 'Cloudflare SDXL';
-        } else if (pilihan === '6') {
-            cost = 1;
-            useCloudflare = true;
-            cfModel = '@cf/black-forest-labs/flux-1-schnell';
-            namaModel = 'Cloudflare FLUX.1';
-        } else if (pilihan === '7') {
-            cost = 1;
-            useCloudflare = true;
-            cfModel = '@cf/lykon/dreamshaper-8-lcm';
-            namaModel = 'Cloudflare DreamShaper';
-        } else {
-            await reply('Nn... Pilihan tidak valid. Balas dengan angka 1, 2, 3, 4, 5, 6, atau 7. Atau ketik *batal*.');
-            return true;
-        }
-
-        const { dbLimit, simpanDB } = require('../config/db');
-        if (dbLimit[senderId] !== undefined && !isOwner) {
-            if (dbLimit[senderId] < cost) {
-                await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih model lain atau ketik *batal*.`);
-                return true;
-            }
-            dbLimit[senderId] -= cost;
-            simpanDB();
-        }
-
-        const promptMentah = sesi.promptMentah;
-        const targetFrom = sesi.from;
-        const targetMsg = sesi.msg;
-        
-        delete state.sesiArisu[senderId];
-        if (useComfy) {
-            antrianGambar.push({ from: targetFrom, msg: targetMsg, promptMentah, senderId, reply });
-            await reply('Nn... Mengirimkan permintaan ke ComfyUI (Vast.ai). Mohon tunggu...');
-            prosesAntrianGambar();
-            return true;
-        } else if (useCloudflare) {
-            try {
-                await reply(`Nn... Mengalihkan render ke Cloudflare AI (${namaModel}). Mohon tunggu...`);
-                const { generateCloudflareImage } = require('../services/ai.service');
-                const imgBuffer = await generateCloudflareImage(promptMentah, cfModel);
-                
-                await sock.sendMessage(targetFrom, {
-                    image: imgBuffer,
-                    caption: `🎨 *Ide Sensei:* ${promptMentah}\n☁️ *Mesin:* Cloudflare Workers AI (${namaModel})\n\nNn... Render dari Cloudflare AI berhasil! ⚡`
-                }, { quoted: targetMsg });
-            } catch (cfErr) {
-                const { kembalikanLimit } = require('../config/db');
-                if (!isOwner) kembalikanLimit(senderId);
-                console.error("🚨 ERROR CLOUDFLARE IMAGE:", cfErr.message);
-                await reply(`⚠️ Nn... Gagal membuat gambar di Cloudflare AI.\n*Laporan Sistem:* ${cfErr.message}\nToken limit dikembalikan.`);
-            }
-            return true;
-        } else {
-            try {
-                await reply(`Nn... Mengalihkan ke server ArisuSoft (${namaModel}). Mohon tunggu...`);
-                const arisuKey = process.env.ARISU_API_KEY;
-                const response = await axios.post(`https://api.arisusoft.com/api/v2/image/${endpointModel}`, {
-                    prompt: promptMentah
-                }, {
-                    headers: {
-                        "Authorization": `Bearer ${arisuKey}`,
-                        "Content-Type": "application/json"
-                    }
-                });
-
-                const data = response.data;
-                let imageUrl = data.url || (data.data && data.data.url) || data.image || data.imageUrl || (data.data && typeof data.data === 'string' && data.data.startsWith('http') ? data.data : null); 
-                let base64 = data.base64 || (data.data && data.base64) || (data.data && typeof data.data === 'string' && !data.data.startsWith('http') ? data.data : null);
-
-                if (imageUrl) {
-                    await sock.sendMessage(targetFrom, {
-                        image: { url: imageUrl },
-                        caption: `🎨 *Ide Sensei:* ${promptMentah}\n☁️ *Mesin:* ArisuSoft (${namaModel})\n\nNn... Render dari satelit berhasil diselesaikan! 🐺✨`
-                    }, { quoted: targetMsg });
-                } else if (base64) {
-                    await sock.sendMessage(targetFrom, {
-                        image: Buffer.from(base64, 'base64'),
-                        caption: `🎨 *Ide Sensei:* ${promptMentah}\n☁️ *Mesin:* ArisuSoft (${namaModel})\n\nNn... Render dari satelit berhasil diselesaikan! 🐺✨`
-                    }, { quoted: targetMsg });
-                } else {
-                    throw new Error("Format JSON Arisu tidak diketahui: " + JSON.stringify(data).substring(0, 100));
+        // TAHAP 1: PILIH PROVIDER/SERVER
+        if (sesi.step === 1 || !sesi.step) {
+            if (pilihan === '1') {
+                const { dbPremium } = require('../config/db');
+                const dbEntry = dbPremium[senderId];
+                const isPremium = dbEntry && (typeof dbEntry === 'boolean' || dbEntry > Date.now());
+                if (!isPremium && !isOwner) {
+                    await reply('❌ Nn... Mesin ComfyUI ini mengkonsumsi daya render yang sangat besar. Akses ke mesin ini hanya diizinkan untuk pelanggan *VIP Premium*.\n\nKetik *!premium* untuk berlangganan.');
+                    return true;
                 }
-            } catch (error) {
-                if (!isOwner) {
-                    dbLimit[senderId] += cost;
+
+                const cost = 4;
+                const { dbLimit, simpanDB } = require('../config/db');
+                if (dbLimit[senderId] !== undefined && !isOwner) {
+                    if (dbLimit[senderId] < cost) {
+                        await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih server lain atau ketik *batal*.`);
+                        return true;
+                    }
+                    dbLimit[senderId] -= cost;
                     simpanDB();
                 }
-                let errMsg = error.message;
-                if (error.response && error.response.data) errMsg = JSON.stringify(error.response.data);
-                console.error("🚨 ERROR ARISU API:", errMsg);
-                await reply(`Nn... Gagal membuat gambar via ArisuSoft.\n*Laporan:* ${errMsg}`);
+
+                delete state.sesiArisu[senderId];
+                antrianGambar.push({ from: sesi.from, msg: sesi.msg, promptMentah: sesi.promptMentah, senderId, reply });
+                await reply('Nn... Mengirimkan permintaan ke ComfyUI (Vast.ai). Mohon tunggu...');
+                prosesAntrianGambar();
+                return true;
+
+            } else if (pilihan === '2') {
+                // Sub-menu ArisuSoft (3 Model Khas)
+                sesi.step = 2;
+                sesi.provider = 'arisu';
+                await reply('Nn... Pilih Model ArisuSoft Satelit AI:\n' +
+                    '1️⃣ *SDXL Turbo* (biaya 3 limit)\n' +
+                    '2️⃣ *Agnes 2.0* (biaya 2 limit)\n' +
+                    '3️⃣ *Agnes 2.1* (biaya 2 limit)\n' +
+                    '\nKetik *batal* untuk membatalkan.');
+                return true;
+
+            } else if (pilihan === '3') {
+                // Sub-menu Cloudflare Workers AI
+                sesi.step = 2;
+                sesi.provider = 'cloudflare';
+                await reply('Nn... Pilih Model Cloudflare Workers AI (biaya 1 limit / Cepat ⚡):\n' +
+                    '1️⃣ *SDXL Base 1.0* (Stable Diffusion XL Base)\n' +
+                    '2️⃣ *SDXL Lightning* (Ultra Fast Render)\n' +
+                    '3️⃣ *DreamShaper 8 LCM* (Anime / Art Style)\n' +
+                    '4️⃣ *FLUX.1 Schnell* (HD Quality FLUX Model)\n' +
+                    '\nKetik *batal* untuk membatalkan.');
+                return true;
+
+            } else {
+                await reply('Nn... Pilihan tidak valid. Balas dengan angka 1, 2, atau 3. Atau ketik *batal*.');
+                return true;
             }
-            return true;
+        }
+
+        // TAHAP 2: PILIH MODEL SPESIFIK BERDASARKAN PROVIDER
+        if (sesi.step === 2) {
+            let cost = 0;
+            let namaModel = '';
+            let isCloudflare = false;
+            let cfModel = '';
+            let endpointModel = '';
+
+            if (sesi.provider === 'arisu') {
+                if (pilihan === '1') {
+                    cost = 3; endpointModel = 'sdxl-turbo'; namaModel = 'SDXL Turbo';
+                } else if (pilihan === '2') {
+                    cost = 2; endpointModel = 'agnes-2.0'; namaModel = 'Agnes 2.0';
+                } else if (pilihan === '3') {
+                    cost = 2; endpointModel = 'agnes-2.1'; namaModel = 'Agnes 2.1';
+                } else {
+                    await reply('Nn... Pilihan model ArisuSoft tidak valid. Balas dengan 1, 2, atau 3.');
+                    return true;
+                }
+            } else if (sesi.provider === 'cloudflare') {
+                isCloudflare = true;
+                if (pilihan === '1') {
+                    cost = 1; cfModel = '@cf/stabilityai/stable-diffusion-xl-base-1.0'; namaModel = 'Cloudflare SDXL Base 1.0';
+                } else if (pilihan === '2') {
+                    cost = 1; cfModel = '@cf/bytedance/stable-diffusion-xl-lightning'; namaModel = 'Cloudflare SDXL Lightning';
+                } else if (pilihan === '3') {
+                    cost = 1; cfModel = '@cf/lykon/dreamshaper-8-lcm'; namaModel = 'Cloudflare DreamShaper 8';
+                } else if (pilihan === '4') {
+                    cost = 1; cfModel = '@cf/black-forest-labs/flux-1-schnell'; namaModel = 'Cloudflare FLUX.1 Schnell';
+                } else {
+                    await reply('Nn... Pilihan model Cloudflare tidak valid. Balas dengan 1, 2, 3, atau 4.');
+                    return true;
+                }
+            }
+
+            const { dbLimit, simpanDB } = require('../config/db');
+            if (dbLimit[senderId] !== undefined && !isOwner) {
+                if (dbLimit[senderId] < cost) {
+                    await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih model lain atau ketik *batal*.`);
+                    return true;
+                }
+                dbLimit[senderId] -= cost;
+                simpanDB();
+            }
+
+            const promptMentah = sesi.promptMentah;
+            const targetFrom = sesi.from;
+            const targetMsg = sesi.msg;
+            delete state.sesiArisu[senderId];
+
+            if (isCloudflare) {
+                try {
+                    await reply(`Nn... Mengalihkan render ke Cloudflare AI (${namaModel}). Mohon tunggu...`);
+                    const { generateCloudflareImage } = require('../services/ai.service');
+                    const { buffer, mime } = await generateCloudflareImage(promptMentah, cfModel);
+                    
+                    await sock.sendMessage(targetFrom, {
+                        image: buffer,
+                        mimetype: mime,
+                        caption: `🎨 *Ide Sensei:* ${promptMentah}\n☁️ *Mesin:* Cloudflare Workers AI (${namaModel})\n\nNn... Render dari Cloudflare AI berhasil diselesaikan! ⚡`
+                    }, { quoted: targetMsg });
+                } catch (cfErr) {
+                    const { kembalikanLimit } = require('../config/db');
+                    if (!isOwner) kembalikanLimit(senderId);
+                    console.error("🚨 ERROR CLOUDFLARE IMAGE:", cfErr.message);
+                    await reply(`⚠️ Nn... Gagal membuat gambar di Cloudflare AI.\n*Laporan Sistem:* ${cfErr.message}\nToken limit dikembalikan.`);
+                }
+                return true;
+            } else {
+                try {
+                    await reply(`Nn... Mengalihkan ke server ArisuSoft (${namaModel}). Mohon tunggu...`);
+                    const arisuKey = process.env.ARISU_API_KEY;
+                    const response = await axios.post(`https://api.arisusoft.com/api/v2/image/${endpointModel}`, {
+                        prompt: promptMentah
+                    }, {
+                        headers: {
+                            "Authorization": `Bearer ${arisuKey}`,
+                            "Content-Type": "application/json"
+                        }
+                    });
+
+                    const data = response.data;
+                    let imageUrl = data.url || (data.data && data.data.url) || data.image || data.imageUrl; 
+                    let base64 = data.base64 || (data.data && data.base64);
+
+                    if (imageUrl) {
+                        await sock.sendMessage(targetFrom, {
+                            image: { url: imageUrl },
+                            caption: `🎨 *Ide Sensei:* ${promptMentah}\n☁️ *Mesin:* ArisuSoft (${namaModel})\n\nNn... Render dari satelit berhasil diselesaikan! 🐺✨`
+                        }, { quoted: targetMsg });
+                    } else if (base64) {
+                        await sock.sendMessage(targetFrom, {
+                            image: Buffer.from(base64, 'base64'),
+                            caption: `🎨 *Ide Sensei:* ${promptMentah}\n☁️ *Mesin:* ArisuSoft (${namaModel})\n\nNn... Render dari satelit berhasil diselesaikan! 🐺✨`
+                        }, { quoted: targetMsg });
+                    } else {
+                        throw new Error("Respons ArisuSoft tidak berisi URL/Base64 gambar yang valid");
+                    }
+                } catch (arisuErr) {
+                    const { kembalikanLimit } = require('../config/db');
+                    if (!isOwner) kembalikanLimit(senderId);
+                    console.error("🚨 ERROR ARISUSOFT IMAGE:", arisuErr.message);
+                    await reply(`⚠️ Nn... Gagal membuat gambar di ArisuSoft.\n*Laporan Sistem:* ${arisuErr.message}\nToken limit dikembalikan.`);
+                }
+                return true;
+            }
         }
     }
 
