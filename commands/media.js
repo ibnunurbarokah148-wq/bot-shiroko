@@ -34,12 +34,15 @@ async function handle(ctx) {
             '2️⃣ *Arisu SDXL* (biaya 3 limit)\n' +
             '3️⃣ *Agnes 2.0* (biaya 2 limit)\n' +
             '4️⃣ *Agnes 2.1* (biaya 2 limit)\n' +
+            '5️⃣ *Cloudflare SDXL* (biaya 1 limit — Ultra Cepat) ⚡\n' +
+            '6️⃣ *Cloudflare FLUX.1 Schnell* (biaya 1 limit — HD Quality) 🚀\n' +
+            '7️⃣ *Cloudflare DreamShaper 8* (biaya 1 limit — Anime/Art) 🎨\n' +
             '\nKetik *batal* untuk membatalkan.');
         return true;
     }
 
     // ==========================================
-    // HANDLER SESI ARISU (INTERAKTIF)
+    // HANDLER SESI ARISU / CLOUDFLARE (INTERAKTIF)
     // ==========================================
     if (state.sesiArisu[senderId]) {
         const sesi = state.sesiArisu[senderId];
@@ -54,6 +57,8 @@ async function handle(ctx) {
         let cost = 0;
         let namaModel = '';
         let useComfy = false;
+        let useCloudflare = false;
+        let cfModel = '';
         let endpointModel = '';
 
         if (pilihan === '1') {
@@ -79,8 +84,23 @@ async function handle(ctx) {
             cost = 2;
             endpointModel = 'agnes-2.1';
             namaModel = 'Agnes 2.1';
+        } else if (pilihan === '5') {
+            cost = 1;
+            useCloudflare = true;
+            cfModel = '@cf/stabilityai/stable-diffusion-xl-base-1.0';
+            namaModel = 'Cloudflare SDXL';
+        } else if (pilihan === '6') {
+            cost = 1;
+            useCloudflare = true;
+            cfModel = '@cf/black-forest-labs/flux-1-schnell';
+            namaModel = 'Cloudflare FLUX.1';
+        } else if (pilihan === '7') {
+            cost = 1;
+            useCloudflare = true;
+            cfModel = '@cf/lykon/dreamshaper-8-lcm';
+            namaModel = 'Cloudflare DreamShaper';
         } else {
-            await reply('Nn... Pilihan tidak valid. Balas dengan angka 1, 2, 3, atau 4. Atau ketik *batal*.');
+            await reply('Nn... Pilihan tidak valid. Balas dengan angka 1, 2, 3, 4, 5, 6, atau 7. Atau ketik *batal*.');
             return true;
         }
 
@@ -103,6 +123,23 @@ async function handle(ctx) {
             antrianGambar.push({ from: targetFrom, msg: targetMsg, promptMentah, senderId, reply });
             await reply('Nn... Mengirimkan permintaan ke ComfyUI (Vast.ai). Mohon tunggu...');
             prosesAntrianGambar();
+            return true;
+        } else if (useCloudflare) {
+            try {
+                await reply(`Nn... Mengalihkan render ke Cloudflare AI (${namaModel}). Mohon tunggu...`);
+                const { generateCloudflareImage } = require('../services/ai.service');
+                const imgBuffer = await generateCloudflareImage(promptMentah, cfModel);
+                
+                await sock.sendMessage(targetFrom, {
+                    image: imgBuffer,
+                    caption: `🎨 *Ide Sensei:* ${promptMentah}\n☁️ *Mesin:* Cloudflare Workers AI (${namaModel})\n\nNn... Render dari Cloudflare AI berhasil! ⚡`
+                }, { quoted: targetMsg });
+            } catch (cfErr) {
+                const { kembalikanLimit } = require('../config/db');
+                if (!isOwner) kembalikanLimit(senderId);
+                console.error("🚨 ERROR CLOUDFLARE IMAGE:", cfErr.message);
+                await reply(`⚠️ Nn... Gagal membuat gambar di Cloudflare AI.\n*Laporan Sistem:* ${cfErr.message}\nToken limit dikembalikan.`);
+            }
             return true;
         } else {
             try {

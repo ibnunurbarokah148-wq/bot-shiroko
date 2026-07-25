@@ -504,6 +504,54 @@ async function tanyaCloudflare(senderId, promptInput, isOwner, modelName = '@cf/
     throw new Error(`Respons Cloudflare AI (${cleanModel}) gagal atau kosong`);
 }
 
+async function generateCloudflareImage(promptInput, modelName = '@cf/stabilityai/stable-diffusion-xl-base-1.0') {
+    const cleanModel = modelName.startsWith('@cf/') ? modelName : `@cf/${modelName}`;
+    const { accountId, token } = getCloudflarePair();
+    const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`;
+
+    try {
+        const response = await axios.post(url, {
+            prompt: promptInput
+        }, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            responseType: 'arraybuffer',
+            timeout: 60000
+        });
+
+        if (response.data && response.data.length > 0) {
+            return Buffer.from(response.data);
+        }
+        throw new Error('Cloudflare mengembalikan data gambar kosong');
+    } catch (err) {
+        // Fallback pair ke-2 jika tersedia
+        try {
+            const pair2 = getCloudflarePair();
+            const url2 = `https://api.cloudflare.com/client/v4/accounts/${pair2.accountId}/ai/run/${cleanModel}`;
+            const response2 = await axios.post(url2, {
+                prompt: promptInput
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${pair2.token}`,
+                    'Content-Type': 'application/json'
+                },
+                responseType: 'arraybuffer',
+                timeout: 60000
+            });
+            if (response2.data && response2.data.length > 0) {
+                return Buffer.from(response2.data);
+            }
+        } catch (err2) {
+            const errMsg = err2.response?.data ? err2.response.data.toString() : err2.message;
+            throw new Error(`Cloudflare Image Error (${cleanModel}): ${errMsg}`);
+        }
+        const errMsg = err.response?.data ? err.response.data.toString() : err.message;
+        throw new Error(`Cloudflare Image Error (${cleanModel}): ${errMsg}`);
+    }
+}
+
 module.exports = {
     getGeminiComponents,
     getHfClient,
@@ -513,6 +561,7 @@ module.exports = {
     tanyaArisu,
     tanyaOpenRouter,
     tanyaCloudflare,
+    generateCloudflareImage,
     fetchOpenRouterModels,
     fetchCloudflareModels,
     memoriOllama,
