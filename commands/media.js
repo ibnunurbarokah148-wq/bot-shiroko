@@ -259,11 +259,23 @@ async function handle(ctx) {
             const { textToSpeechCloudflare } = require('../services/ai.service');
             const { buffer, mime } = await textToSpeechCloudflare(textTTS, chosenModel.id);
 
-            await sock.sendMessage(targetFrom, {
-                audio: buffer,
-                mimetype: mime,
-                ptt: true
-            }, { quoted: targetMsg });
+            // Kirim audio secara langsung (ptt: false agar tidak hang karena butuh ffmpeg)
+            try {
+                await sock.sendMessage(targetFrom, {
+                    audio: buffer,
+                    mimetype: mime || 'audio/mpeg',
+                    ptt: false
+                }, { quoted: targetMsg });
+            } catch (sendErr) {
+                console.warn("Mencoba pengiriman audio dokumen sebagai fallback:", sendErr.message);
+                const ext = (mime || '').includes('wav') ? 'wav' : 'mp3';
+                await sock.sendMessage(targetFrom, {
+                    document: buffer,
+                    mimetype: mime || 'audio/mpeg',
+                    fileName: `shiroko_tts_${Date.now()}.${ext}`,
+                    caption: `🎙️ *Hasil Suara:* ${chosenModel.name}`
+                }, { quoted: targetMsg });
+            }
         } catch (ttsErr) {
             if (!isOwner) kembalikanLimit(senderId, cost);
             console.error("🚨 ERROR CLOUDFLARE TTS:", ttsErr.message);

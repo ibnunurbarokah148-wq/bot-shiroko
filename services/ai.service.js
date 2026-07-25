@@ -744,10 +744,10 @@ async function fetchCloudflareTTSModels() {
     });
 
     const descMap = {
-        'melotts': 'Suara Jernih Natural & Ekspresif (High Quality WAV)',
-        'aura-1': 'Suara Bahasa Inggris Natural (Cepat & Ringan)',
-        'aura-2-en': 'Suara Bahasa Inggris Ekspresif HD',
-        'aura-2-es': 'Suara Bahasa Spanyol Natural'
+        'melotts': 'Suara Jernih Natural & Ekspresif (MyShell AI - High Quality WAV - Support Indo/English)',
+        'aura-1': 'Suara Bahasa Inggris Natural & Cepat (Deepgram Realtime Engine)',
+        'aura-2-en': 'Suara Bahasa Inggris Ekspresif HD dengan Intonasi Kontekstual',
+        'aura-2-es': 'Suara Bahasa Spanyol Natural & Ekspresif'
     };
 
     return ttsModels.map(m => {
