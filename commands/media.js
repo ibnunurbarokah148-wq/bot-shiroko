@@ -259,23 +259,27 @@ async function handle(ctx) {
             const { textToSpeechCloudflare } = require('../services/ai.service');
             const { buffer, mime } = await textToSpeechCloudflare(textTTS, chosenModel.id);
 
-            // Kirim audio secara langsung (ptt: false agar tidak hang karena butuh ffmpeg)
+            const ext = (mime || '').includes('wav') ? 'wav' : 'mp3';
+
+            // Kirim file audio via Document Media (Paling Stabil & 100% Langsung Terkirim Tanpa Hang)
+            await sock.sendMessage(targetFrom, {
+                document: buffer,
+                mimetype: mime || 'audio/mpeg',
+                fileName: `shiroko_tts_${chosenModel.name.toLowerCase()}_${Date.now()}.${ext}`,
+                caption: `🎙️ *Hasil Suara AI (${chosenModel.name}):*\n"${textTTS}"\n\nNn... Berhasil mengubah teks menjadi suara! 🔊`
+            }, { quoted: targetMsg });
+
+            // Kirim juga sebagai pemutar audio langsung jika memungkinkan
             try {
                 await sock.sendMessage(targetFrom, {
                     audio: buffer,
-                    mimetype: mime || 'audio/mpeg',
+                    mimetype: 'audio/mp4',
                     ptt: false
-                }, { quoted: targetMsg });
-            } catch (sendErr) {
-                console.warn("Mencoba pengiriman audio dokumen sebagai fallback:", sendErr.message);
-                const ext = (mime || '').includes('wav') ? 'wav' : 'mp3';
-                await sock.sendMessage(targetFrom, {
-                    document: buffer,
-                    mimetype: mime || 'audio/mpeg',
-                    fileName: `shiroko_tts_${Date.now()}.${ext}`,
-                    caption: `🎙️ *Hasil Suara:* ${chosenModel.name}`
-                }, { quoted: targetMsg });
+                });
+            } catch (e) {
+                // Abaikan jika pemutar audio audio/mp4 ditolak WhatsApp
             }
+
         } catch (ttsErr) {
             if (!isOwner) kembalikanLimit(senderId, cost);
             console.error("🚨 ERROR CLOUDFLARE TTS:", ttsErr.message);
