@@ -278,8 +278,8 @@ async function fetchCloudflareImageModels() {
             { id: '@cf/bytedance/stable-diffusion-xl-lightning', name: 'stable-diffusion-xl-lightning' },
             { id: '@cf/lykon/dreamshaper-8-lcm', name: 'dreamshaper-8-lcm' },
             { id: '@cf/black-forest-labs/flux-1-schnell', name: 'flux-1-schnell' },
-            { id: '@cf/black-forest-labs/flux-2-dev', name: 'flux-2-dev' },
-            { id: '@cf/leonardo/phoenix-1.0', name: 'phoenix-1.0' }
+            { id: '@cf/leonardo/phoenix-1.0', name: 'phoenix-1.0' },
+            { id: '@cf/leonardo/lucid-origin', name: 'lucid-origin' }
         ];
     }
 
@@ -288,6 +288,8 @@ async function fetchCloudflareImageModels() {
         const taskName = m.task ? (typeof m.task === 'object' ? (m.task.name || '') : m.task).toLowerCase() : '';
         const name = (m.name || '').toLowerCase();
         
+        // Filter out model edit/inpainting/img2img/flux-2 yang membutuhkan input gambar (multipart)
+        if (name.includes('inpainting') || name.includes('img2img') || name.includes('flux-2') || name.includes('edit')) return false;
         if (taskName.includes('image-to-text') || taskName.includes('classification') || taskName.includes('speech') || taskName.includes('audio')) return false;
         
         return taskName.includes('text-to-image') || taskName.includes('image-generation') || 
