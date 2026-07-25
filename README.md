@@ -2,55 +2,169 @@
   <img src="Blue Archive.jpeg" width="300" alt="Shiroko Smug">
 </p>
 
-<h1 align="center">🐺 Shiroko WhatsApp Bot (Baileys Engine)</h1>
+<h1 align="center">🐺 Shiroko Multi-Platform AI Bot (WhatsApp & Discord)</h1>
 
 <p align="center">
-  Bot WhatsApp asisten multifungsi yang mengadaptasi persona <b>Sunaookami Shiroko</b> dari <i>Blue Archive</i>. Dibangun menggunakan <i>library</i> <a href="https://github.com/WhiskeySockets/Baileys">@whiskeysockets/baileys</a> yang super ringan (tanpa browser Chromium) dan diotaki oleh kecerdasan buatan <b>Google Gemini 2.5 Flash Lite</b> dengan dukungan rotasi Multi-API Key.
+  <b>Bot Asisten & Roleplay AI Multifungsi</b> yang mengadaptasi persona <b>Sunaookami Shiroko</b> dari <i>Blue Archive</i>.<br>
+  Mendukung integrasi <b>WhatsApp (Baileys Engine)</b> & <b>Discord Bot (Discord.js v14)</b> dengan multi-provider AI Engine, Cloud GPU Image Rendering (ComfyUI/Vast.ai), serta sistem ekonomi & top-up QRIS.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square&logo=node.js" alt="Node.js">
+  <img src="https://img.shields.io/badge/WhatsApp-Baileys-blue?style=flat-square&logo=whatsapp" alt="Baileys">
+  <img src="https://img.shields.io/badge/Discord-Discord.js%20v14-5865F2?style=flat-square&logo=discord" alt="Discord.js">
+  <img src="https://img.shields.io/badge/AI%20Engine-Gemini%20%7C%20OpenRouter%20%7C%20Cloudflare%20%7C%20Ollama%20%7C%20Arisu-orange?style=flat-square" alt="AI Engine">
 </p>
 
 ---
 
-## ✨ Fitur Unggulan
+## ✨ Fitur-Fitur Utama
 
-Bot ini dilengkapi dengan persenjataan taktis lengkap untuk kebutuhan harian, akademik, hingga hiburan:
+### 🤖 1. Multi-Provider AI Engine (WhatsApp & Discord)
+Bot ini dilengkapi dengan 5 penyedia AI utama yang terintegrasi penuh:
+- **Google Gemini 2.5 Flash Lite**: Diotaki rotasi Multi-API Key untuk performa cepat dan bebas *rate limit*.
+- **OpenRouter AI (Cloud)**: Bebas memilih ratusan model AI terkemuka (*DeepSeek R1, Llama 3.3 70B, Qwen 2.5 Coder, Mixtral, dll*).
+- **Cloudflare Workers AI**: Dukungan *Multi-Account & Token Rotation* (`ACCOUNT_ID:TOKEN`) untuk 26+ model AI (*Llama 3, DeepSeek R1 Distill 32B, GPT-OSS 120B, Gemma 2, dll*).
+- **Ollama (Lokal)**: Jalankan LLM secara lokal (*Llama 3, DeepSeek R1, Qwen, Gemma*).
+- **ArisuSoft Satelit AI**: Pilihan model alternatif (*DeepSeek V3/V4, GLM, Qwen, GPT, Grok*).
+- **3-Tier Automatic Payload Fallback**: Penanganan otomatis jika model menolak `role: 'system'` atau menggunakan format pilihan berlainan.
+- **Auto Thinking Log Stripper**: Menyaring tag pemikiran (`<think>...</think>`) secara otomatis agar jawaban AI bersih dan langsung ke poin.
+- **Unified Memory Reset (`!lupa`)**: Mereset riwayat memori percakapan di seluruh 5 provider AI dengan 1 perintah.
 
-### 🤖 Kecerdasan Buatan (AI)
-* **Dynamic Roleplay**: Ngobrol layaknya dengan Shiroko asli. Punya instruksi rahasia (Bucin ke Owner, Cuek/Profesional ke orang lain).
-* **Shiroko Pintar**: Asisten AI mode serius untuk menjawab pertanyaan umum.
-* **Auto Enhancer Prompt AI**: Generate gambar/lukisan AI dengan prompt yang otomatis disempurnakan oleh Gemini (*Pollinations AI*).
-* **Telinga Shiroko (Audio-to-Text)**: Mampu mendengarkan dan mentranskrip Voice Note (VN) langsung di WhatsApp.
+### 💖 2. Interactive Waifu Room Discord (`!mybini`)
+- Pembuatan kamar rahasia privat per-user dengan waifu impian (*Shiroko, Yae Miko, Furina, Columbina, Sandrone, Miwa, Kafka, Hu Tao, Cantarella, Jane Doe*).
+- Interactive Select Menu di Discord untuk memilih penyedia & model AI spesifik.
+- Sistem auto-delete channel saat AFK / tidak ada aktivitas selama 3 menit.
 
-### 📚 Operasi Akademik & LMS
-* **Generator Karya Ilmiah**: Otomatis membuat Makalah, Artikel, dan Laporan (700-1600 kata) lengkap dengan struktur akademik.
-* **Sistem Ujian Interaktif AI**: Ujian simulasi studi kasus dengan *Socratic Method*. Guru bisa menyusun "Bank Soal", lalu AI akan mengeksekusinya secara interaktif ke Siswa.
-* **Pencari Jurnal**: Cari referensi paper ilmiah acak dari *Crossref*.
-* **Parafrase & Ringkas**: Fitur pengolah teks anti-plagiasi dan pembuat intisari (*bullet points*).
+### 🎨 3. Cloud GPU Image Rendering (ComfyUI & Vast.ai)
+- **Vast.ai Cloud GPU Integration**: Render gambar kualitas tinggi (*Illustrious Pony XL / SDXL*) langsung menggunakan server GPU di cloud.
+- **Auto Power Management**: Auto-start saat ada request render gambar dan **Auto-Stop (1 Minute Idle)** untuk menghemat biaya kredit GPU.
+- **Satelit ArisuSoft Fallback**: Pengalihan otomatis ke server ArisuSoft (*SDXL Turbo, Agnes 2.0, Agnes 2.1*) jika GPU utama sedang offline.
 
-### 🇮🇩 Manajemen Kepanitiaan (Agustusan)
-* Sistem transparansi tugas & timeline untuk seluruh divisi (Acara, Konsumsi, Humas, dll).
-* Pantau *progress* panitia (*Selesai/Belum*) langsung lewat grup WA.
+### 📚 4. Operasi Akademik & LMS
+- **Generator Karya Ilmiah**: Pembuat Makalah, Artikel, dan Laporan (700-1600 kata) terstruktur otomatis.
+- **Socratic Method Exam System**: Ujian interaktif studi kasus yang mengevaluasi pemahaman siswa.
+- **Crossref Journal Finder**: Mencari referensi dan paper ilmiah acak.
+- **Parafrase & Ringkas Teks**: Pengolah teks anti-plagiasi dan pembuat intisari *bullet points*.
 
-### 🛠️ Utilitas Media & Intel
-* **Ekstraktor TikTok**: Download Video (tanpa Watermark), Audio, atau spesifik Gambar *Slideshow*.
-* **Pencarian Visual**: Cari data gambar resolusi tinggi dari **Pixiv** (mendukung Multi-page/Next Image), **Danbooru** (Waifu), dan **Nekosia**.
-* **Konverter PDF ke JPG**: Baca dan pecah dokumen PDF menjadi gambar HD (*ConvertAPI*).
-* **Pembuat Stiker**: Ubah foto/gambar langsung menjadi stiker WA.
-* **Sistem Alarm Ibadah Emosional**: Alarm interaktif yang akan *spam* chat owner sampai bangun saat waktu ibadah (terutama Subuh).
+### 🏦 5. Sistem Ekonomi, Limit & Top-Up QRIS Dynamic
+- **Limit Token Daily & Status Premium**: Pembatasan penggunaan harian untuk user gratisan (reset pukul 00:00 WIB).
+- **QRIS Dynamic Decoder**: Fitur `!topup` yang secara otomatis mengurai QRIS Static DANA menjadi QRIS Dynamic sesuai nominal pesanan token limit.
 
-### 🏦 Sistem Ekonomi (Limit & Top Up)
-* Dilengkapi *Daily Limit Token* untuk user biasa (Reset otomatis pukul 00:00).
-* Fitur pemesanan Token Logistik terintegrasi dengan kode QRIS dan verifikasi otomatis oleh Owner.
+### 🛠️ 6. Utilitas Media & Intel
+- **TikTok Downloader**: Download Video (tanpa Watermark), Audio, atau Slideshow Foto.
+- **Visual Search**: Pencarian gambar anime resolusi tinggi dari **Pixiv** (Multi-page support), **Danbooru**, dan **Nekosia**.
+- **PDF to JPG Converter**: Memecah dokumen PDF menjadi gambar HD.
+- **Voice Note Transcriber**: Mengubah pesan suara (Voice Note) WhatsApp menjadi teks (Speech-to-Text).
+- **Sticker Maker & Emotional Alarm**: Konversi foto ke stiker WA dan sistem pengingat ibadah interaktif.
 
 ---
 
-## 🚀 Panduan Instalasi & Eksekusi
+## 🛠️ Panduan Instalasi & Penggunaan
 
-### 1. Kebutuhan Sistem
-* [Node.js](https://nodejs.org/) (Minimal versi 18+)
-* Git
+### Prasyarat Sistem
+- **Node.js**: Minimal **v18.0.0** atau yang terbaru.
+- **Git**: Terinstall di komputer/VPS.
+- **PM2** (Rekomendasi untuk VPS): `npm install -g pm2`
 
-### 2. Cara Install
-Clone repositori ini dan masuk ke dalam foldernya:
-```bash
-git clone [https://github.com/ibnunurbarokah148-wq/bot-shiroko.git](https://github.com/ibnunurbarokah148-wq/bot-shiroko.git)
-cd bot-shiroko
+### Langkah-Langkah Instalasi
+
+1. **Clone Repositori:**
+   ```bash
+   git clone https://github.com/ibnunurbarokah148-wq/bot-shiroko.git
+   cd bot-shiroko
+   ```
+
+2. **Install Dependensi:**
+   ```bash
+   npm install
+   ```
+
+3. **Konfigurasi Environment (`.env`):**
+   Salin file template `.env.example` atau buat file `.env` baru di folder utama bot (baca section **Template File `.env`** di bawah).
+
+4. **Jalankan Bot WhatsApp:**
+   ```bash
+   # Jalankan langsung
+   npm start
+   
+   # Atau menggunakan PM2 (Rekomendasi VPS)
+   pm2 start index.js --name "shiroko-wa"
+   ```
+
+5. **Jalankan Bot Discord (Opsional):**
+   ```bash
+   # Jalankan bot Discord di proses terpisah
+   node bot-dc.js
+   
+   # Atau menggunakan PM2
+   pm2 start bot-dc.js --name "shiroko-dc"
+   ```
+
+6. **Hubungkan WhatsApp:**
+   Pindai (Scan) Kode QR yang muncul di terminal menggunakan aplikasi WhatsApp di HP kamu (*Perangkat Tertaut / Linked Devices*).
+
+---
+
+## 🔑 Template File `.env`
+
+Buat file bernama `.env` di direktori utama repositori kamu dan isi dengan struktur berikut:
+
+```env
+# ==========================================
+# 🤖 GOOGLE GEMINI AI CONFIGURATION
+# (Mendukung multi-key dipisahkan koma untuk rotasi)
+# ==========================================
+GEMINI_API_KEY=AIzaSyxxxxxxxxx,AIzaSyyyyyyyyyy
+
+# ==========================================
+# 🌐 OPENROUTER AI CONFIGURATION
+# (Mendukung multi-key dipisahkan koma)
+# ==========================================
+OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ==========================================
+# ☁️ CLOUDFLARE WORKERS AI CONFIGURATION
+# Format: ACCOUNT_ID:API_TOKEN
+# (Mendukung multi-account dipisahkan koma untuk load balancing)
+# ==========================================
+CLOUDFLARE_API_TOKEN=account_id_1:token_1,account_id_2:token_2
+
+# ==========================================
+# 🛰️ ARISUSOFT & OTHER AI SERVICES
+# ==========================================
+ARISU_API_KEY=sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+HUGGINGFACE_API_KEY=hf_xxxxxxxxxxxxxxxxx
+
+# ==========================================
+# 🎮 DISCORD BOT CONFIGURATION
+# ==========================================
+DISCORD_TOKEN=MTUxNzA...........................
+
+# ==========================================
+# 🎨 COMFYUI & VAST.AI CLOUD GPU CONFIGURATION
+# ==========================================
+VAST_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+VAST_INSTANCE_ID=12345678
+
+# ==========================================
+# 🖼️ MEDIA & CONVERTER SERVICES
+# ==========================================
+PIXIV_REFRESH_TOKEN=vYlnmRWf_xxxxxxxxxxxxxxxxxxxx
+CONVERT_API_KEY=iDYQeBgxxxxxxxxxxxxxxxxxx
+CIVITAI_API_KEY=2cec05b7xxxxxxxxxxxxxxxxxxxx
+
+# ==========================================
+# 📱 WHATSAPP & QRIS CONFIGURATION
+# ==========================================
+WA_PHONE_NUMBER=628xxxxxxxxx
+STATIC_QRIS=00020101021126570011ID.DANA.WWW...
+```
+
+---
+
+## 📄 Lisensi & Kontribusi
+
+Dikembangkan untuk kebutuhan pembelajaran dan komunitas. Bebas dikembangkan kembali dengan tetap mencantumkan kredit ke pembuat awal.
+
+> *"Nn... Serahkan urusan taktis ini pada Shiroko, Sensei!"* 🐺
