@@ -116,9 +116,10 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ \`!pdf2jpg\` (Reply PDF)
 *║* ➸ \`!stiker\` (Kirim Gambar)
 *║* ➸ \`!toimg\` (Reply Stiker)
+*║* ➸ \`!tts [teks]\` (Ubah Teks ke VN Suara)
 *║* ➸ \`!meme [teks]\` (Reply Gambar)
 *║* ➸ \`!tiktok [link]\`
-*║* ➸ \`!dengar\` (Reply VN)
+*║* ➸ \`!dengar\` (Reply VN ke Teks)
 *║*
 *╠═══「 DATA INTEL 」*
 *║* ➸ \`!pixiv [query]\`
@@ -137,6 +138,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║*
 *╠═══「 MENU BOT 」*
 *║* ➸ !limit
+*║* ➸ !lupa (Reset Memori AI)
 *║* ➸ !aimode [mode]
 *║*
 *╚═══▼△▼△▼△▼△▼*`;
