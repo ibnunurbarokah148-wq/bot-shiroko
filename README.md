@@ -36,10 +36,12 @@ Bot ini dilengkapi dengan 5 penyedia AI utama yang terintegrasi penuh:
 - Interactive Select Menu di Discord untuk memilih penyedia & model AI spesifik.
 - Sistem auto-delete channel saat AFK / tidak ada aktivitas selama 3 menit.
 
-### 🎨 3. Cloud GPU Image Rendering (ComfyUI & Vast.ai)
-- **Vast.ai Cloud GPU Integration**: Render gambar kualitas tinggi (*Illustrious Pony XL / SDXL*) langsung menggunakan server GPU di cloud.
-- **Auto Power Management**: Auto-start saat ada request render gambar dan **Auto-Stop (1 Minute Idle)** untuk menghemat biaya kredit GPU.
-- **Satelit ArisuSoft Fallback**: Pengalihan otomatis ke server ArisuSoft (*SDXL Turbo, Agnes 2.0, Agnes 2.1*) jika GPU utama sedang offline.
+### 🎨 3. Multi-Provider Image Rendering (ComfyUI, Cloudflare AI & ArisuSoft)
+- **Interactive 2-Step Menu (`!gambar`)**: Alur menu interaktif 2 tahap (Pilihan Provider/Server ➔ Pilihan Model Spesifik).
+- **Vast.ai Cloud GPU Integration**: Render gambar SDXL/Illustrious XL kualitas tinggi via ComfyUI di server cloud GPU dengan auto-start & **Auto-Stop 1-Minute Idle**.
+- **Cloudflare Workers AI Image Generation**: Pemindaian dinamis (*Live Scanning*) untuk model gambar (*FLUX.1 Schnell, SDXL Lightning, DreamShaper 8 Anime, Leonardo Phoenix 1.0, SDXL Base 1.0, Leonardo Lucid Origin*).
+- **Automatic Magic-Bytes & Base64 Decoder**: Penanganan otomatis MIME type (PNG/JPEG/WEBP) & decoder payload Base64 JSON agar gambar dipastikan 100% bisa di-download dan dibuka di WhatsApp.
+- **Satelit ArisuSoft Fallback**: Pengalihan otomatis ke server ArisuSoft (*SDXL Turbo, Agnes 2.0, Agnes 2.1*) jika server utama sedang offline.
 
 ### 📚 4. Operasi Akademik & LMS
 - **Generator Karya Ilmiah**: Pembuat Makalah, Artikel, dan Laporan (700-1600 kata) terstruktur otomatis.
@@ -52,6 +54,7 @@ Bot ini dilengkapi dengan 5 penyedia AI utama yang terintegrasi penuh:
 - **QRIS Dynamic Decoder**: Fitur `!topup` yang secara otomatis mengurai QRIS Static DANA menjadi QRIS Dynamic sesuai nominal pesanan token limit.
 
 ### 🛠️ 6. Utilitas Media & Intel
+- **Cloudflare Text-to-Speech (TTS) Voice Note (`!tts` / `!suara`)**: Mengubah teks apapun menjadi pesan suara / Voice Note (VN) jernih langsung di WhatsApp via Cloudflare AI (*MeloTTS, Deepgram Aura*).
 - **TikTok Downloader**: Download Video (tanpa Watermark), Audio, atau Slideshow Foto.
 - **Visual Search**: Pencarian gambar anime resolusi tinggi dari **Pixiv** (Multi-page support), **Danbooru**, dan **Nekosia**.
 - **PDF to JPG Converter**: Memecah dokumen PDF menjadi gambar HD.
