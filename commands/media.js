@@ -220,6 +220,33 @@ async function handle(ctx) {
     }
 
     // ==========================================
+    // HANDLER !TTS / !SUARA (TEXT-TO-SPEECH CLOUDFLARE)
+    // ==========================================
+    if (textLower.startsWith('!tts ') || textLower.startsWith('!suara ')) {
+        const textTTS = textClean.split(' ').slice(1).join(' ').trim();
+        if (!textTTS) {
+            await reply('Nn... Masukkan teks yang ingin diubah menjadi suara. Contoh:\n!tts Halo Sensei, selamat pagi!');
+            return true;
+        }
+
+        try {
+            await reply('⏳ Nn... Mengubah teks menjadi suara via Cloudflare AI (MeloTTS)...');
+            const { textToSpeechCloudflare } = require('../services/ai.service');
+            const audioBuf = await textToSpeechCloudflare(textTTS, '@cf/myshell-ai/melotts');
+
+            await sock.sendMessage(from, {
+                audio: audioBuf,
+                mimetype: 'audio/mp4',
+                ptt: true
+            }, { quoted: msg });
+        } catch (ttsErr) {
+            console.error("🚨 ERROR CLOUDFLARE TTS:", ttsErr.message);
+            await reply(`⚠️ Nn... Gagal membuat suara via Cloudflare AI.\n*Laporan Sistem:* ${ttsErr.message}`);
+        }
+        return true;
+    }
+
+    // ==========================================
     // HANDLER SESI MEME (INTERAKTIF)
     // ==========================================
     if (state.sesiMeme[senderId]) {

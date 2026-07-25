@@ -632,6 +632,51 @@ async function generateCloudflareImage(promptInput, modelName = '@cf/stabilityai
     return { buffer: rawBuffer, mime };
 }
 
+async function textToSpeechCloudflare(textInput, modelName = '@cf/myshell-ai/melotts') {
+    const cleanModel = modelName.startsWith('@cf/') ? modelName : `@cf/${modelName}`;
+    const { accountId, token } = getCloudflarePair();
+    const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`;
+
+    const payload = cleanModel.includes('melotts') ? { prompt: textInput } : { text: textInput };
+
+    try {
+        const response = await axios.post(url, payload, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            responseType: 'arraybuffer',
+            timeout: 60000
+        });
+
+        if (response.data && response.data.length > 0) {
+            return Buffer.from(response.data);
+        }
+        throw new Error('Cloudflare TTS mengembalikan audio kosong');
+    } catch (err) {
+        try {
+            const pair2 = getCloudflarePair();
+            const url2 = `https://api.cloudflare.com/client/v4/accounts/${pair2.accountId}/ai/run/${cleanModel}`;
+            const response2 = await axios.post(url2, payload, {
+                headers: {
+                    'Authorization': `Bearer ${pair2.token}`,
+                    'Content-Type': 'application/json'
+                },
+                responseType: 'arraybuffer',
+                timeout: 60000
+            });
+            if (response2.data && response2.data.length > 0) {
+                return Buffer.from(response2.data);
+            }
+        } catch (err2) {
+            const errMsg = err2.response?.data ? Buffer.from(err2.response.data).toString('utf8') : err2.message;
+            throw new Error(`Cloudflare TTS Error (${cleanModel}): ${errMsg}`);
+        }
+        const errMsg = err.response?.data ? Buffer.from(err.response.data).toString('utf8') : err.message;
+        throw new Error(`Cloudflare TTS Error (${cleanModel}): ${errMsg}`);
+    }
+}
+
 module.exports = {
     getGeminiComponents,
     getHfClient,
@@ -642,6 +687,7 @@ module.exports = {
     tanyaOpenRouter,
     tanyaCloudflare,
     generateCloudflareImage,
+    textToSpeechCloudflare,
     fetchOpenRouterModels,
     fetchCloudflareModels,
     fetchCloudflareImageModels,
