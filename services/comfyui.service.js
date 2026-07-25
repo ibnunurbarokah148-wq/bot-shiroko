@@ -3,7 +3,6 @@
 // ==========================================
 const fs = require('fs');
 const axios = require('axios');
-const cron = require('node-cron');
 const { kembalikanLimit } = require('../config/db');
 const state = require('../config/state');
 const { getSocket } = require('../utils/socket');
@@ -11,41 +10,7 @@ const { checkIsRunning, startVastInstance, stopVastInstance, getComfyUrl, getJup
 
 const antrianGambar = [];
 let sedangRender = false;
-
-// ==========================================
-// SCHEDULER OPERASIONAL GPU VAST.AI (WIB / GMT+7)
-// Auto-Mati: 23:00 WIB
-// Auto-Nyala: 07:00 WIB
-// ==========================================
-if (process.env.VAST_API_KEY && process.env.VAST_INSTANCE_ID) {
-    // 🌙 Auto-Mati GPU pada jam 23:00 WIB (Asia/Jakarta)
-    cron.schedule('0 23 * * *', async () => {
-        console.log('[SCHEDULER VAST.AI] 🌙 Jam 23:00 WIB — Mematikan GPU Vast.ai otomatis...');
-        try {
-            await stopVastInstance();
-            console.log('[SCHEDULER VAST.AI] ✅ GPU Vast.ai berhasil dimatikan.');
-        } catch (err) {
-            console.error('[SCHEDULER VAST.AI] ❌ Gagal mematikan GPU Vast.ai:', err.message);
-        }
-    }, {
-        timezone: "Asia/Jakarta"
-    });
-
-    // ☀️ Auto-Nyala GPU pada jam 07:00 WIB (Asia/Jakarta)
-    cron.schedule('0 7 * * *', async () => {
-        console.log('[SCHEDULER VAST.AI] ☀️ Jam 07:00 WIB — Menyalakan GPU Vast.ai otomatis...');
-        try {
-            await startVastInstance();
-            console.log('[SCHEDULER VAST.AI] ✅ GPU Vast.ai berhasil dinyalakan.');
-        } catch (err) {
-            console.error('[SCHEDULER VAST.AI] ❌ Gagal menyalakan GPU Vast.ai:', err.message);
-        }
-    }, {
-        timezone: "Asia/Jakarta"
-    });
-
-    console.log('[SCHEDULER VAST.AI] ✅ Cron aktif: Auto-mati 23:00 WIB & Auto-nyala 07:00 WIB.');
-}
+let vastIdleTimer = null; // Timer untuk mematikan mesin
 
 async function prosesAntrianGambar() {
     // Kalau mesin lagi jalan, atau antrean kosong, batalkan eksekusi
@@ -54,6 +19,12 @@ async function prosesAntrianGambar() {
     // Kunci mesin (Lock)
     sedangRender = true;
 
+    // Bersihkan timer idle jika ada aktivitas baru
+    if (vastIdleTimer) {
+        clearTimeout(vastIdleTimer);
+        vastIdleTimer = null;
+    }
+
     // [AUTO-START VAST.AI] Jika API Key dan Instance ID ada
     if (process.env.VAST_API_KEY && process.env.VAST_INSTANCE_ID) {
         let isVastOn = await checkIsRunning();
@@ -61,13 +32,14 @@ async function prosesAntrianGambar() {
         // Jika mesin mati, nyalakan dulu
         if (!isVastOn) {
             if (antrianGambar[0]) {
-                await antrianGambar[0].reply('⏳ Nn... Mesin GPU di awan (Vast.ai) sedang memanaskan mesin. Mohon tunggu 1-3 menit ya, Sensei...');
+                await antrianGambar[0].reply('⏳ Nn... Mesin GPU di awan (Vast.ai) sedang mati karena idle. Shiroko sedang memanasinya kembali. Mohon tunggu sekitar 1-3 menit ya, Sensei...');
             }
             try {
                 await startVastInstance();
                 console.log("[VAST] Perintah start berhasil dikirim. Menunggu mesin menyala...");
             } catch (err) {
                 console.error("Gagal auto-start Vast:", err.message);
+                // Lanjutkan — mungkin bisa fallback ke ArisuSoft nanti
             }
         }
 
@@ -294,6 +266,14 @@ async function prosesAntrianGambar() {
 
     // Buka kunci (Unlock)
     sedangRender = false;
+
+    // [AUTO-STOP VAST.AI] Set timer untuk mematikan mesin setelah 1 menit idle
+    if (process.env.VAST_API_KEY && process.env.VAST_INSTANCE_ID) {
+        vastIdleTimer = setTimeout(async () => {
+            console.log("⏳ VAST.AI: Mesin sudah menganggur 1 menit. Mematikan...");
+            await stopVastInstance();
+        }, 1 * 60 * 1000);
+    }
 }
 
 module.exports = {
