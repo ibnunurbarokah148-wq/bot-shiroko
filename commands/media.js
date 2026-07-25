@@ -229,6 +229,13 @@ async function handle(ctx) {
             return true;
         }
 
+        const cost = 2;
+        const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
+        if (!cekDanPotongLimit(senderId, cost)) {
+            await reply(`Nn... Tokenmu tidak cukup. Butuh ${cost} limit untuk menggunakan fitur Text-to-Speech.`);
+            return true;
+        }
+
         try {
             await reply('⏳ Nn... Mengubah teks menjadi suara via Cloudflare AI (MeloTTS)...');
             const { textToSpeechCloudflare } = require('../services/ai.service');
@@ -240,8 +247,9 @@ async function handle(ctx) {
                 ptt: true
             }, { quoted: msg });
         } catch (ttsErr) {
+            if (!isOwner) kembalikanLimit(senderId, cost);
             console.error("🚨 ERROR CLOUDFLARE TTS:", ttsErr.message);
-            await reply(`⚠️ Nn... Gagal membuat suara via Cloudflare AI.\n*Laporan Sistem:* ${ttsErr.message}`);
+            await reply(`⚠️ Nn... Gagal membuat suara via Cloudflare AI.\n*Laporan Sistem:* ${ttsErr.message}\nToken limit dikembalikan.`);
         }
         return true;
     }

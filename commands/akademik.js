@@ -14,7 +14,7 @@ async function handle(ctx) {
         const costMap = {
             'ds3': 2, 'ds4': 4, 'glm': 2, 'qwen': 2,
             'arisu-gemini': 2, 'gpt': 2, 'grok': 2,
-            'gemini': 2, 'ollama': 1
+            'gemini': 2, 'ollama': 0
         };
         return costMap[mode] || 2;
     }
