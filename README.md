@@ -62,12 +62,47 @@ Bot ini dilengkapi dengan 5 penyedia AI utama yang terintegrasi penuh:
 
 ## 🛠️ Panduan Instalasi & Penggunaan
 
-### Prasyarat Sistem
-- **Node.js**: Minimal **v18.0.0** atau yang terbaru.
-- **Git**: Terinstall di komputer/VPS.
-- **PM2** (Rekomendasi untuk VPS): `npm install -g pm2`
+### 📦 1. Panduan Instalasi Prasyarat (Node.js, Git, PM2)
 
-### Langkah-Langkah Instalasi
+#### 🐧 A. Di Linux VPS (Ubuntu / Debian)
+Jalankan perintah berikut di terminal VPS kamu secara berurutan:
+
+1. **Update Package Manager:**
+   ```bash
+   sudo apt update && sudo apt upgrade -y
+   ```
+2. **Install Git & Dependency Dasar:**
+   ```bash
+   sudo apt install -y git curl build-essential
+   ```
+3. **Install Node.js (v20 LTS via NodeSource):**
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+   sudo apt install -y nodejs
+   ```
+   *Verifikasi versi dengan `node -v` (harus v18/v20+) dan `npm -v`.*
+
+4. **Install PM2 (Process Manager Global):**
+   ```bash
+   sudo npm install -g pm2
+   ```
+   *Supaya bot otomatis menyala kembali jika VPS di-reboot:*
+   ```bash
+   pm2 startup
+   pm2 save
+   ```
+
+#### 🪟 B. Di Windows (Komputer / Laptop)
+1. **Install Git:** Download installer dari [git-scm.com](https://git-scm.com/downloads) dan jalankan setup (pilih opsi default).
+2. **Install Node.js:** Download versi LTS dari [nodejs.org](https://nodejs.org/) dan ikuti petunjuk installer.
+3. **Install PM2 (Opsional):** Buka CMD / Terminal lalu jalankan:
+   ```cmd
+   npm install -g pm2
+   ```
+
+---
+
+### 🚀 2. Langkah-Langkah Instalasi & Eksekusi Bot
 
 1. **Clone Repositori:**
    ```bash
