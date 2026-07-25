@@ -220,37 +220,87 @@ async function handle(ctx) {
     }
 
     // ==========================================
-    // HANDLER !TTS / !SUARA (TEXT-TO-SPEECH CLOUDFLARE)
+    // HANDLER SESI INTERAKTIF !TTS
     // ==========================================
-    if (textLower.startsWith('!tts ') || textLower.startsWith('!suara ')) {
-        const textTTS = textClean.split(' ').slice(1).join(' ').trim();
-        if (!textTTS) {
-            await reply('Nn... Masukkan teks yang ingin diubah menjadi suara. Contoh:\n!tts Halo Sensei, selamat pagi!');
+    if (state.sesiTTS[senderId]) {
+        const sesi = state.sesiTTS[senderId];
+        const pilihan = textLower;
+
+        if (pilihan === 'batal' || pilihan === 'cancel') {
+            delete state.sesiTTS[senderId];
+            await reply('Nn... Pembuatan suara (TTS) dibatalkan.');
+            return true;
+        }
+
+        const idx = parseInt(pilihan) - 1;
+        const list = sesi.models || [];
+
+        if (isNaN(idx) || idx < 0 || idx >= list.length) {
+            await reply(`Nn... Pilihan model suara tidak valid. Balas dengan angka 1 sampai ${list.length} atau ketik *batal*.`);
             return true;
         }
 
         const cost = 2;
         const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
         if (!cekDanPotongLimit(senderId, cost)) {
+            delete state.sesiTTS[senderId];
             await reply(`Nn... Tokenmu tidak cukup. Butuh ${cost} limit untuk menggunakan fitur Text-to-Speech.`);
             return true;
         }
 
-        try {
-            await reply('⏳ Nn... Mengubah teks menjadi suara via Cloudflare AI (MeloTTS)...');
-            const { textToSpeechCloudflare } = require('../services/ai.service');
-            const audioBuf = await textToSpeechCloudflare(textTTS, '@cf/myshell-ai/melotts');
+        const chosenModel = list[idx];
+        const textTTS = sesi.textTTS;
+        const targetFrom = sesi.from;
+        const targetMsg = sesi.msg;
+        delete state.sesiTTS[senderId];
 
-            await sock.sendMessage(from, {
-                audio: audioBuf,
-                mimetype: 'audio/mp4',
+        try {
+            await reply(`⏳ Nn... Mengubah teks menjadi suara menggunakan *${chosenModel.name}*. Mohon tunggu...`);
+            const { textToSpeechCloudflare } = require('../services/ai.service');
+            const { buffer, mime } = await textToSpeechCloudflare(textTTS, chosenModel.id);
+
+            await sock.sendMessage(targetFrom, {
+                audio: buffer,
+                mimetype: mime,
                 ptt: true
-            }, { quoted: msg });
+            }, { quoted: targetMsg });
         } catch (ttsErr) {
             if (!isOwner) kembalikanLimit(senderId, cost);
             console.error("🚨 ERROR CLOUDFLARE TTS:", ttsErr.message);
             await reply(`⚠️ Nn... Gagal membuat suara via Cloudflare AI.\n*Laporan Sistem:* ${ttsErr.message}\nToken limit dikembalikan.`);
         }
+        return true;
+    }
+
+    // ==========================================
+    // HANDLER !TTS / !SUARA (TEXT-TO-SPEECH CLOUDFLARE)
+    // ==========================================
+    if (textLower.startsWith('!tts') || textLower.startsWith('!suara')) {
+        const textTTS = textClean.split(' ').slice(1).join(' ').trim();
+        if (!textTTS) {
+            await reply('Nn... Masukkan teks yang ingin diubah menjadi suara. Contoh:\n!tts Halo Sensei, selamat pagi!');
+            return true;
+        }
+
+        await reply('⏳ Nn... Memindai semua model suara (TTS) yang tersedia di API Cloudflare kamu...');
+        const { fetchCloudflareTTSModels } = require('../services/ai.service');
+        const ttsModels = await fetchCloudflareTTSModels();
+
+        state.sesiTTS[senderId] = {
+            step: 1,
+            textTTS: textTTS,
+            models: ttsModels,
+            from: from,
+            msg: msg
+        };
+
+        let menuText = `🎙️ *PILIH MODEL SUARA (TEXT-TO-SPEECH)*\n\nNn... Balas dengan angka untuk memilih model suara (biaya 2 limit):\n\n`;
+        ttsModels.forEach((m, i) => {
+            menuText += `${i + 1}️⃣ *${m.name}*\n   └ 📌 _${m.desc}_\n\n`;
+        });
+        menuText += `Ketik *batal* untuk membatalkan.`;
+
+        await reply(menuText);
         return true;
     }
 

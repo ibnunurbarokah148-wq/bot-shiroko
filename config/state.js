@@ -34,6 +34,7 @@ module.exports = {
     sesiCabutRole: {},
     sesiModelGambar: {},
     sesiArisu: {},
+    sesiTTS: {},
 
     // Model AI Pilihan User
     userOpenRouterModel: {},

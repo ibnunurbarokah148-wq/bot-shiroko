@@ -639,6 +639,8 @@ async function textToSpeechCloudflare(textInput, modelName = '@cf/myshell-ai/mel
 
     const payload = cleanModel.includes('melotts') ? { prompt: textInput } : { text: textInput };
 
+    let rawBuffer = null;
+
     try {
         const response = await axios.post(url, payload, {
             headers: {
@@ -650,9 +652,8 @@ async function textToSpeechCloudflare(textInput, modelName = '@cf/myshell-ai/mel
         });
 
         if (response.data && response.data.length > 0) {
-            return Buffer.from(response.data);
+            rawBuffer = Buffer.from(response.data);
         }
-        throw new Error('Cloudflare TTS mengembalikan audio kosong');
     } catch (err) {
         try {
             const pair2 = getCloudflarePair();
@@ -666,15 +667,99 @@ async function textToSpeechCloudflare(textInput, modelName = '@cf/myshell-ai/mel
                 timeout: 60000
             });
             if (response2.data && response2.data.length > 0) {
-                return Buffer.from(response2.data);
+                rawBuffer = Buffer.from(response2.data);
             }
         } catch (err2) {
             const errMsg = err2.response?.data ? Buffer.from(err2.response.data).toString('utf8') : err2.message;
             throw new Error(`Cloudflare TTS Error (${cleanModel}): ${errMsg}`);
         }
-        const errMsg = err.response?.data ? Buffer.from(err.response.data).toString('utf8') : err.message;
-        throw new Error(`Cloudflare TTS Error (${cleanModel}): ${errMsg}`);
+        if (!rawBuffer) {
+            const errMsg = err.response?.data ? Buffer.from(err.response.data).toString('utf8') : err.message;
+            throw new Error(`Cloudflare TTS Error (${cleanModel}): ${errMsg}`);
+        }
     }
+
+    if (!rawBuffer || rawBuffer.length === 0) {
+        throw new Error('Cloudflare mengembalikan data audio kosong');
+    }
+
+    // Cek jika Cloudflare mengembalikan respons JSON (misal MeloTTS)
+    const firstStr = rawBuffer.toString('utf8', 0, 100).trim();
+    if (firstStr.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(rawBuffer.toString('utf8'));
+            if (parsed.result?.audio) {
+                rawBuffer = Buffer.from(parsed.result.audio, 'base64');
+            } else if (parsed.result?.response) {
+                rawBuffer = Buffer.from(parsed.result.response, 'base64');
+            } else if (parsed.errors && parsed.errors.length > 0) {
+                throw new Error(parsed.errors[0].message);
+            }
+        } catch (e) {
+            throw new Error(`Cloudflare TTS JSON Parsing Error: ${e.message}`);
+        }
+    }
+
+    // Deteksi MIME type akurat dari Magic Bytes buffer audio
+    let mime = 'audio/mpeg';
+    const hex = rawBuffer.subarray(0, 4).toString('hex').toUpperCase();
+    if (hex.startsWith('5249')) {
+        mime = 'audio/wav';
+    } else if (hex.startsWith('FFF3') || hex.startsWith('FFF2') || hex.startsWith('FFFB') || hex.startsWith('494433')) {
+        mime = 'audio/mpeg';
+    } else if (hex.startsWith('4F676753')) {
+        mime = 'audio/ogg';
+    }
+
+    return { buffer: rawBuffer, mime };
+}
+
+async function fetchCloudflareTTSModels() {
+    const { accountId, token } = getCloudflarePair();
+    let result = [];
+    try {
+        const response = await axios.get(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            timeout: 15000
+        });
+        result = response.data.result || [];
+    } catch (err) {
+        console.error("Gagal mengambil daftar model TTS dari Cloudflare API:", err.message);
+        return [
+            { id: '@cf/myshell-ai/melotts', name: 'MeloTTS', desc: 'Suara Jernih Natural & Ekspresif (WAV)' },
+            { id: '@cf/deepgram/aura-1', name: 'Deepgram Aura 1', desc: 'Suara Bahasa Inggris Natural (Cepat)' },
+            { id: '@cf/deepgram/aura-2-en', name: 'Deepgram Aura 2 EN', desc: 'Suara Bahasa Inggris Ekspresif HD' },
+            { id: '@cf/deepgram/aura-2-es', name: 'Deepgram Aura 2 ES', desc: 'Suara Bahasa Spanyol Natural' }
+        ];
+    }
+
+    const ttsModels = result.filter(m => {
+        if (!m) return false;
+        const taskName = m.task ? (typeof m.task === 'object' ? (m.task.name || '') : m.task).toLowerCase() : '';
+        const name = (m.name || '').toLowerCase();
+        
+        if (name.includes('whisper') || name.includes('nova') || name.includes('asr') || (name.includes('deepgram/flux') && !name.includes('aura'))) return false;
+        
+        return taskName.includes('text-to-speech') || name.includes('tts') || name.includes('aura') || name.includes('melotts');
+    });
+
+    const descMap = {
+        'melotts': 'Suara Jernih Natural & Ekspresif (High Quality WAV)',
+        'aura-1': 'Suara Bahasa Inggris Natural (Cepat & Ringan)',
+        'aura-2-en': 'Suara Bahasa Inggris Ekspresif HD',
+        'aura-2-es': 'Suara Bahasa Spanyol Natural'
+    };
+
+    return ttsModels.map(m => {
+        let parts = m.name.replace(/^@cf\//i, '').split('/');
+        let cleanName = parts[parts.length - 1];
+        let desc = descMap[cleanName.toLowerCase()] || 'Model AI Text-to-Speech Cloudflare';
+        return {
+            id: m.name,
+            name: cleanName,
+            desc: desc
+        };
+    });
 }
 
 module.exports = {
@@ -691,6 +776,7 @@ module.exports = {
     fetchOpenRouterModels,
     fetchCloudflareModels,
     fetchCloudflareImageModels,
+    fetchCloudflareTTSModels,
     memoriOllama,
     memoriArisu,
     memoriOpenRouter,
