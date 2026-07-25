@@ -88,15 +88,22 @@ async function handle(ctx) {
                 return true;
 
             } else if (pilihan === '3') {
-                // Sub-menu Cloudflare Workers AI
+                // Sub-menu Cloudflare Workers AI (Hasil Scanning Dinamis)
+                await reply('⏳ Nn... Memindai semua model gambar yang tersedia di API Cloudflare kamu...');
+                const { fetchCloudflareImageModels } = require('../services/ai.service');
+                const cfModels = await fetchCloudflareImageModels();
+                
                 sesi.step = 2;
                 sesi.provider = 'cloudflare';
-                await reply('Nn... Pilih Model Cloudflare Workers AI (biaya 1 limit / Cepat ⚡):\n' +
-                    '1️⃣ *SDXL Base 1.0* (Stable Diffusion XL Base)\n' +
-                    '2️⃣ *SDXL Lightning* (Ultra Fast Render)\n' +
-                    '3️⃣ *DreamShaper 8 LCM* (Anime / Art Style)\n' +
-                    '4️⃣ *FLUX.1 Schnell* (HD Quality FLUX Model)\n' +
-                    '\nKetik *batal* untuk membatalkan.');
+                sesi.cfModels = cfModels;
+
+                let textMenu = `Nn... Ditemukan *${cfModels.length} Model Gambar* di Cloudflare AI (biaya 1 limit / Cepat ⚡):\n\n`;
+                cfModels.forEach((m, idx) => {
+                    textMenu += `${idx + 1}️⃣ *${m.name}*\n`;
+                });
+                textMenu += `\nBalas dengan angka 1 - ${cfModels.length} atau ketik *batal*.`;
+
+                await reply(textMenu);
                 return true;
 
             } else {
@@ -126,16 +133,14 @@ async function handle(ctx) {
                 }
             } else if (sesi.provider === 'cloudflare') {
                 isCloudflare = true;
-                if (pilihan === '1') {
-                    cost = 1; cfModel = '@cf/stabilityai/stable-diffusion-xl-base-1.0'; namaModel = 'Cloudflare SDXL Base 1.0';
-                } else if (pilihan === '2') {
-                    cost = 1; cfModel = '@cf/bytedance/stable-diffusion-xl-lightning'; namaModel = 'Cloudflare SDXL Lightning';
-                } else if (pilihan === '3') {
-                    cost = 1; cfModel = '@cf/lykon/dreamshaper-8-lcm'; namaModel = 'Cloudflare DreamShaper 8';
-                } else if (pilihan === '4') {
-                    cost = 1; cfModel = '@cf/black-forest-labs/flux-1-schnell'; namaModel = 'Cloudflare FLUX.1 Schnell';
+                const idx = parseInt(pilihan) - 1;
+                const cfList = sesi.cfModels || [];
+                if (!isNaN(idx) && idx >= 0 && idx < cfList.length) {
+                    cost = 1;
+                    cfModel = cfList[idx].id;
+                    namaModel = cfList[idx].name;
                 } else {
-                    await reply('Nn... Pilihan model Cloudflare tidak valid. Balas dengan 1, 2, 3, atau 4.');
+                    await reply(`Nn... Pilihan model Cloudflare tidak valid. Balas dengan angka 1 sampai ${cfList.length || 10}.`);
                     return true;
                 }
             }

@@ -262,6 +262,49 @@ async function fetchCloudflareModels() {
     });
 }
 
+async function fetchCloudflareImageModels() {
+    const { accountId, token } = getCloudflarePair();
+    let result = [];
+    try {
+        const response = await axios.get(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            timeout: 15000
+        });
+        result = response.data.result || [];
+    } catch (err) {
+        console.error("Gagal mengambil daftar model gambar dari Cloudflare API:", err.message);
+        return [
+            { id: '@cf/stabilityai/stable-diffusion-xl-base-1.0', name: 'stable-diffusion-xl-base-1.0' },
+            { id: '@cf/bytedance/stable-diffusion-xl-lightning', name: 'stable-diffusion-xl-lightning' },
+            { id: '@cf/lykon/dreamshaper-8-lcm', name: 'dreamshaper-8-lcm' },
+            { id: '@cf/black-forest-labs/flux-1-schnell', name: 'flux-1-schnell' },
+            { id: '@cf/black-forest-labs/flux-2-dev', name: 'flux-2-dev' },
+            { id: '@cf/leonardo/phoenix-1.0', name: 'phoenix-1.0' }
+        ];
+    }
+
+    const textToImageModels = result.filter(m => {
+        if (!m) return false;
+        const taskName = m.task ? (typeof m.task === 'object' ? (m.task.name || '') : m.task).toLowerCase() : '';
+        const name = (m.name || '').toLowerCase();
+        
+        if (taskName.includes('image-to-text') || taskName.includes('classification') || taskName.includes('speech') || taskName.includes('audio')) return false;
+        
+        return taskName.includes('text-to-image') || taskName.includes('image-generation') || 
+               name.includes('stable-diffusion') || name.includes('flux') || 
+               name.includes('dreamshaper') || name.includes('phoenix') || name.includes('lucid');
+    });
+
+    return textToImageModels.map(m => {
+        let parts = m.name.replace(/^@cf\//i, '').split('/');
+        let cleanName = parts[parts.length - 1];
+        return {
+            id: m.name,
+            name: cleanName
+        };
+    });
+}
+
 function cleanThinkingLogs(text) {
     if (!text || typeof text !== 'string') return text;
     let original = text.trim();
@@ -599,6 +642,7 @@ module.exports = {
     generateCloudflareImage,
     fetchOpenRouterModels,
     fetchCloudflareModels,
+    fetchCloudflareImageModels,
     memoriOllama,
     memoriArisu,
     memoriOpenRouter,
