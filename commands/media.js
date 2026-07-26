@@ -232,64 +232,110 @@ async function handle(ctx) {
             return true;
         }
 
-        const idx = parseInt(pilihan) - 1;
-        const list = sesi.models || [];
+        // TAHAP 1: PILIH PROVIDER (Cloudflare vs ArisuSoft)
+        if (sesi.step === 1) {
+            const { fetchCloudflareTTSModels, fetchArisuTTSModels } = require('../services/ai.service');
 
-        if (isNaN(idx) || idx < 0 || idx >= list.length) {
-            await reply(`Nn... Pilihan model suara tidak valid. Balas dengan angka 1 sampai ${list.length} atau ketik *batal*.`);
-            return true;
-        }
+            if (pilihan === '1' || pilihan === 'cloudflare') {
+                await reply('⏳ Nn... Memindai semua model suara dari Cloudflare Workers AI...');
+                const cfModels = await fetchCloudflareTTSModels();
 
-        const cost = 2;
-        const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
-        if (!cekDanPotongLimit(senderId, cost)) {
-            delete state.sesiTTS[senderId];
-            await reply(`Nn... Tokenmu tidak cukup. Butuh ${cost} limit untuk menggunakan fitur Text-to-Speech.`);
-            return true;
-        }
+                sesi.step = 2;
+                sesi.provider = 'cloudflare';
+                sesi.models = cfModels;
 
-        const chosenModel = list[idx];
-        const textTTS = sesi.textTTS;
-        const targetFrom = sesi.from;
-        const targetMsg = sesi.msg;
-        delete state.sesiTTS[senderId];
-
-        try {
-            await reply(`⏳ Nn... Mengubah teks menjadi suara menggunakan *${chosenModel.name}*. Mohon tunggu...`);
-            const { textToSpeechCloudflare } = require('../services/ai.service');
-            const { buffer, mime } = await textToSpeechCloudflare(textTTS, chosenModel.id);
-
-            const ext = (mime || '').includes('wav') ? 'wav' : 'mp3';
-
-            // Kirim file audio via Document Media (Paling Stabil & 100% Langsung Terkirim Tanpa Hang)
-            await sock.sendMessage(targetFrom, {
-                document: buffer,
-                mimetype: mime || 'audio/mpeg',
-                fileName: `shiroko_tts_${chosenModel.name.toLowerCase()}_${Date.now()}.${ext}`,
-                caption: `🎙️ *Hasil Suara AI (${chosenModel.name}):*\n"${textTTS}"\n\nNn... Berhasil mengubah teks menjadi suara! 🔊`
-            }, { quoted: targetMsg });
-
-            // Kirim juga sebagai pemutar audio langsung jika memungkinkan
-            try {
-                await sock.sendMessage(targetFrom, {
-                    audio: buffer,
-                    mimetype: 'audio/mp4',
-                    ptt: false
+                let menuText = `🎙️ *MODEL SUARA CLOUDFLARE WORKERS AI*\n\nNn... Balas dengan angka untuk memilih model suara (biaya 2 limit):\n\n`;
+                cfModels.forEach((m, i) => {
+                    menuText += `${i + 1}️⃣ *${m.name}*\n   └ 📌 _${m.desc}_\n\n`;
                 });
-            } catch (e) {
-                // Abaikan jika pemutar audio audio/mp4 ditolak WhatsApp
+                menuText += `Ketik *batal* untuk membatalkan.`;
+
+                await reply(menuText);
+                return true;
+
+            } else if (pilihan === '2' || pilihan === 'arisu') {
+                const arisuModels = fetchArisuTTSModels();
+
+                sesi.step = 2;
+                sesi.provider = 'arisu';
+                sesi.models = arisuModels;
+
+                let menuText = `🎙️ *MODEL SUARA ARISUSOFT SATELIT AI*\n\nNn... Balas dengan angka untuk memilih model suara (biaya 2 limit):\n\n`;
+                arisuModels.forEach((m, i) => {
+                    menuText += `${i + 1}️⃣ *${m.name}*\n   └ 📌 _${m.desc}_\n\n`;
+                });
+                menuText += `Ketik *batal* untuk membatalkan.`;
+
+                await reply(menuText);
+                return true;
+
+            } else {
+                await reply('Nn... Pilihan tidak valid. Balas dengan angka *1* (Cloudflare AI) atau *2* (ArisuSoft AI). Atau ketik *batal*.');
+                return true;
+            }
+        }
+
+        // TAHAP 2: PILIH MODEL SPESIFIK & GENERATE AUDIO
+        if (sesi.step === 2) {
+            const idx = parseInt(pilihan) - 1;
+            const list = sesi.models || [];
+
+            if (isNaN(idx) || idx < 0 || idx >= list.length) {
+                await reply(`Nn... Pilihan model suara tidak valid. Balas dengan angka 1 sampai ${list.length} atau ketik *batal*.`);
+                return true;
             }
 
-        } catch (ttsErr) {
-            if (!isOwner) kembalikanLimit(senderId, cost);
-            console.error("🚨 ERROR CLOUDFLARE TTS:", ttsErr.message);
-            await reply(`⚠️ Nn... Gagal membuat suara via Cloudflare AI.\n*Laporan Sistem:* ${ttsErr.message}\nToken limit dikembalikan.`);
+            const cost = 2;
+            const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
+            if (!cekDanPotongLimit(senderId, cost)) {
+                delete state.sesiTTS[senderId];
+                await reply(`Nn... Tokenmu tidak cukup. Butuh ${cost} limit untuk menggunakan fitur Text-to-Speech.`);
+                return true;
+            }
+
+            const chosenModel = list[idx];
+            const textTTS = sesi.textTTS;
+            const targetFrom = sesi.from;
+            const targetMsg = sesi.msg;
+            delete state.sesiTTS[senderId];
+
+            try {
+                await reply(`⏳ Nn... Mengubah teks menjadi suara menggunakan *${chosenModel.name}*. Mohon tunggu...`);
+                const { textToSpeechCloudflare } = require('../services/ai.service');
+                const { buffer, mime } = await textToSpeechCloudflare(textTTS, chosenModel.id);
+
+                const ext = (mime || '').includes('wav') ? 'wav' : 'mp3';
+
+                // Kirim file audio via Document Media (Paling Stabil & 100% Langsung Terkirim Tanpa Hang)
+                await sock.sendMessage(targetFrom, {
+                    document: buffer,
+                    mimetype: mime || 'audio/mpeg',
+                    fileName: `shiroko_tts_${chosenModel.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}.${ext}`,
+                    caption: `🎙️ *Hasil Suara AI (${chosenModel.name}):*\n"${textTTS}"\n\nNn... Berhasil mengubah teks menjadi suara! 🔊`
+                }, { quoted: targetMsg });
+
+                // Kirim juga sebagai pemutar audio langsung jika memungkinkan
+                try {
+                    await sock.sendMessage(targetFrom, {
+                        audio: buffer,
+                        mimetype: 'audio/mp4',
+                        ptt: false
+                    });
+                } catch (e) {
+                    // Abaikan jika pemutar audio audio/mp4 ditolak WhatsApp
+                }
+
+            } catch (ttsErr) {
+                if (!isOwner) kembalikanLimit(senderId, cost);
+                console.error("🚨 ERROR TTS:", ttsErr.message);
+                await reply(`⚠️ Nn... Gagal membuat suara AI.\n*Laporan Sistem:* ${ttsErr.message}\nToken limit dikembalikan.`);
+            }
+            return true;
         }
-        return true;
     }
 
     // ==========================================
-    // HANDLER !TTS / !SUARA (TEXT-TO-SPEECH CLOUDFLARE)
+    // HANDLER !TTS / !SUARA (TEXT-TO-SPEECH MULTI-PROVIDER)
     // ==========================================
     if (textLower.startsWith('!tts') || textLower.startsWith('!suara')) {
         const textTTS = textClean.split(' ').slice(1).join(' ').trim();
@@ -298,23 +344,18 @@ async function handle(ctx) {
             return true;
         }
 
-        await reply('⏳ Nn... Memindai semua model suara (TTS) yang tersedia di API Cloudflare kamu...');
-        const { fetchCloudflareTTSModels } = require('../services/ai.service');
-        const ttsModels = await fetchCloudflareTTSModels();
-
         state.sesiTTS[senderId] = {
             step: 1,
             textTTS: textTTS,
-            models: ttsModels,
             from: from,
             msg: msg
         };
 
-        let menuText = `🎙️ *PILIH MODEL SUARA (TEXT-TO-SPEECH)*\n\nNn... Balas dengan angka untuk memilih model suara (biaya 2 limit):\n\n`;
-        ttsModels.forEach((m, i) => {
-            menuText += `${i + 1}️⃣ *${m.name}*\n   └ 📌 _${m.desc}_\n\n`;
-        });
-        menuText += `Ketik *batal* untuk membatalkan.`;
+        let menuText = `🎙️ *PILIH PROVIDER SUARA (TEXT-TO-SPEECH)*\n\n` +
+            `Nn... Pilih Provider / Server Suara dengan membalas angka:\n\n` +
+            `1️⃣ *Cloudflare Workers AI* ⚡ (Multi-Language & Realtime Voice)\n` +
+            `2️⃣ *ArisuSoft Satelit AI* 🛰️ (Bahasa Indonesia & Voicevox Anime JP)\n\n` +
+            `Ketik *batal* untuk membatalkan.`;
 
         await reply(menuText);
         return true;

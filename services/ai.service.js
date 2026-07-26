@@ -753,8 +753,8 @@ async function textToSpeechCloudflare(textInput, modelName = '@cf/myshell-ai/mel
     return { buffer: rawBuffer, mime };
 }
 
-async function fetchCloudflareTTSModels() {
-    const arisuModels = [
+function fetchArisuTTSModels() {
+    return [
         {
             id: 'arisu-basic',
             name: 'Arisu Basic TTS (Bahasa Indonesia)',
@@ -766,7 +766,9 @@ async function fetchCloudflareTTSModels() {
             desc: 'Suara Anime Jepang Voicevox (Auto Translate Indo -> JP)'
         }
     ];
+}
 
+async function fetchCloudflareTTSModels() {
     const { accountId, token } = getCloudflarePair();
     let result = [];
     try {
@@ -778,7 +780,6 @@ async function fetchCloudflareTTSModels() {
     } catch (err) {
         console.error("Gagal mengambil daftar model TTS dari Cloudflare API:", err.message);
         return [
-            ...arisuModels,
             { id: '@cf/myshell-ai/melotts', name: 'MeloTTS', desc: 'Suara Jernih Natural & Ekspresif (WAV)' },
             { id: '@cf/deepgram/aura-1', name: 'Deepgram Aura 1', desc: 'Suara Bahasa Inggris Natural (Cepat)' },
             { id: '@cf/deepgram/aura-2-en', name: 'Deepgram Aura 2 EN', desc: 'Suara Bahasa Inggris Ekspresif HD' },
@@ -803,7 +804,7 @@ async function fetchCloudflareTTSModels() {
         'aura-2-es': 'Suara Bahasa Spanyol Natural & Ekspresif'
     };
 
-    const cfList = ttsModels.map(m => {
+    return ttsModels.map(m => {
         let parts = m.name.replace(/^@cf\//i, '').split('/');
         let cleanName = parts[parts.length - 1];
         let desc = descMap[cleanName.toLowerCase()] || 'Model AI Text-to-Speech Cloudflare';
@@ -813,8 +814,6 @@ async function fetchCloudflareTTSModels() {
             desc: desc
         };
     });
-
-    return [...arisuModels, ...cfList];
 }
 
 module.exports = {
@@ -832,6 +831,7 @@ module.exports = {
     fetchCloudflareModels,
     fetchCloudflareImageModels,
     fetchCloudflareTTSModels,
+    fetchArisuTTSModels,
     memoriOllama,
     memoriArisu,
     memoriOpenRouter,
