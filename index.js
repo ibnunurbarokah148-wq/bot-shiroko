@@ -215,6 +215,7 @@ startBot().then(() => {
 }).catch(console.error);
 
 // ==========================================
-// MULAI BOT DISCORD (SHARED MEMORY)
+// MULAI BOT DISCORD & MINECRAFT (SHARED MEMORY)
 // ==========================================
 require('./bot-dc.js');
+require('./minecraft.js');
