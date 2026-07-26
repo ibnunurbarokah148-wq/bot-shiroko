@@ -6,35 +6,63 @@ const state = require('../config/state');
 const { getCoreNumber } = require('../utils/helpers');
 
 async function handle(ctx) {
-    const { sock, senderId, isOwner, textLower, reply } = ctx;
+    const { sock, senderId, isOwner, textLower, isQuoted, quotedTextLower, reply } = ctx;
+    const coreSender = getCoreNumber(senderId);
+
+    // Detect if user is replying (quoting) an alarm message
+    const isQuotingAlarmSubuh = isQuoted && (
+        quotedTextLower.includes('alarm subuh') ||
+        quotedTextLower.includes('bangun, sensei') ||
+        quotedTextLower.includes('siram air')
+    );
+
+    const isQuotingSalat = isQuoted && (
+        quotedTextLower.includes('notifikasi taktis') ||
+        quotedTextLower.includes('waktu ibadah') ||
+        quotedTextLower.includes('segera ambil wudhu')
+    );
 
     // ==========================================
-    // SENSOR BANGUN SUBUH
+    // SENSOR BANGUN SUBUH (WAJIB REPLY PESAN ALARM SUBUH)
     // ==========================================
     if (isOwner && state.alarmSubuhState.aktif) {
-        if (textLower === 'iya') {
-            if (state.alarmSubuhState.timer) clearInterval(state.alarmSubuhState.timer);
-            state.alarmSubuhState.aktif = false;
-            state.alarmSubuhState.count = 0;
-            state.alarmSubuhState.timer = null;
-            await reply(`Nn... *(Mengusap keringat di dahi)*. Kerja bagus karena sudah bangun tepat waktu, Sensei. Shiroko senang sekali. Cepat ambil wudhu dan salat ya, Shiroko tungguin dari sini. ✨`);
-            return true;
+        if (isQuotingAlarmSubuh) {
+            const isBangun = ['iya', 'bangun', 'laksanakan', 'siap', 'sudah', 'oke', 'ok'].some(k => textLower.includes(k));
+            
+            if (isBangun) {
+                if (state.alarmSubuhState.timer) clearInterval(state.alarmSubuhState.timer);
+                state.alarmSubuhState.aktif = false;
+                state.alarmSubuhState.count = 0;
+                state.alarmSubuhState.timer = null;
+                await reply(`Nn... *(Mengusap keringat di dahi)*. Kerja bagus karena sudah bangun tepat waktu, Sensei. Shiroko senang sekali. Cepat ambil wudhu dan salat ya, Shiroko tungguin dari sini. ✨`);
+                return true;
+            } else {
+                await reply(`Nn... Sensei! Tidak ada alasan, cepat bangun dan segera ambil wudhu sekarang! 😡💢`);
+                return true;
+            }
         }
     }
 
     // ==========================================
-    // HANDLER SESI SALAT
+    // HANDLER SESI SALAT (WAJIB REPLY PESAN NOTIFIKASI SALAT)
     // ==========================================
-    const coreSender = getCoreNumber(senderId);
-    if (state.sesiSalat[coreSender] && isOwner) {
-        if (textLower === 'laksanakan') {
+    if (isOwner && (state.sesiSalat[coreSender] || isQuotingSalat)) {
+        if (isQuotingSalat) {
+            const isLaksanakan = ['laksanakan', 'iya', 'siap', 'sudah', 'oke', 'ok', 'otw'].some(k => textLower.includes(k));
+            const isAbaikan = ['abaikan', 'nanti', 'tidak', 'ga', 'gak'].some(k => textLower.includes(k));
+
             delete state.sesiSalat[coreSender];
-            await reply(`Nn... Alhamdulillah. Cepat laksanakan ibadahnya, Sensei. Shiroko jaga markas di sini. 🤍`);
-            return true;
-        } else if (textLower === 'abaikan') {
-            delete state.sesiSalat[coreSender];
-            await reply(`Nn... *(Menatap tajam)*... Sensei, ibadah itu wajib. Jangan ditunda-tunda. 💢`);
-            return true;
+
+            if (isLaksanakan) {
+                await reply(`Nn... Alhamdulillah. Cepat laksanakan ibadahnya, Sensei. Shiroko jaga markas di sini. 🤍`);
+                return true;
+            } else if (isAbaikan) {
+                await reply(`Nn... *(Menatap tajam)*... Sensei, ibadah itu wajib. Jangan ditunda-tunda. 💢`);
+                return true;
+            } else {
+                await reply(`Nn... Apapun perkataan Sensei, yang terpenting sekarang adalah segera ambil wudhu dan laksanakan ibadahnya! 🐺✨`);
+                return true;
+            }
         }
     }
 

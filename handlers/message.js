@@ -68,6 +68,15 @@ function registerMessageHandler(sock, isJadibot = false) {
         const quotedMsg = contextInfo?.quotedMessage || null;
         const quotedType = quotedMsg ? Object.keys(quotedMsg)[0] : null;
 
+        let quotedText = '';
+        if (quotedMsg) {
+            if (quotedMsg.conversation) quotedText = quotedMsg.conversation;
+            else if (quotedMsg.extendedTextMessage) quotedText = quotedMsg.extendedTextMessage.text || '';
+            else if (quotedMsg.imageMessage) quotedText = quotedMsg.imageMessage.caption || '';
+            else if (quotedMsg.videoMessage) quotedText = quotedMsg.videoMessage.caption || '';
+        }
+        const quotedTextLower = quotedText.toLowerCase();
+
         // Cek status Owner
         const coreSender = getCoreNumber(senderId);
         const isOwner = ID_OWNER.some(owner => getCoreNumber(owner) === coreSender);
@@ -91,7 +100,7 @@ function registerMessageHandler(sock, isJadibot = false) {
         const ctx = {
             sock, msg, from, senderId, isOwner, isGroup,
             textClean, textLower, msgType,
-            isQuoted, quotedMsg, quotedType,
+            isQuoted, quotedMsg, quotedType, quotedText, quotedTextLower,
             reply, downloadMediaBaileys
         };
 
