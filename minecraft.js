@@ -144,6 +144,12 @@ function createBot() {
         bot.pathfinder.setMovements(movements);
 
         bot.waktuSpawn = Date.now();
+        
+        // Trik untuk melewati bug lompat 1-blok: atur stepHeight menjadi 1 (bot akan melangkah naik tanpa harus melompat, bypass anti-cheat)
+        if (bot.physics) {
+            bot.physics.stepHeight = 1;
+        }
+
         console.log(`[MC] Bot berhasil spawn di koordinat: ${bot.entity.position}`);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
 
@@ -572,8 +578,23 @@ function createBot() {
 
     bot.on('entityHurt', (entity) => {
         if (entity !== bot.entity) return;
-        const mobPenyerang = bot.nearestEntity(e => e.name && hostileMobs.includes(e.name.toLowerCase()) && e.position.distanceTo(bot.entity.position) < 16);
-        if (mobPenyerang) { bot.pathfinder.setGoal(null); mulaiSerang(mobPenyerang); }
+        
+        // Cari penyerang terdekat: mob jahat ATAU player yang bukan owner
+        const mobPenyerang = bot.nearestEntity(e => {
+            if (!e.name && !e.username) return false;
+            const distance = e.position.distanceTo(bot.entity.position);
+            if (distance > 16) return false;
+
+            const isHostileMob = e.name && hostileMobs.includes(e.name.toLowerCase());
+            const isNaughtyPlayer = e.type === 'player' && e.username && !CONFIG.owners.includes(e.username.toLowerCase());
+
+            return isHostileMob || isNaughtyPlayer;
+        });
+
+        if (mobPenyerang) { 
+            bot.pathfinder.setGoal(null); 
+            mulaiSerang(mobPenyerang); 
+        }
     });
 
     const urutanPedang = [
