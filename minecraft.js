@@ -532,7 +532,7 @@ function createBot() {
                 bot.chat("Nn. Menuju kasur.");
                 try {
                     bot.pathfinder.setGoal(null);
-                    await bot.pathfinder.goto(new goals.GoalGetToBlock(kasur.position.x, kasur.position.y, kasur.position.z));
+                    await bot.pathfinder.goto(new goals.GoalNear(kasur.position.x, kasur.position.y, kasur.position.z, 2));
                     await bot.sleep(kasur);
                 } catch (e) { bot.chat("Nn. Tidak bisa tidur sekarang. Kasur terhalang atau ini masih siang."); }
             } else { bot.chat("Nn. Tidak ada kasur di sekitarku, Sensei."); }
@@ -885,7 +885,7 @@ function createBot() {
             if (kasur) {
                 try {
                     bot.pathfinder.setGoal(null);
-                    await bot.pathfinder.goto(new goals.GoalGetToBlock(kasur.position.x, kasur.position.y, kasur.position.z));
+                    await bot.pathfinder.goto(new goals.GoalNear(kasur.position.x, kasur.position.y, kasur.position.z, 2));
                     await bot.sleep(kasur);
                     bot.chat("Nn. Sudah malam. Aku tidur dulu, Sensei.");
                 } catch (err) { }
