@@ -80,11 +80,14 @@ function createBot() {
     bot.on('windowOpen', (window) => {
         const title = window.title ? window.title.toLowerCase() : '';
         if (title.includes('login') || title.includes('register') || title.includes('pin') || title.includes('auth')) {
-            bot.closeWindow(window);
+            // Jangan agresif close window AuthMe karena bisa nge-bug pergerakan di server. Biarkan /login yang menutupnya otomatis.
+            setTimeout(() => {
+                try { bot.closeWindow(window); } catch(e){}
+            }, 5000);
         } else {
             if (!bot.waktuSpawn) bot.waktuSpawn = Date.now();
             if (Date.now() - bot.waktuSpawn < 10000) {
-                bot.closeWindow(window);
+                setTimeout(() => { try { bot.closeWindow(window); } catch(e){} }, 2000);
             }
         }
     });
@@ -131,6 +134,8 @@ function createBot() {
 
         movements.canDig = false;
         movements.canOpenDoors = true;
+        movements.allowSprinting = false; // Mencegah bot gagal melompat/parkour karena desync anti-cheat
+        movements.allowParkour = true;
 
         if (mcData.itemsByName['dirt']) {
             movements.scafoldingBlocks = [mcData.itemsByName['dirt'].id];
