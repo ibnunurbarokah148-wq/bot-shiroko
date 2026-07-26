@@ -139,8 +139,12 @@ Jalankan perintah berikut di terminal VPS kamu secara berurutan:
    pm2 start bot-dc.js --name "shiroko-dc"
    ```
 
-6. **Hubungkan WhatsApp:**
-   Pindai (Scan) Kode QR yang muncul di terminal menggunakan aplikasi WhatsApp di HP kamu (*Perangkat Tertaut / Linked Devices*).
+6. **Hubungkan WhatsApp (Pairing Code):**
+   Bot menggunakan metode login via **Pairing Code** (bukan scan QR). 
+   - Pastikan kamu sudah mengisi nomor WA bot di file `.env` pada variabel `WA_PHONE_NUMBER` (Gunakan awalan kode negara, misal: `62812xxx`).
+   - Jalankan bot, lalu lihat terminal/console. Bot akan memunculkan 8 digit kode angka.
+   - Buka WhatsApp di HP bot > **Perangkat Tertaut (Linked Devices)** > **Tautkan dengan Nomor Telepon (Link with Phone Number)**.
+   - Masukkan 8 digit kode angka tersebut ke WhatsApp.
 
 ---
 
