@@ -8,7 +8,7 @@ const { exec } = require('child_process');
 const axios = require('axios');
 const state = require('../config/state');
 const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
-const { getGeminiComponents, getShirokoModel } = require('../services/ai.service');
+const { getGeminiComponents, getShirokoModel } = require('../services/ai/providers/gemini');
 const { tambahMetadataStiker } = require('../utils/sticker');
 const { antrianGambar, prosesAntrianGambar } = require('../services/comfyui.service');
 
@@ -90,7 +90,7 @@ async function handle(ctx) {
             } else if (pilihan === '3') {
                 // Sub-menu Cloudflare Workers AI (Hasil Scanning Dinamis)
                 await reply('⏳ Nn... Memindai semua model gambar yang tersedia di API Cloudflare kamu...');
-                const { fetchCloudflareImageModels } = require('../services/ai.service');
+                const { fetchCloudflareImageModels } = require('../services/ai/providers/cloudflare');
                 const cfModels = await fetchCloudflareImageModels();
                 
                 sesi.step = 2;
@@ -163,7 +163,7 @@ async function handle(ctx) {
             if (isCloudflare) {
                 try {
                     await reply(`Nn... Mengalihkan render ke Cloudflare AI (${namaModel}). Mohon tunggu...`);
-                    const { generateCloudflareImage } = require('../services/ai.service');
+                    const { generateCloudflareImage } = require('../services/ai/providers/cloudflare');
                     const { buffer, mime } = await generateCloudflareImage(promptMentah, cfModel);
                     
                     await sock.sendMessage(targetFrom, {
@@ -234,7 +234,8 @@ async function handle(ctx) {
 
         // TAHAP 1: PILIH PROVIDER (Cloudflare vs ArisuSoft)
         if (sesi.step === 1) {
-            const { fetchCloudflareTTSModels, fetchArisuTTSModels } = require('../services/ai.service');
+            const { fetchCloudflareTTSModels } = require('../services/ai/providers/cloudflare');
+            const { fetchArisuTTSModels } = require('../services/ai/providers/arisu');
 
             if (pilihan === '1' || pilihan === 'cloudflare') {
                 await reply('⏳ Nn... Memindai semua model suara dari Cloudflare Workers AI...');
@@ -301,7 +302,7 @@ async function handle(ctx) {
 
             try {
                 await reply(`⏳ Nn... Mengubah teks menjadi suara menggunakan *${chosenModel.name}*. Mohon tunggu...`);
-                const { textToSpeechCloudflare } = require('../services/ai.service');
+                const { textToSpeechCloudflare } = require('../services/ai/providers/cloudflare');
                 const { buffer, mime } = await textToSpeechCloudflare(textTTS, chosenModel.id);
 
                 const ext = (mime || '').includes('wav') ? 'wav' : 'mp3';

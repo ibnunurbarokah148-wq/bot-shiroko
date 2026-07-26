@@ -1,5 +1,8 @@
 const { ActionRowBuilder, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
-const { getGeminiComponents, tanyaOpenRouter, tanyaCloudflare, fetchOpenRouterModels, fetchCloudflareModels } = require('../services/ai.service');
+const { getGeminiComponents } = require('../services/ai/providers/gemini');
+const AIProvider = require('../services/ai/AIProvider');
+const { fetchModels: fetchOpenRouterModels } = require('../services/ai/providers/openrouter');
+const { fetchModels: fetchCloudflareModels } = require('../services/ai/providers/cloudflare');
 const axios = require('axios');
 
 module.exports = {
@@ -208,9 +211,23 @@ module.exports = {
                             chatHistory.push({ role: 'model', parts: [{ text: balasanAI }] });
 
                         } else if (chosenModel === 'openrouter') {
-                            balasanAI = await tanyaOpenRouter(message.author.id, m.content, true, openrouterModelName, systemInstruction);
+                            balasanAI = await AIProvider.generate({
+                                provider: 'openrouter',
+                                model: openrouterModelName,
+                                prompt: m.content,
+                                senderId: message.author.id,
+                                isOwner: true,
+                                systemPrompt: systemInstruction
+                            });
                         } else if (chosenModel === 'cloudflare') {
-                            balasanAI = await tanyaCloudflare(message.author.id, m.content, true, cloudflareModelName, systemInstruction);
+                            balasanAI = await AIProvider.generate({
+                                provider: 'cloudflare',
+                                model: cloudflareModelName,
+                                prompt: m.content,
+                                senderId: message.author.id,
+                                isOwner: true,
+                                systemPrompt: systemInstruction
+                            });
                         } else if (chosenModel === 'ollama') {
                             chatHistoryOllama.push({ role: 'user', content: m.content });
                             if (chatHistoryOllama.length > 11) chatHistoryOllama.splice(1, 2);

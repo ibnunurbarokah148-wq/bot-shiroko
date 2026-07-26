@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
-const { getGeminiComponents } = require('./services/ai.service');
+const { getGeminiComponents } = require('./services/ai/providers/gemini');
 const PixivApi = require('pixiv-api-client');
 const axios = require('axios');
 const cmdGacha = require('./commands-dc/gacha');

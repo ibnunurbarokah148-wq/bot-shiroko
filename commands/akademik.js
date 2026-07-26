@@ -5,7 +5,7 @@
 const axios = require('axios');
 const state = require('../config/state');
 const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
-const { getShirokoModel, getAkademikModel, tanyaOllama, tanyaArisu } = require('../services/ai.service');
+const AIProvider = require('../services/ai/AIProvider');
 
 async function handle(ctx) {
     const { sock, from, senderId, isOwner, textClean, textLower, reply } = ctx;
@@ -17,6 +17,27 @@ async function handle(ctx) {
             'gemini': 2, 'ollama': 0
         };
         return costMap[mode] || 2;
+    }
+
+    /**
+     * Helper eksekusi AI untuk fitur akademik.
+     */
+    async function prosesAkademikAI(promptAI) {
+        const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
+        const userMode = state.userAIMode[senderId] || defaultMode;
+        const { provider, model } = AIProvider.resolveMode(userMode, senderId);
+        
+        // Custom system prompt agar AI menjawab dengan gaya asisten akademik formal (bukan Shiroko yang biasa)
+        const systemPrompt = "Kamu adalah asisten akademik profesional. Jawablah dengan bahasa Indonesia formal, terstruktur, akurat, dan gunakan referensi jika diperlukan.";
+        
+        return await AIProvider.generate({
+            provider,
+            model,
+            prompt: promptAI,
+            senderId,
+            isOwner,
+            systemPrompt
+        });
     }
 
     // ==========================================
@@ -46,20 +67,7 @@ async function handle(ctx) {
             await reply(`Nn... Menyusun ${sesi.jenis}. Proses ini mungkin cukup lama...`);
             try {
                 const promptAI = `Buatkan ${sesi.jenis} akademik lengkap.\nTOPIK:\n${textClean}\nATURAN: Gunakan bahasa Indonesia formal akademik. Minimal 700 kata. Beri referensi.`;
-                let hasilTeks = "";
-
-                const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
-                const userMode = state.userAIMode[senderId] || defaultMode;
-                if (['ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'].includes(userMode)) {
-                    let endpoint = userMode === 'ds3' ? 'deepseek-v3' : userMode === 'ds4' ? 'deepseek-v4' : userMode === 'arisu-gemini' ? 'gemini' : userMode;
-                    hasilTeks = await tanyaArisu(senderId, promptAI, isOwner, endpoint);
-                } else if (userMode === 'ollama') {
-                    hasilTeks = await tanyaOllama(senderId, promptAI, isOwner);
-                } else {
-                    const result = await getAkademikModel().generateContent(promptAI);
-                    hasilTeks = result.response.text();
-                }
-
+                const hasilTeks = await prosesAkademikAI(promptAI);
                 await reply(`📚 *HASIL ${sesi.jenis.toUpperCase()}*\n\n${hasilTeks}`);
             } catch (err) {
                 kembalikanLimit(senderId);
@@ -116,23 +124,13 @@ async function handle(ctx) {
         if (!teksAsli) { await reply('Nn... Mana teks yang mau diparafrase?'); return true; }
         try {
             await reply('Nn... Mengaktifkan protokol Anti-Plagiasi...');
-            const promptAI = `Parafrase teks ini ke bahasa Indonesia akademik formal: "${teksAsli}"`;
-            let hasilTeks = "";
-
             const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
             const userMode = state.userAIMode[senderId] || defaultMode;
             const cost = getAiCost(userMode);
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
-            if (['ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'].includes(userMode)) {
-                let endpoint = userMode === 'ds3' ? 'deepseek-v3' : userMode === 'ds4' ? 'deepseek-v4' : userMode === 'arisu-gemini' ? 'gemini' : userMode;
-                hasilTeks = await tanyaArisu(senderId, promptAI, isOwner, endpoint);
-            } else if (userMode === 'ollama') {
-                hasilTeks = await tanyaOllama(senderId, promptAI, isOwner);
-            } else {
-                const result = await getShirokoModel().generateContent(promptAI);
-                hasilTeks = result.response.text().trim();
-            }
+            const promptAI = `Parafrase teks ini ke bahasa Indonesia akademik formal: "${teksAsli}"`;
+            const hasilTeks = await prosesAkademikAI(promptAI);
 
             await reply(`*📝 HASIL PARAFRASE*\n\n${hasilTeks}`);
         } catch (error) { await reply('Nn... Mesin pengolah kata error.'); }
@@ -146,23 +144,13 @@ async function handle(ctx) {
         const teksAsli = textClean.substring(9).trim();
         if (!teksAsli) { await reply('Nn... Mana teks yang mau diringkas?'); return true; }
         try {
-            const promptAI = `Buatkan ringkasan bullet points dari teks ini: "${teksAsli}"`;
-            let hasilTeks = "";
-
             const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
             const userMode = state.userAIMode[senderId] || defaultMode;
             const cost = getAiCost(userMode);
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
-            if (['ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'].includes(userMode)) {
-                let endpoint = userMode === 'ds3' ? 'deepseek-v3' : userMode === 'ds4' ? 'deepseek-v4' : userMode === 'arisu-gemini' ? 'gemini' : userMode;
-                hasilTeks = await tanyaArisu(senderId, promptAI, isOwner, endpoint);
-            } else if (userMode === 'ollama') {
-                hasilTeks = await tanyaOllama(senderId, promptAI, isOwner);
-            } else {
-                const result = await getShirokoModel().generateContent(promptAI);
-                hasilTeks = result.response.text().trim();
-            }
+            const promptAI = `Buatkan ringkasan bullet points dari teks ini: "${teksAsli}"`;
+            const hasilTeks = await prosesAkademikAI(promptAI);
 
             await reply(`*📑 HASIL RINGKASAN*\n\n${hasilTeks}`);
         } catch (error) { await reply('Nn... Gagal meringkas.'); }
@@ -176,23 +164,13 @@ async function handle(ctx) {
         const jurusanTopik = textClean.substring(5).trim();
         if (!jurusanTopik) { await reply('Nn... Masukkan jurusan.'); return true; }
         try {
-            const promptAI = `Berikan 3 ide judul skripsi untuk jurusan "${jurusanTopik}" beserta fokus masalahnya.`;
-            let hasilTeks = "";
-
             const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
             const userMode = state.userAIMode[senderId] || defaultMode;
             const cost = getAiCost(userMode);
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
-            if (['ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'].includes(userMode)) {
-                let endpoint = userMode === 'ds3' ? 'deepseek-v3' : userMode === 'ds4' ? 'deepseek-v4' : userMode === 'arisu-gemini' ? 'gemini' : userMode;
-                hasilTeks = await tanyaArisu(senderId, promptAI, isOwner, endpoint);
-            } else if (userMode === 'ollama') {
-                hasilTeks = await tanyaOllama(senderId, promptAI, isOwner);
-            } else {
-                const result = await getShirokoModel().generateContent(promptAI);
-                hasilTeks = result.response.text().trim();
-            }
+            const promptAI = `Berikan 3 ide judul skripsi untuk jurusan "${jurusanTopik}" beserta fokus masalahnya.`;
+            const hasilTeks = await prosesAkademikAI(promptAI);
 
             await reply(`*💡 REKOMENDASI PENELITIAN*\n\n${hasilTeks}`);
         } catch (error) { await reply('Nn... Generator ide error.'); }

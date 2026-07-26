@@ -5,7 +5,7 @@
 // ==========================================
 const { ID_OWNER } = require('../config/constants');
 const { dbRole, simpanRole, getCoreNumber, cekDanPotongLimit, kembalikanLimit } = require('../config/db');
-const { getGeminiComponents } = require('../services/ai.service');
+const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const state = require('../config/state');
 
 async function handle(ctx) {
