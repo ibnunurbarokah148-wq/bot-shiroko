@@ -76,6 +76,36 @@ function createBot() {
 
     bot.loadPlugin(pathfinder);
 
+    // --- AUTHME AUTO LOGIN / REGISTER ---
+    bot.on('windowOpen', (window) => {
+        const title = window.title ? window.title.toLowerCase() : '';
+        if (title.includes('login') || title.includes('register') || title.includes('pin') || title.includes('auth')) {
+            bot.closeWindow(window);
+        } else {
+            if (!bot.waktuSpawn) bot.waktuSpawn = Date.now();
+            if (Date.now() - bot.waktuSpawn < 10000) {
+                bot.closeWindow(window);
+            }
+        }
+    });
+    
+    bot.on('message', (jsonMsg) => {
+        const text = jsonMsg.toString().toLowerCase();
+        const password = process.env.MC_AUTHME_PASSWORD;
+        if (!password) return;
+
+        if (text.includes('/reg ') || text.includes('/register') || text.includes('register')) {
+            if (text.includes('password') || text.includes('pin') || text.includes('/reg')) {
+                setTimeout(() => { bot.chat(`/reg ${password} ${password}`); }, 1000);
+            }
+        } else if (text.includes('/login ') || text.includes('login')) {
+            if (text.includes('password') || text.includes('pin') || text.includes('/login')) {
+                setTimeout(() => { bot.chat(`/login ${password}`); }, 1000);
+            }
+        }
+    });
+    // ------------------------------------
+
     // --- State internal bot ---
     let mcData = null;
     let targetSerangan = null;
@@ -107,43 +137,6 @@ function createBot() {
         }
 
         bot.pathfinder.setMovements(movements);
-
-        // --- AUTHME AUTO LOGIN / REGISTER ---
-        bot.on('windowOpen', (window) => {
-            const title = window.title ? window.title.toLowerCase() : '';
-            // Kalau judulnya mencurigakan seperti AuthMe atau Pin, atau baru banget masuk server, langsung close
-            if (title.includes('login') || title.includes('register') || title.includes('pin') || title.includes('auth')) {
-                bot.closeWindow(window);
-            } else {
-                // Fallback: tutup secara brutal kalau chest terbuka kurang dari 10 detik sejak bot spawn
-                if (!bot.waktuSpawn) bot.waktuSpawn = Date.now();
-                if (Date.now() - bot.waktuSpawn < 10000) {
-                    bot.closeWindow(window);
-                }
-            }
-        });
-        
-        bot.on('message', (jsonMsg) => {
-            const text = jsonMsg.toString().toLowerCase();
-            const password = process.env.MC_AUTHME_PASSWORD;
-            if (!password) return;
-
-            // Kalau ada chat yang menyuruh register / login
-            if (text.includes('/reg ') || text.includes('/register') || text.includes('register')) {
-                if (text.includes('password') || text.includes('pin') || text.includes('/reg')) {
-                    setTimeout(() => {
-                        bot.chat(`/reg ${password} ${password}`);
-                    }, 1000);
-                }
-            } else if (text.includes('/login ') || text.includes('login')) {
-                if (text.includes('password') || text.includes('pin') || text.includes('/login')) {
-                    setTimeout(() => {
-                        bot.chat(`/login ${password}`);
-                    }, 1000);
-                }
-            }
-        });
-        // ------------------------------------
 
         bot.waktuSpawn = Date.now();
         console.log(`[MC] Bot berhasil spawn di koordinat: ${bot.entity.position}`);
