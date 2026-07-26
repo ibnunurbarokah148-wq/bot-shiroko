@@ -18,6 +18,7 @@ const general = require('../commands/general');
 const akademik = require('../commands/akademik');
 const media = require('../commands/media');
 const data = require('../commands/data');
+const minecraft = require('../commands/minecraft');
 const ai = require('../commands/ai');
 
 function registerMessageHandler(sock, isJadibot = false) {
@@ -159,6 +160,7 @@ function registerMessageHandler(sock, isJadibot = false) {
             if (await akademik.handle(ctx)) return;
             if (await media.handle(ctx)) return;
             if (await data.handle(ctx)) return;
+            if (await minecraft.handle(ctx)) return;
             if (await ai.handle(ctx)) return;  // HARUS TERAKHIR — punya catch-all chat
         } catch (error) {
             console.error('🚨 ERROR HANDLER PESAN:', error);

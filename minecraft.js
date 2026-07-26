@@ -61,7 +61,11 @@ function isAreaAman(blockPos) {
     return blockPos.distanceTo(posisiRumah) > CONFIG_RUMAH.radiusAman;
 }
 
+let activeMcBot = null;
+let autoReconnect = false; // flag untuk auto-reconnect
+
 function createBot() {
+    autoReconnect = true;
     const bot = mineflayer.createBot({
         host: CONFIG.host,
         port: CONFIG.port,
@@ -812,13 +816,17 @@ function createBot() {
     bot.on('error', err => console.error("[ERROR] Bot:", err.message));
     bot.on('kicked', reason => console.log("[WARN] Bot di-kick:", reason));
     bot.on('end', reason => {
-        console.log(`[INFO] Koneksi terputus. Reconnect...`);
+        console.log(`[INFO] Koneksi terputus. Reconnect: ${autoReconnect}`);
         if (afkInterval) clearInterval(afkInterval);
         if (radarInterval) clearInterval(radarInterval);
         if (mandiriInterval) clearInterval(mandiriInterval);
         if (loopSerangan) clearInterval(loopSerangan);
         
-        setTimeout(createBot, CONFIG.reconnectDelay);
+        if (autoReconnect) {
+            setTimeout(() => {
+                if (autoReconnect) activeMcBot = createBot();
+            }, CONFIG.reconnectDelay);
+        }
     });
 
     let lastTimeCheck = 0;
@@ -858,7 +866,19 @@ function createBot() {
     return bot;
 }
 
-let activeMcBot = createBot();
+function startMcBot() {
+    if (activeMcBot) return false; // Sudah nyala
+    activeMcBot = createBot();
+    return true;
+}
+
+function stopMcBot() {
+    if (!activeMcBot) return false; // Sudah mati
+    autoReconnect = false;
+    activeMcBot.quit();
+    activeMcBot = null;
+    return true;
+}
 
 function getMinecraftBot() {
     return activeMcBot;
@@ -881,7 +901,8 @@ function getMinecraftStatus() {
 }
 
 module.exports = {
-    createBot,
+    startMcBot,
+    stopMcBot,
     getMinecraftBot,
     getMinecraftStatus
 };
