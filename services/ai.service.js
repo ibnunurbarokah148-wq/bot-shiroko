@@ -632,7 +632,46 @@ async function generateCloudflareImage(promptInput, modelName = '@cf/stabilityai
     return { buffer: rawBuffer, mime };
 }
 
+async function textToSpeechArisu(textInput, modelType = 'arisu-basic') {
+    const apiKey = process.env.ARISU_API_KEY;
+    if (!apiKey) throw new Error("ARISU_API_KEY tidak terpasang di file .env");
+
+    let url = '';
+    if (modelType === 'voicevox' || modelType === 'arisu-voicevox') {
+        url = `https://api.arisusoft.com/api/v2/tools/voicevox?text=${encodeURIComponent(textInput)}&speaker=3&style=jp`;
+    } else {
+        url = `https://api.arisusoft.com/api/v2/tools/tts?text=${encodeURIComponent(textInput)}&voice=id`;
+    }
+
+    const response = await axios.get(url, {
+        headers: { "Authorization": `Bearer ${apiKey}` },
+        timeout: 30000
+    });
+
+    if (response.data && response.data.success && response.data.data?.url) {
+        const audioRes = await axios.get(response.data.data.url, { responseType: 'arraybuffer', timeout: 30000 });
+        const rawBuffer = Buffer.from(audioRes.data);
+
+        let mime = 'audio/wav';
+        const hex = rawBuffer.subarray(0, 4).toString('hex').toUpperCase();
+        if (hex.startsWith('5249')) {
+            mime = 'audio/wav';
+        } else if (hex.startsWith('FFF3') || hex.startsWith('FFF2') || hex.startsWith('FFFB') || hex.startsWith('494433')) {
+            mime = 'audio/mpeg';
+        } else if (hex.startsWith('4F676753')) {
+            mime = 'audio/ogg';
+        }
+
+        return { buffer: rawBuffer, mime };
+    }
+    throw new Error(`ArisuSoft TTS (${modelType}) Error: ${JSON.stringify(response.data?.error || response.data)}`);
+}
+
 async function textToSpeechCloudflare(textInput, modelName = '@cf/myshell-ai/melotts') {
+    if (modelName === 'arisu-basic' || modelName === 'arisu-voicevox') {
+        return await textToSpeechArisu(textInput, modelName);
+    }
+
     const cleanModel = modelName.startsWith('@cf/') ? modelName : `@cf/${modelName}`;
     const { accountId, token } = getCloudflarePair();
     const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`;
@@ -715,6 +754,19 @@ async function textToSpeechCloudflare(textInput, modelName = '@cf/myshell-ai/mel
 }
 
 async function fetchCloudflareTTSModels() {
+    const arisuModels = [
+        {
+            id: 'arisu-basic',
+            name: 'Arisu Basic TTS (Bahasa Indonesia)',
+            desc: 'Suara Bahasa Indonesia Natural & Jernih (ArisuSoft API)'
+        },
+        {
+            id: 'arisu-voicevox',
+            name: 'Arisu Voicevox (Anime Voice JP)',
+            desc: 'Suara Anime Jepang Voicevox (Auto Translate Indo -> JP)'
+        }
+    ];
+
     const { accountId, token } = getCloudflarePair();
     let result = [];
     try {
@@ -726,6 +778,7 @@ async function fetchCloudflareTTSModels() {
     } catch (err) {
         console.error("Gagal mengambil daftar model TTS dari Cloudflare API:", err.message);
         return [
+            ...arisuModels,
             { id: '@cf/myshell-ai/melotts', name: 'MeloTTS', desc: 'Suara Jernih Natural & Ekspresif (WAV)' },
             { id: '@cf/deepgram/aura-1', name: 'Deepgram Aura 1', desc: 'Suara Bahasa Inggris Natural (Cepat)' },
             { id: '@cf/deepgram/aura-2-en', name: 'Deepgram Aura 2 EN', desc: 'Suara Bahasa Inggris Ekspresif HD' },
@@ -750,7 +803,7 @@ async function fetchCloudflareTTSModels() {
         'aura-2-es': 'Suara Bahasa Spanyol Natural & Ekspresif'
     };
 
-    return ttsModels.map(m => {
+    const cfList = ttsModels.map(m => {
         let parts = m.name.replace(/^@cf\//i, '').split('/');
         let cleanName = parts[parts.length - 1];
         let desc = descMap[cleanName.toLowerCase()] || 'Model AI Text-to-Speech Cloudflare';
@@ -760,6 +813,8 @@ async function fetchCloudflareTTSModels() {
             desc: desc
         };
     });
+
+    return [...arisuModels, ...cfList];
 }
 
 module.exports = {

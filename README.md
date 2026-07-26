@@ -54,7 +54,7 @@ Bot ini dilengkapi dengan 5 penyedia AI utama yang terintegrasi penuh:
 - **QRIS Dynamic Decoder**: Fitur `!topup` yang secara otomatis mengurai QRIS Static DANA menjadi QRIS Dynamic sesuai nominal pesanan token limit.
 
 ### 🛠️ 6. Utilitas Media & Intel
-- **Cloudflare Text-to-Speech (TTS) Voice Note (`!tts` / `!suara`)**: Mengubah teks apapun menjadi pesan suara / Voice Note (VN) jernih langsung di WhatsApp via Cloudflare AI (*MeloTTS, Deepgram Aura*).
+- **Multi-Provider Text-to-Speech (TTS) (`!tts` / `!suara`)**: Mengubah teks menjadi audio/suara jernih via **ArisuSoft API** (*Basic Bahasa Indonesia & Voicevox Anime Jepang*) serta **Cloudflare Workers AI** (*MeloTTS, Deepgram Aura*).
 - **TikTok Downloader**: Download Video (tanpa Watermark), Audio, atau Slideshow Foto.
 - **Visual Search**: Pencarian gambar anime resolusi tinggi dari **Pixiv** (Multi-page support), **Danbooru**, dan **Nekosia**.
 - **PDF to JPG Converter**: Memecah dokumen PDF menjadi gambar HD.
