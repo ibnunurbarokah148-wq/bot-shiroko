@@ -716,6 +716,33 @@ function createBot() {
         }
     }
 
+    // ----------------------------------------------------------
+    // EVENT: MATI (AUTO RESPAWN & NOTIFIKASI WA OWNER)
+    // ----------------------------------------------------------
+    bot.on('death', () => {
+        console.log("[WARN] Shiroko gugur di Minecraft. Memproses respawn...");
+        modeMandiri = false;
+        sedangKerja = false;
+        berhentiSerang();
+
+        try {
+            const sock = getSocket();
+            const idOwnerJid = ID_OWNER[0] + '@s.whatsapp.net';
+            if (sock) {
+                sock.sendMessage(idOwnerJid, {
+                    text: `🚨 *LAPORAN MINECRAFT* 🚨\n\nNn... Shiroko gugur di medan perang (Minecraft). Otomatis melakukan respawn di titik awal.`
+                }).catch(() => {});
+            }
+        } catch (e) {}
+
+        setTimeout(() => {
+            try {
+                bot.respawn();
+                bot.chat("Nn... Shiroko kembali dari titik respawn, Sensei.");
+            } catch (err) {}
+        }, 2500);
+    });
+
     bot.on('error', err => console.error("[ERROR] Bot:", err.message));
     bot.on('kicked', reason => console.log("[WARN] Bot di-kick:", reason));
     bot.on('end', reason => {
@@ -728,11 +755,11 @@ function createBot() {
         setTimeout(createBot, CONFIG.reconnectDelay);
     });
 
-    let lastTimeCheck = 0; // Tambahkan ini sebagai pengingat waktu
+    let lastTimeCheck = 0;
 
     bot.on('time', async () => {
         const sekarangMS = Date.now();
-        if (sekarangMS - lastTimeCheck < 5000) return; // PERBAIKAN: Hanya cek tiap 5 detik
+        if (sekarangMS - lastTimeCheck < 5000) return;
         lastTimeCheck = sekarangMS;
 
         const waktu = bot.time.timeOfDay;
@@ -750,6 +777,12 @@ function createBot() {
                     await bot.sleep(kasur);
                     bot.chat("Nn. Sudah malam. Aku tidur dulu, Sensei.");
                 } catch (err) { }
+            } else {
+                // Jika tidak ada kasur terdekat, pulang ke zona aman rumah
+                try {
+                    bot.chat("Nn. Hari sudah malam dan banyak monster. Pulang ke rumah aman.");
+                    bot.pathfinder.setGoal(new goals.GoalNear(CONFIG_RUMAH.petiX, CONFIG_RUMAH.petiY, CONFIG_RUMAH.petiZ, 3));
+                } catch (e) {}
             }
             setTimeout(() => { sedangMencariKasur = false; }, 15000);
         }
@@ -765,7 +798,24 @@ function getMinecraftBot() {
     return activeMcBot;
 }
 
+function getMinecraftStatus() {
+    if (!activeMcBot || !activeMcBot.entity) {
+        return { online: false };
+    }
+    const pos = activeMcBot.entity.position;
+    const items = activeMcBot.inventory.items().map(i => `${i.name} x${i.count}`).join(', ') || 'Kosong';
+    return {
+        online: true,
+        username: activeMcBot.username,
+        health: Math.round(activeMcBot.health),
+        food: Math.round(activeMcBot.food),
+        position: { x: Math.round(pos.x), y: Math.round(pos.y), z: Math.round(pos.z) },
+        inventory: items
+    };
+}
+
 module.exports = {
     createBot,
-    getMinecraftBot
+    getMinecraftBot,
+    getMinecraftStatus
 };

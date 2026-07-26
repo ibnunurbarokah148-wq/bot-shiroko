@@ -38,6 +38,46 @@ async function handle(ctx) {
     }
 
     // ==========================================
+    // KONTROL MINECRAFT BOT VIA WHATSAPP (!mc)
+    // ==========================================
+    if (textLower.startsWith('!mc') || textLower.startsWith('!minecraft')) {
+        const { getMinecraftStatus, getMinecraftBot } = require('../minecraft');
+        const mcStatus = getMinecraftStatus();
+
+        if (!mcStatus.online) {
+            await reply('🎮 *STATUS MINECRAFT SHIROKO*\n\nNn... Bot Minecraft saat ini sedang offline atau dalam proses menyambung ulang.');
+            return true;
+        }
+
+        const args = textClean.split(' ').slice(1);
+        const subCmd = (args[0] || '').toLowerCase();
+
+        if (subCmd === 'chat') {
+            const pesan = args.slice(1).join(' ');
+            if (!pesan) {
+                await reply('Nn... Masukkan pesan yang ingin dikirim ke chat Minecraft. Contoh:\n!mc chat Halo semuanya');
+                return true;
+            }
+            const mcBot = getMinecraftBot();
+            if (mcBot) {
+                mcBot.chat(`[WA Sensei]: ${pesan}`);
+                await reply(`Nn... Pesan berhasil terkirim ke chat server Minecraft:\n"${pesan}"`);
+            }
+            return true;
+        }
+
+        let info = `🎮 *STATUS MINECRAFT SHIROKO*\n\n` +
+            `👤 *Username:* ${mcStatus.username}\n` +
+            `❤️ *Darah (HP):* ${mcStatus.health}/20 | 🍖 *Makan:* ${mcStatus.food}/20\n` +
+            `📍 *Koordinat:* X: ${mcStatus.position.x}, Y: ${mcStatus.position.y}, Z: ${mcStatus.position.z}\n` +
+            `🎒 *Isi Tas (Inv):* ${mcStatus.inventory}\n\n` +
+            `_Gunakan *!mc chat [pesan]* untuk berbicara ke server Minecraft via WhatsApp._`;
+
+        await reply(info);
+        return true;
+    }
+
+    // ==========================================
     // NAK COBA (dari Website)
     // ==========================================
     if (textLower === 'nak coba') {
