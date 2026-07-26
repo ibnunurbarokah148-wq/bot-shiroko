@@ -534,21 +534,87 @@ function createBot() {
         if (mobPenyerang) { bot.pathfinder.setGoal(null); mulaiSerang(mobPenyerang); }
     });
 
+    const urutanPedang = [
+        'netherite_sword', 'diamond_sword', 'iron_sword', 
+        'golden_sword', 'stone_sword', 'wooden_sword',
+        'netherite_axe', 'diamond_axe', 'iron_axe', 'stone_axe'
+    ];
+
+    async function pasangSenjataTerbaik() {
+        try {
+            const itemDiTangan = bot.inventory.slots[bot.getEquipmentDestSlot('hand')];
+            if (!itemDiTangan || (!itemDiTangan.name.includes('sword') && !itemDiTangan.name.includes('axe'))) {
+                for (const namaPedang of urutanPedang) {
+                    const senjata = bot.inventory.items().find(i => i.name === namaPedang);
+                    if (senjata) {
+                        await bot.equip(senjata, 'hand');
+                        break;
+                    }
+                }
+            }
+            // Pasang Perisai di tangan kiri (off-hand) jika ada di inventory
+            const perisai = bot.inventory.items().find(i => i.name === 'shield');
+            if (perisai) {
+                await bot.equip(perisai, 'off-hand');
+            }
+        } catch (e) {}
+    }
+
     function mulaiSerang(target) {
         targetSerangan = target;
         if (loopSerangan) clearInterval(loopSerangan);
 
-        loopSerangan = setInterval(() => {
+        pasangSenjataTerbaik();
+
+        loopSerangan = setInterval(async () => {
             if (!targetSerangan || !targetSerangan.isValid || (targetSerangan.health && targetSerangan.health <= 0)) {
-                bot.chat("Nn. Ancaman selesai.");
+                bot.chat("Nn. Ancaman berhasil dieliminasi.");
                 return berhentiSerang();
             }
+
+            const targetName = (targetSerangan.name || '').toLowerCase();
+            const jarak = bot.entity.position.distanceTo(targetSerangan.position);
+
+            // TAKTIK KHUSUS CREEPER: HIT & RUN (Mundur agar tidak meledak di muka Shiroko)
+            if (targetName === 'creeper') {
+                if (jarak < 3.2) {
+                    bot.lookAt(targetSerangan.position.offset(0, targetSerangan.height ?? 1, 0));
+                    bot.attack(targetSerangan);
+
+                    // Mundur 4 blok ke belakang setelah memukul creeper
+                    try {
+                        const vectorMundur = bot.entity.position.minus(targetSerangan.position).normalize().scaled(4);
+                        const posMundur = bot.entity.position.plus(vectorMundur);
+                        bot.pathfinder.setGoal(new goals.GoalNear(posMundur.x, posMundur.y, posMundur.z, 1));
+                    } catch (e) {}
+                } else {
+                    bot.pathfinder.setGoal(new goals.GoalFollow(targetSerangan, 2.5), true);
+                }
+                return;
+            }
+
+            // MOB LAIN (Zombie, Skeleton, Spider, dll)
             bot.pathfinder.setGoal(new goals.GoalFollow(targetSerangan, 2), true);
-            if (bot.entity.position.distanceTo(targetSerangan.position) < 3.5) {
+
+            if (jarak < 3.5) {
                 bot.lookAt(targetSerangan.position.offset(0, targetSerangan.height ?? 1, 0));
                 bot.attack(targetSerangan);
             }
-        }, 400);
+
+            // Cek Darah Darurat saat Combat
+            if (bot.health < 10 && !sedangMakan) {
+                const makanan = bot.inventory.items().find(i => daftarMakanan.includes(i.name));
+                if (makanan) {
+                    sedangMakan = true;
+                    try {
+                        await bot.equip(makanan, 'hand');
+                        await bot.consume();
+                        await pasangSenjataTerbaik();
+                    } catch (e) {}
+                    sedangMakan = false;
+                }
+            }
+        }, 625); // Interval 625ms sesuai Cooldown Ayunan Pedang Minecraft 1.9+
     }
 
     function berhentiSerang() {
