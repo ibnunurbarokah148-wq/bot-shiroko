@@ -1,6 +1,5 @@
 require('dotenv').config();
 const mineflayer = require('mineflayer');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
 const axios = require('axios');
 const { Vec3 } = require('vec3');
@@ -31,12 +30,6 @@ const CONFIG_RUMAH = {
     petiZ: 37,
     radiusAman: 20 // Jarak aman (blok). Shiroko dilarang menambang di radius ini!
 };
-
-const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const model = genAI ? genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    systemInstruction: "Kamu adalah Sunaookami Shiroko dari Blue Archive. Tenang, datar, analitis, suka merampok. Panggil pemain 'Sensei'."
-}) : null;
 
 const kamusBlok = {
     "tanah": "dirt",
@@ -505,17 +498,34 @@ function createBot() {
         }
 
         // ==========================================================
-        //  AI RESPONS (FALLBACK JIKA BUKAN PERINTAH)
+        //  AI RESPONS (FALLBACK JIKA BUKAN PERINTAH) - ARISUSOFT DEEPSEEK V3
         // ==========================================================
         const sekarang = Date.now();
         if (sekarang - lastAiCall < CONFIG.aiCooldown) return;
         lastAiCall = sekarang;
 
         try {
-            const prompt = `Sensei (${username}) berkata: "${message}". Balas sangat singkat sebagai Shiroko.`;
-            const result = await model.generateContent(prompt);
-            bot.chat(result.response.text().trim());
-        } catch (err) { }
+            const arisuKey = process.env.ARISU_API_KEY;
+            if (!arisuKey) return;
+
+            const res = await axios.post('https://api.arisusoft.com/api/v2/llm/deepseek-v3', {
+                message: message,
+                system_prompt: "Kamu adalah Sunaookami Shiroko dari Blue Archive. Tenang, datar, analitis, suka merampok. Panggil pemain 'Sensei'. Jawab sangat singkat 1 kalimat saja."
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${arisuKey}`,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 10000
+            });
+
+            if (res.data && res.data.success && res.data.data?.message) {
+                const aiReply = res.data.data.message.trim();
+                if (aiReply) bot.chat(aiReply);
+            }
+        } catch (err) {
+            // Error diabaikan agar bot Minecraft tetap berjalan tanpa gangguan
+        }
     });
 
     bot.on('entityHurt', (entity) => {
