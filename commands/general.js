@@ -37,45 +37,7 @@ async function handle(ctx) {
         return true;
     }
 
-    // ==========================================
-    // KONTROL MINECRAFT BOT VIA WHATSAPP (!mc)
-    // ==========================================
-    if (textLower.startsWith('!mc') || textLower.startsWith('!minecraft')) {
-        const { getMinecraftStatus, getMinecraftBot } = require('../minecraft');
-        const mcStatus = getMinecraftStatus();
-
-        if (!mcStatus.online) {
-            await reply('🎮 *STATUS MINECRAFT SHIROKO*\n\nNn... Bot Minecraft saat ini sedang offline atau dalam proses menyambung ulang.');
-            return true;
-        }
-
-        const args = textClean.split(' ').slice(1);
-        const subCmd = (args[0] || '').toLowerCase();
-
-        if (subCmd === 'chat') {
-            const pesan = args.slice(1).join(' ');
-            if (!pesan) {
-                await reply('Nn... Masukkan pesan yang ingin dikirim ke chat Minecraft. Contoh:\n!mc chat Halo semuanya');
-                return true;
-            }
-            const mcBot = getMinecraftBot();
-            if (mcBot) {
-                mcBot.chat(`[WA Sensei]: ${pesan}`);
-                await reply(`Nn... Pesan berhasil terkirim ke chat server Minecraft:\n"${pesan}"`);
-            }
-            return true;
-        }
-
-        let info = `🎮 *STATUS MINECRAFT SHIROKO*\n\n` +
-            `👤 *Username:* ${mcStatus.username}\n` +
-            `❤️ *Darah (HP):* ${mcStatus.health}/20 | 🍖 *Makan:* ${mcStatus.food}/20\n` +
-            `📍 *Koordinat:* X: ${mcStatus.position.x}, Y: ${mcStatus.position.y}, Z: ${mcStatus.position.z}\n` +
-            `🎒 *Isi Tas (Inv):* ${mcStatus.inventory}\n\n` +
-            `_Gunakan *!mc chat [pesan]* untuk berbicara ke server Minecraft via WhatsApp._`;
-
-        await reply(info);
-        return true;
-    }
+    // KONTROL MINECRAFT DIPINDAHKAN KE commands/minecraft.js
 
     // ==========================================
     // NAK COBA (dari Website)
@@ -176,6 +138,12 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ !jadibot (Sewa Bot Waifu)
 *║* ➸ !stopbot (Hentikan Jadibot)
 *║* ➸ \`!kepo\` (Ghost Mode Messages VIP)
+*║*
+*╠═══「 KHUSUS OWNER 」*
+*║* ➸ !mc start (Nyalakan Bot MC)
+*║* ➸ !mc stop (Matikan Bot MC)
+*║* ➸ !mc status (Cek Status Bot MC)
+*║* ➸ !mc chat [teks] (Kirim Chat MC)
 *║*
 *╚═══▼△▼△▼△▼△▼*`;
 
