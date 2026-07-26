@@ -77,10 +77,11 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *╔═══「 AI ASSISTANT 」*
 *║* ➸ \`!shiroko [pesan]\`
 *║* ➸ \`!shiroko_pintar [tanya]\`
-*║* ➸ !aimode (Ganti Otak AI)
-*║* ➸ !lupa
-*║* ➸ !ping
-*║* ➸ !cekid
+*║* ➸ !aimode [mode] (Ganti Otak AI)
+*║* ➸ !lupa (Reset Memori AI)
+*║* ➸ !limit (Cek Sisa Limit)
+*║* ➸ !ping (Cek Status Bot)
+*║* ➸ !cekid (Cek ID WA & Role)
 *║*
 *╠═══「 LMS & EVALUASI 」*
 *║* ➸ !reg_guru
@@ -107,18 +108,19 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║*
 *╠═══「 AKADEMIK 」*
 *║* ➸ \`!karyailmiah\`
-*║* ➸ !jurnal [topik]
-*║* ➸ !para [teks]
-*║* ➸ !ringkas
-*║* ➸ !ide
+*║* ➸ \`!jurnal [topik]\`
+*║* ➸ \`!para [teks]\`
+*║* ➸ \`!ringkas\` (Reply Teks)
+*║* ➸ \`!ide\` (Ide Karya Ilmiah)
 *║*
 *╠═══「 EKSEKUSI MEDIA 」*
+*║* ➸ \`!gambar [prompt]\` (AI Image Generator)
+*║* ➸ \`!tts [teks]\` (Ubah Teks ke Suara/VN)
 *║* ➸ \`!pdf2jpg\` (Reply PDF)
 *║* ➸ \`!stiker\` (Kirim Gambar)
 *║* ➸ \`!toimg\` (Reply Stiker)
-*║* ➸ \`!tts [teks]\` (Ubah Teks ke VN Suara)
 *║* ➸ \`!meme [teks]\` (Reply Gambar)
-*║* ➸ \`!tiktok [link]\`
+*║* ➸ \`!tiktok [link]\` (Download Video/Audio)
 *║* ➸ \`!dengar\` (Reply VN ke Teks)
 *║*
 *╠═══「 DATA INTEL 」*
@@ -126,20 +128,14 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ \`!waifu [nama]\`
 *║* ➸ \`!gacha\`
 *║* ➸ \`!neko [kategori]\`
-*║* ➸ \`!gambar [prompt]\`
 *║*
 *╠═══「 LAYANAN PREMIUM & BOT 」*
-*║* ➸ !premium
-*║* ➸ !topup
-*║* ➸ !bukti (Upload Struk)
-*║* ➸ !jadibot
-*║* ➸ !stopbot (Mati Bot)
-*║* ➸ !kepo (VIP)
-*║*
-*╠═══「 MENU BOT 」*
-*║* ➸ !limit
-*║* ➸ !lupa (Reset Memori AI)
-*║* ➸ !aimode [mode]
+*║* ➸ !premium (Info VIP Premium)
+*║* ➸ !topup (Beli Token Limit)
+*║* ➸ !bukti (Upload Struk Topup)
+*║* ➸ !jadibot (Sewa Bot Waifu)
+*║* ➸ !stopbot (Hentikan Jadibot)
+*║* ➸ \`!kepo\` (Ghost Mode Messages VIP)
 *║*
 *╚═══▼△▼△▼△▼△▼*`;
 
