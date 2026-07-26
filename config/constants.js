@@ -1,4 +1,7 @@
-const ID_OWNER = ['6281298793016', '181488624615651'];
+// ID_OWNER dari .env (comma-separated), fallback ke hardcoded
+const ID_OWNER = process.env.ID_OWNER
+    ? process.env.ID_OWNER.split(',').map(s => s.trim())
+    : ['6281298793016', '181488624615651'];
 const JATAH_HARIAN = 20;
 
 const DAFTAR_PAKET = {

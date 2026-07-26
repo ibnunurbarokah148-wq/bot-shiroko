@@ -6,7 +6,8 @@
 const axios = require('axios');
 const state = require('../config/state');
 const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
-const { getGeminiComponents, tanyaOllama, tanyaArisu, tanyaOpenRouter, tanyaCloudflare, fetchOpenRouterModels, fetchCloudflareModels, memoriOllama, memoriArisu, memoriOpenRouter, memoriCloudflare } = require('../services/ai.service');
+const AIProvider = require('../services/ai/AIProvider');
+const { getGeminiComponents } = require('../services/ai/providers/gemini');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, isGroup, textClean, textLower,
@@ -35,7 +36,7 @@ async function handle(ctx) {
         state.ownerOllamaModel = chosenModel;
         state.ownerAIMode = 'ollama';
 
-        if (memoriOllama[senderId]) delete memoriOllama[senderId];
+        AIProvider.clearMemory(senderId);
         delete state.sesiOllamaMode[senderId];
 
         await reply(`✅ *MODE OLLAMA AKTIF*\n\nNn... Berhasil mengganti otak. Shiroko sekarang menggunakan sistem lokal: *${chosenModel}*. ✨`);
@@ -146,7 +147,7 @@ async function handle(ctx) {
         } else if (args === 'openrouter' || args === 'or') {
             try {
                 await reply('Nn... Men-scan daftar model live dari OpenRouter API...');
-                const models = await fetchOpenRouterModels();
+                const models = await AIProvider.fetchModels('openrouter');
 
                 if (!models || models.length === 0) { await reply('Nn... Tidak ada model OpenRouter yang tersedia.'); return true; }
 
@@ -164,7 +165,7 @@ async function handle(ctx) {
         } else if (args === 'cloudflare' || args === 'cf') {
             try {
                 await reply('Nn... Men-scan daftar model AI resmi dari Cloudflare...');
-                const models = await fetchCloudflareModels();
+                const models = await AIProvider.fetchModels('cloudflare');
 
                 if (!models || models.length === 0) { await reply('Nn... Tidak ada model Cloudflare yang ditemukan.'); return true; }
 
@@ -208,41 +209,23 @@ async function handle(ctx) {
         try {
             await sock.sendPresenceUpdate('composing', from);
             const pertanyaan = textClean.substring(16).trim();
+            const { provider, model } = AIProvider.resolveMode(userMode, senderId);
 
-            if (userMode === 'ollama') {
-                await reply('Nn... Membuka database perpustakaan lokal via Ollama...');
-                const pesanInstruksi = `[TOLONG JAWAB PERTANYAAN INI SEBAGAI ASISTEN AKADEMIK YANG CERDAS DAN FORMAL]: ${pertanyaan}`;
-                const jawaban = await tanyaOllama(senderId, pesanInstruksi, isOwner);
-                await reply(`🧠 *SHIROKO PINTAR (OLLAMA)*\n\n${jawaban}`);
-                return true;
-            } else if (userMode === 'openrouter') {
-                const modelPilihan = state.userOpenRouterModel[senderId] || 'deepseek/deepseek-r1:free';
-                await reply(`Nn... Menghubungi OpenRouter (${modelPilihan})...`);
-                const pesanInstruksi = `[TOLONG JAWAB PERTANYAAN INI SEBAGAI ASISTEN AKADEMIK YANG CERDAS DAN FORMAL]: ${pertanyaan}`;
-                const jawaban = await tanyaOpenRouter(senderId, pesanInstruksi, isOwner, modelPilihan);
-                await reply(`🧠 *SHIROKO PINTAR (OPENROUTER)*\n\n${jawaban}`);
-                return true;
-            } else if (userMode === 'cloudflare') {
-                const modelPilihan = state.userCloudflareModel[senderId] || '@cf/meta/llama-3-8b-instruct';
-                await reply(`Nn... Menghubungi Cloudflare Workers AI (${modelPilihan})...`);
-                const pesanInstruksi = `[TOLONG JAWAB PERTANYAAN INI SEBAGAI ASISTEN AKADEMIK YANG CERDAS DAN FORMAL]: ${pertanyaan}`;
-                const jawaban = await tanyaCloudflare(senderId, pesanInstruksi, isOwner, modelPilihan);
-                await reply(`🧠 *SHIROKO PINTAR (CLOUDFLARE)*\n\n${jawaban}`);
-                return true;
-            } else if (['ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'].includes(userMode)) {
-                let endpoint = userMode === 'ds3' ? 'deepseek-v3' : userMode === 'ds4' ? 'deepseek-v4' : userMode === 'arisu-gemini' ? 'gemini' : userMode;
-                await reply(`Nn... Membuka jalur perpustakaan Arisu (${endpoint})...`);
-                const pesanInstruksi = `[TOLONG JAWAB PERTANYAAN INI SEBAGAI ASISTEN AKADEMIK YANG CERDAS DAN FORMAL]: ${pertanyaan}`;
-                const jawaban = await tanyaArisu(senderId, pesanInstruksi, isOwner, endpoint);
-                await reply(`🧠 *SHIROKO PINTAR (${endpoint.toUpperCase()})*\n\n${jawaban}`);
-                return true;
-            } else {
+            const pesanInstruksi = `[TOLONG JAWAB PERTANYAAN INI SEBAGAI ASISTEN AKADEMIK YANG CERDAS DAN FORMAL]: ${pertanyaan}`;
+
+            if (provider === 'gemini') {
+                // Gemini mode khusus: one-shot (tanpa chat session)
                 await reply('Nn... Mengakses database cloud Gemini...');
                 const bensinGemini = getGeminiComponents();
                 const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
                 const result = await modelPintarDinamis.generateContent(`Jawablah informatif & akurat:\n\nPertanyaan: ${pertanyaan}`);
                 await reply(`🧠 *SHIROKO PINTAR (GEMINI)*\n\n${result.response.text().trim()}`);
-                return true;
+            } else {
+                await reply(`Nn... Membuka jalur perpustakaan ${provider.toUpperCase()} (${model})...`);
+                const jawaban = await AIProvider.generate({
+                    provider, model, prompt: pesanInstruksi, senderId, isOwner
+                });
+                await reply(`🧠 *SHIROKO PINTAR (${model.toUpperCase()})*\n\n${jawaban}`);
             }
 
         } catch (error) {
@@ -291,7 +274,7 @@ async function handle(ctx) {
     }
 
     // ==========================================
-    // MESIN OBROLAN AI
+    // MESIN OBROLAN AI — UNIFIED via AIProvider
     // ==========================================
     if (pemicuObrolan && (pesanUser || chatImageBuffer)) {
         const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
@@ -301,58 +284,19 @@ async function handle(ctx) {
 
         try {
             await sock.sendPresenceUpdate('composing', from);
+            const { provider, model } = AIProvider.resolveMode(userMode, senderId);
 
-            if (userMode === 'ollama') {
-                let base64Img = chatImageBuffer ? chatImageBuffer.toString('base64') : null;
-                const jawabanOllama = await tanyaOllama(senderId, pesanUser, isOwner, base64Img);
-                await reply(jawabanOllama);
-                return true;
-            } else if (userMode === 'openrouter') {
-                const modelPilihan = state.userOpenRouterModel[senderId] || 'deepseek/deepseek-r1:free';
-                const jawabanOR = await tanyaOpenRouter(senderId, pesanUser, isOwner, modelPilihan);
-                await reply(jawabanOR);
-                return true;
-            } else if (userMode === 'cloudflare') {
-                const modelPilihan = state.userCloudflareModel[senderId] || '@cf/meta/llama-3-8b-instruct';
-                const jawabanCF = await tanyaCloudflare(senderId, pesanUser, isOwner, modelPilihan);
-                await reply(jawabanCF);
-                return true;
-            } else if (['ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'].includes(userMode)) {
-                let endpoint = userMode === 'ds3' ? 'deepseek-v3' : userMode === 'ds4' ? 'deepseek-v4' : userMode === 'arisu-gemini' ? 'gemini' : userMode;
-                const jawabanArisu = await tanyaArisu(senderId, pesanUser, isOwner, endpoint);
-                await reply(jawabanArisu);
-                return true;
-            } else {
-                // JALUR GEMINI CLOUD
-                const bensinGemini = getGeminiComponents();
-                if (!state.sesiObrolan[senderId]) {
-                    let instruksiKhusus = isOwner
-                        ? `[INSTRUKSI RAHASIA: User ini adalah SUAMIMU TERCINTA. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Berperanlah sebagai istri sahnya yang bucin, setia, penurut, dan lembut. Tapi tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`
-                        : `[INSTRUKSI RAHASIA: User ini adalah rekan kerja biasa. Panggil dia dengan "Sensei". Jawablah dengan datar, dingin, cuek, dan profesional. Jangan tunjukkan ketertarikan romantis sama sekali. Tetap pertahankan sifat asli Shiroko (kalem, kuudere, pendiam, dan sering memulai kalimat dengan "Nn..."). Jangan pernah mengaku sebagai AI.]`;
+            const jawaban = await AIProvider.generate({
+                provider,
+                model,
+                prompt: pesanUser,
+                senderId,
+                isOwner,
+                imageBuffer: chatImageBuffer
+            });
 
-                    const modelObrolan = bensinGemini.genAI.getGenerativeModel({
-                        model: "gemini-2.5-flash",
-                        generationConfig: { temperature: 0.8, topP: 0.95, maxOutputTokens: 4096 },
-                        systemInstruction: `Kamu adalah Sunaookami Shiroko dari Blue Archive.\n\n${instruksiKhusus}`
-                    });
-                    state.sesiObrolan[senderId] = modelObrolan.startChat({ history: [] });
-                }
-
-                // FIX BUG #7: Kirim gambar ke Gemini jika ada
-                let messageParts;
-                if (chatImageBuffer) {
-                    messageParts = [
-                        pesanUser,
-                        { inlineData: { data: chatImageBuffer.toString('base64'), mimeType: 'image/jpeg' } }
-                    ];
-                } else {
-                    messageParts = pesanUser;
-                }
-
-                const result = await state.sesiObrolan[senderId].sendMessage(messageParts);
-                await reply(result.response.text());
-                return true;
-            }
+            await reply(jawaban);
+            return true;
         } catch (error) {
             kembalikanLimit(senderId, cost);
             await reply('Nn... Memori Shiroko eror, ketik !lupa.');
@@ -361,31 +305,10 @@ async function handle(ctx) {
     }
 
     // ==========================================
-    // LUPA (RESET MEMORI)
+    // LUPA (RESET MEMORI) — UNIFIED
     // ==========================================
     if (textLower === '!lupa') {
-        let berhasilLupa = false;
-
-        if (state.sesiObrolan[senderId]) {
-            delete state.sesiObrolan[senderId];
-            berhasilLupa = true;
-        }
-        if (memoriOllama[senderId]) {
-            delete memoriOllama[senderId];
-            berhasilLupa = true;
-        }
-        if (memoriArisu[senderId]) {
-            delete memoriArisu[senderId];
-            berhasilLupa = true;
-        }
-        if (memoriOpenRouter[senderId]) {
-            delete memoriOpenRouter[senderId];
-            berhasilLupa = true;
-        }
-        if (memoriCloudflare[senderId]) {
-            delete memoriCloudflare[senderId];
-            berhasilLupa = true;
-        }
+        const berhasilLupa = AIProvider.clearMemory(senderId);
 
         if (berhasilLupa) {
             await reply('Nn... *(Menggelengkan kepala)*. Shiroko sudah menghapus seluruh memori percakapan kita.');

@@ -1,80 +1,256 @@
 // ==========================================
-// DATABASE JSON & OPERASI FILE
+// DATABASE LAYER — FACADE (Backward Compatible)
 // ==========================================
-const fs = require('fs');
+// API tetap sama persis, tapi backend sekarang SQLite.
+// Semua consumer (commands, handlers) tidak perlu diubah.
+// ==========================================
 const { JATAH_HARIAN, ID_OWNER } = require('./constants');
 const { getCoreNumber } = require('../utils/helpers');
+const sqlite = require('./database');
 
-// Path file database
-const limitFile = './user_limit.json';
-const roleFile = './user_roles.json';
-const tugasFile = './user_tugas.json';
-const panitiaFile = './panitia_agustus.json';
-const cobaFile = './user_coba.json';
-const jadibotFile = './user_jadibot.json';
-const premiumFile = './user_premium.json';
+// ==========================================
+// PROXY OBJECTS — Backward Compatible
+// ==========================================
+// Sebelumnya data disimpan di objek JS biasa (dbLimit, dbRole, dll).
+// Sekarang kita buat Proxy agar akses properti langsung ke SQLite.
 
-// Muat database dari file JSON
-let dbLimit = fs.existsSync(limitFile) ? JSON.parse(fs.readFileSync(limitFile, 'utf-8')) : {};
-let dbRole = fs.existsSync(roleFile) ? JSON.parse(fs.readFileSync(roleFile, 'utf-8')) : {};
-let dbTugas = fs.existsSync(tugasFile) ? JSON.parse(fs.readFileSync(tugasFile, 'utf-8')) : {};
-let dbPanitia = fs.existsSync(panitiaFile) ? JSON.parse(fs.readFileSync(panitiaFile, 'utf-8')) : { "ketua": { "anggota": [], "timeline": [] } };
-let dbCoba = fs.existsSync(cobaFile) ? JSON.parse(fs.readFileSync(cobaFile, 'utf-8')) : {};
-let dbJadibot = fs.existsSync(jadibotFile) ? JSON.parse(fs.readFileSync(jadibotFile, 'utf-8')) : {};
-let dbPremium = fs.existsSync(premiumFile) ? JSON.parse(fs.readFileSync(premiumFile, 'utf-8')) : {};
-
-// Simpan dengan metode aman (write tmp lalu rename)
-function simpanAman(namaFile, data) {
-    try {
-        const tmpFile = namaFile + '.tmp';
-        fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2));
-        fs.renameSync(tmpFile, namaFile);
-    } catch (e) {
-        console.error(`Gagal menyimpan ke ${namaFile}:`, e.message);
-    }
+function createDbProxy(table, valueColumn = 'amount') {
+    return new Proxy({}, {
+        get(target, prop) {
+            if (typeof prop !== 'string') return undefined;
+            const row = sqlite.getOne(table, prop);
+            if (!row) return undefined;
+            return row[valueColumn];
+        },
+        set(target, prop, value) {
+            if (typeof prop !== 'string') return true;
+            sqlite.upsert(table, { id: prop, [valueColumn]: value });
+            return true;
+        },
+        deleteProperty(target, prop) {
+            sqlite.deleteOne(table, prop);
+            return true;
+        },
+        has(target, prop) {
+            return sqlite.getOne(table, prop) !== null;
+        },
+        ownKeys() {
+            return sqlite.getAll(table).map(r => r.id);
+        },
+        getOwnPropertyDescriptor(target, prop) {
+            const row = sqlite.getOne(table, prop);
+            if (row) return { configurable: true, enumerable: true, value: row[valueColumn] };
+            return undefined;
+        }
+    });
 }
 
-const simpanDB = () => simpanAman(limitFile, dbLimit);
-const simpanRole = () => simpanAman(roleFile, dbRole);
-const simpanTugas = () => simpanAman(tugasFile, dbTugas);
-const simpanPanitia = () => simpanAman(panitiaFile, dbPanitia);
-const simpanCoba = () => simpanAman(cobaFile, dbCoba);
-const simpanJadibot = () => simpanAman(jadibotFile, dbJadibot);
-const simpanPremium = () => simpanAman(premiumFile, dbPremium);
+// Proxy khusus untuk tabel dengan kolom 'data' (JSON)
+function createJsonProxy(table) {
+    return new Proxy({}, {
+        get(target, prop) {
+            if (typeof prop !== 'string') return undefined;
+            const row = sqlite.getOne(table, prop);
+            if (!row) return undefined;
+            try { return JSON.parse(row.data); } catch { return row.data; }
+        },
+        set(target, prop, value) {
+            if (typeof prop !== 'string') return true;
+            sqlite.upsert(table, { id: prop, data: JSON.stringify(value) });
+            return true;
+        },
+        deleteProperty(target, prop) {
+            sqlite.deleteOne(table, prop);
+            return true;
+        },
+        has(target, prop) {
+            return sqlite.getOne(table, prop) !== null;
+        },
+        ownKeys() {
+            return sqlite.getAll(table).map(r => r.id);
+        },
+        getOwnPropertyDescriptor(target, prop) {
+            const row = sqlite.getOne(table, prop);
+            if (row) {
+                let val;
+                try { val = JSON.parse(row.data); } catch { val = row.data; }
+                return { configurable: true, enumerable: true, value: val };
+            }
+            return undefined;
+        }
+    });
+}
 
-// Cek limit dan potong 1 token (dengan bypass Owner & penyesuaian Premium)
+// Proxy khusus untuk premium (kolom 'expires_at')
+function createPremiumProxy() {
+    return new Proxy({}, {
+        get(target, prop) {
+            if (typeof prop !== 'string') return undefined;
+            const row = sqlite.getOne('user_premium', prop);
+            if (!row) return undefined;
+            // Kembalikan nilai asli: timestamp atau boolean-like
+            return row.expires_at === 9999999999999 ? true : row.expires_at;
+        },
+        set(target, prop, value) {
+            if (typeof prop !== 'string') return true;
+            let expiresAt;
+            if (typeof value === 'boolean') {
+                expiresAt = value ? 9999999999999 : 0;
+            } else {
+                expiresAt = value;
+            }
+            sqlite.upsert('user_premium', { id: prop, expires_at: expiresAt });
+            return true;
+        },
+        deleteProperty(target, prop) {
+            sqlite.deleteOne('user_premium', prop);
+            return true;
+        },
+        has(target, prop) {
+            return sqlite.getOne('user_premium', prop) !== null;
+        },
+        ownKeys() {
+            return sqlite.getAll('user_premium').map(r => r.id);
+        },
+        getOwnPropertyDescriptor(target, prop) {
+            const row = sqlite.getOne('user_premium', prop);
+            if (row) {
+                const val = row.expires_at === 9999999999999 ? true : row.expires_at;
+                return { configurable: true, enumerable: true, value: val };
+            }
+            return undefined;
+        }
+    });
+}
+
+// Proxy khusus untuk panitia (key-based instead of id)
+function createPanitiaProxy() {
+    return new Proxy({}, {
+        get(target, prop) {
+            if (typeof prop !== 'string') return undefined;
+            // Gunakan query langsung karena panitia pakai kolom 'key' bukan 'id'
+            const db = sqlite.getDb();
+            if (!db) return undefined;
+            const stmt = db.prepare('SELECT * FROM panitia WHERE key = ?');
+            stmt.bind([prop]);
+            if (stmt.step()) {
+                const row = stmt.getAsObject();
+                stmt.free();
+                try { return JSON.parse(row.data); } catch { return row.data; }
+            }
+            stmt.free();
+            return undefined;
+        },
+        set(target, prop, value) {
+            if (typeof prop !== 'string') return true;
+            const db = sqlite.getDb();
+            if (!db) return true;
+            db.run('INSERT OR REPLACE INTO panitia (key, data) VALUES (?, ?)', [prop, JSON.stringify(value)]);
+            sqlite.saveToDisk();
+            return true;
+        },
+        deleteProperty(target, prop) {
+            const db = sqlite.getDb();
+            if (!db) return true;
+            db.run('DELETE FROM panitia WHERE key = ?', [prop]);
+            sqlite.saveToDisk();
+            return true;
+        },
+        has(target, prop) {
+            const db = sqlite.getDb();
+            if (!db) return false;
+            const stmt = db.prepare('SELECT 1 FROM panitia WHERE key = ?');
+            stmt.bind([prop]);
+            const found = stmt.step();
+            stmt.free();
+            return found;
+        },
+        ownKeys() {
+            return sqlite.getAll('panitia').map(r => r.key);
+        },
+        getOwnPropertyDescriptor(target, prop) {
+            const db = sqlite.getDb();
+            if (!db) return undefined;
+            const stmt = db.prepare('SELECT * FROM panitia WHERE key = ?');
+            stmt.bind([prop]);
+            if (stmt.step()) {
+                const row = stmt.getAsObject();
+                stmt.free();
+                let val;
+                try { val = JSON.parse(row.data); } catch { val = row.data; }
+                return { configurable: true, enumerable: true, value: val };
+            }
+            stmt.free();
+            return undefined;
+        }
+    });
+}
+
+// ==========================================
+// PROXY INSTANCES
+// ==========================================
+const dbLimit = createDbProxy('user_limits', 'amount');
+const dbRole = createJsonProxy('user_roles');
+const dbTugas = createJsonProxy('user_tugas');
+const dbCoba = createJsonProxy('user_coba');
+const dbJadibot = createJsonProxy('user_jadibot');
+const dbPremium = createPremiumProxy();
+const dbPanitia = createPanitiaProxy();
+
+// ==========================================
+// SIMPAN FUNCTIONS — No-op (SQLite auto-persist)
+// Tetap di-export untuk backward compatibility.
+// ==========================================
+const simpanDB = () => {};
+const simpanRole = () => {};
+const simpanTugas = () => {};
+const simpanPanitia = () => {};
+const simpanCoba = () => {};
+const simpanJadibot = () => {};
+const simpanPremium = () => {};
+
+// ==========================================
+// LIMIT FUNCTIONS
+// ==========================================
+
 function cekDanPotongLimit(targetID, amount = 1) {
     const coreTarget = getCoreNumber(targetID);
     // Owner bypass — unlimited
     if (ID_OWNER.some(owner => getCoreNumber(owner) === coreTarget)) return true;
 
-    // Cek apakah user adalah Premium (timestamp lebih dari hari ini)
-    const dbEntry = dbPremium[targetID];
-    const isPremium = dbEntry && (typeof dbEntry === 'boolean' || dbEntry > Date.now());
+    // Cek apakah user adalah Premium
+    const premiumVal = dbPremium[targetID];
+    const isPremium = premiumVal && (premiumVal === true || premiumVal > Date.now());
     const dailyJatah = isPremium ? 1000 : JATAH_HARIAN;
 
-    if (dbLimit[targetID] === undefined) {
+    let currentLimit = dbLimit[targetID];
+
+    if (currentLimit === undefined) {
+        // User baru, set limit awal
         dbLimit[targetID] = dailyJatah;
-    } else if (isPremium && dbLimit[targetID] < 1000) {
-        // Jika statusnya Premium tapi limitnya masih limit gratisan, naikkan ke 1000
+        currentLimit = dailyJatah;
+    } else if (isPremium && currentLimit < 1000) {
+        // Premium tapi limit masih rendah, naikkan
         dbLimit[targetID] = 1000;
+        currentLimit = 1000;
     }
 
-    if (dbLimit[targetID] < amount) return false;
+    if (currentLimit < amount) return false;
 
-    dbLimit[targetID] -= amount;
-    simpanDB();
+    dbLimit[targetID] = currentLimit - amount;
     return true;
 }
 
-// Kembalikan token if operation fails (default 1)
 function kembalikanLimit(targetID, amount = 1) {
-    if (dbLimit[targetID] !== undefined) {
-        dbLimit[targetID] += amount;
-        simpanDB();
+    const currentLimit = dbLimit[targetID];
+    if (currentLimit !== undefined) {
+        dbLimit[targetID] = currentLimit + amount;
     }
 }
 
+// ==========================================
+// EXPORT (API TETAP SAMA PERSIS)
+// ==========================================
 module.exports = {
     dbLimit, dbRole, dbTugas, dbPanitia, dbCoba, dbJadibot, dbPremium,
     simpanDB, simpanRole, simpanTugas, simpanPanitia, simpanCoba, simpanJadibot, simpanPremium,

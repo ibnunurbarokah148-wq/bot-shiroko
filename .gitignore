@@ -16,3 +16,5 @@ gemma-3-4b-it-uncensored-v2_Q4_K_M.gguf
 Modelfile
 login ke vps.txt
 *login ke vps*
+data/
+*.bak

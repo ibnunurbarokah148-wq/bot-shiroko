@@ -18,6 +18,7 @@ const { registerMessageHandler } = require('./handlers/message');
 const { getCoreNumber } = require('./utils/helpers');
 const { setSocket, getSocket } = require('./utils/socket');
 const jadibotService = require('./services/jadibot.service');
+const { initDatabase, migrateFromJSON } = require('./config/database');
 
 // Services (auto-init saat di-require: Pixiv login, AI memory cleanup)
 require('./services/pixiv.service');
@@ -208,9 +209,14 @@ app.listen(3000, () => {
 });
 
 // ==========================================
-// MULAI BOT WHATSAPP & JADIBOT
+// MULAI BOT: INIT DATABASE → WHATSAPP → JADIBOT
 // ==========================================
-startBot().then(() => {
+initDatabase().then(() => {
+    console.log('[STARTUP] Database SQLite berhasil diinisialisasi.');
+    // Migrasi data JSON lama (hanya berjalan sekali)
+    migrateFromJSON();
+    return startBot();
+}).then(() => {
     if (jadibotService.resumeAllJadibots) jadibotService.resumeAllJadibots();
 }).catch(console.error);
 
