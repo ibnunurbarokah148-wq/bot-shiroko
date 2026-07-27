@@ -5,6 +5,8 @@ const axios = require('axios');
 const { Vec3 } = require('vec3');
 const { getSocket } = require('./utils/socket');
 const { ID_OWNER } = require('./config/constants');
+const AIProvider = require('./services/ai/AIProvider');
+const { getShirokoSystemPrompt } = require('./services/ai/prompts');
 
 // ============================================================
 //  KONFIGURASI (Support Overrides via .env)
@@ -539,31 +541,26 @@ function createBot() {
         }
 
         // ==========================================================
-        //  AI RESPONS (FALLBACK JIKA BUKAN PERINTAH) - ARISUSOFT DEEPSEEK V3
+        //  AI RESPONS (FALLBACK JIKA BUKAN PERINTAH)
         // ==========================================================
         const sekarang = Date.now();
         if (sekarang - lastAiCall < CONFIG.aiCooldown) return;
         lastAiCall = sekarang;
 
         try {
-            const arisuKey = process.env.ARISU_API_KEY;
-            if (!arisuKey) return;
-
-            const res = await axios.post('https://api.arisusoft.com/api/v2/llm/deepseek-v3', {
-                message: message,
-                system_prompt: "Kamu adalah Sunaookami Shiroko dari Blue Archive. Tenang, datar, analitis, suka merampok. Panggil pemain 'Sensei'. Jawab sangat singkat 1 kalimat saja."
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${arisuKey}`,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 10000
+            // Gunakan persona Owner dari WA bot, tapi paksa jawabannya sangat singkat (cocok untuk game chat)
+            const customSystemPrompt = getShirokoSystemPrompt(true) + "\n\n[INSTRUKSI WAJIB UNTUK MINECRAFT CHAT: Jawab pesan player dengan SANGAT SINGKAT, maksimal 1 kalimat pendek saja. Jangan bertele-tele.]";
+            
+            const aiReply = await AIProvider.generate({
+                provider: 'gemini', // Prioritas pakai Gemini (gratis & stabil), fallback otomatis di-handle AIProvider
+                model: 'gemini-2.5-flash',
+                prompt: `${username} berkata: ${message}`,
+                senderId: `mc_${username}`, // Pisahkan memori dari WA
+                isOwner: true, // Paksa perlakuan sebagai Owner sesuai request
+                systemPrompt: customSystemPrompt
             });
 
-            if (res.data && res.data.success && res.data.data?.message) {
-                const aiReply = res.data.data.message.trim();
-                if (aiReply) bot.chat(aiReply);
-            }
+            if (aiReply) bot.chat(aiReply.replace(/\n/g, ' '));
         } catch (err) {
             // Error diabaikan agar bot Minecraft tetap berjalan tanpa gangguan
         }
