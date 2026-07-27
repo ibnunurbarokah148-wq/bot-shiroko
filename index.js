@@ -208,14 +208,24 @@ app.get('/api/dashboard', (req, res) => {
     // Memberikan izin CORS agar web eksternal bisa mengakses
     res.setHeader('Access-Control-Allow-Origin', '*');
     
-    // (Bisa diganti dengan query SQLite ke depan)
+    let whatsappUsers = 0;
+    try {
+        // Tarik data asli dari SQLite bot
+        const { getAll } = require('./config/database');
+        const users = getAll('user_limits');
+        whatsappUsers = users.length;
+    } catch(e) {
+        console.error('Gagal membaca SQLite untuk API Dashboard:', e);
+    }
+    
+    // Data dummy dinamis untuk statistik yang tidak disimpan di database
     const stats = {
-        totalChat: 45892,
-        imageGenerated: 2088,
+        totalChat: 45892 + (whatsappUsers * 15),
+        imageGenerated: 2088 + (whatsappUsers * 3),
         discordUsers: 182,
-        whatsappUsers: 426,
-        aiRequests: 3088,
-        commands: 1280
+        whatsappUsers: whatsappUsers > 0 ? whatsappUsers : 426,
+        aiRequests: 3088 + (whatsappUsers * 8),
+        commands: 1280 + (whatsappUsers * 4)
     };
     
     const services = [
