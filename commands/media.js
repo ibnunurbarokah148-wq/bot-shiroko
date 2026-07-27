@@ -308,8 +308,21 @@ async function handle(ctx) {
 
             try {
                 await reply(`⏳ Nn... Mengubah teks menjadi suara menggunakan *${chosenModel.name}*. Mohon tunggu...`);
-                const { textToSpeechCloudflare } = require('../services/ai/providers/cloudflare');
-                const { buffer, mime } = await textToSpeechCloudflare(textTTS, chosenModel.id);
+                
+                let buffer, mime;
+                if (sesi.provider === 'cloudflare') {
+                    const { textToSpeechCloudflare } = require('../services/ai/providers/cloudflare');
+                    const res = await textToSpeechCloudflare(textTTS, chosenModel.id);
+                    buffer = res.buffer;
+                    mime = res.mime;
+                } else if (sesi.provider === 'arisu') {
+                    const { textToSpeech: textToSpeechArisu } = require('../services/ai/providers/arisu');
+                    const res = await textToSpeechArisu(textTTS, chosenModel.id);
+                    buffer = res.buffer;
+                    mime = res.mime;
+                } else {
+                    throw new Error("Provider TTS tidak valid atau tidak dikenali.");
+                }
 
                 const ext = (mime || '').includes('wav') ? 'wav' : 'mp3';
 
