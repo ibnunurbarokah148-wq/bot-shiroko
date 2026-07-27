@@ -1,6 +1,7 @@
 require('dotenv').config();
 const mineflayer = require('mineflayer');
 const { pathfinder, Movements, goals } = require('mineflayer-pathfinder');
+const hawkeye = require('minecrafthawkeye').default;
 const axios = require('axios');
 const { Vec3 } = require('vec3');
 const { getSocket } = require('./utils/socket');
@@ -131,6 +132,7 @@ function createBot() {
     let fokusMandiri = null;
 
     bot.on('spawn', () => {
+        bot.loadPlugin(hawkeye);
         mcData = require('minecraft-data')(bot.version);
         const movements = new Movements(bot, mcData);
 
@@ -613,9 +615,13 @@ function createBot() {
         } catch (e) {}
     }
 
+    let modeRanged = false;
+
     function mulaiSerang(target) {
         targetSerangan = target;
         if (loopSerangan) clearInterval(loopSerangan);
+        if (bot.hawkEye) bot.hawkEye.stop();
+        modeRanged = false;
 
         pasangSenjataTerbaik();
 
@@ -628,11 +634,36 @@ function createBot() {
             const targetName = (targetSerangan.name || '').toLowerCase();
             const jarak = bot.entity.position.distanceTo(targetSerangan.position);
 
+            const adaPanah = bot.inventory.items().find(i => i.name === 'bow') && bot.inventory.items().find(i => i.name === 'arrow');
+
+            // MODE SNIPER (PANAH) JIKA JARAK > 6
+            if (jarak > 6 && adaPanah && targetName !== 'enderman') { // Jangan tembak enderman
+                if (!modeRanged) {
+                    modeRanged = true;
+                    bot.pathfinder.setGoal(null); // Berhenti lari
+                    bot.hawkEye.autoAttack(targetSerangan, 'bow');
+                }
+                return; // Lewati logika melee
+            } else {
+                // KEMBALI KE MODE MELEE
+                if (modeRanged) {
+                    modeRanged = false;
+                    bot.hawkEye.stop();
+                    pasangSenjataTerbaik(); // Cabut pedang lagi
+                }
+            }
+
             // TAKTIK KHUSUS CREEPER: HIT & RUN (Mundur agar tidak meledak di muka Shiroko)
             if (targetName === 'creeper') {
                 if (jarak < 3.2) {
                     bot.lookAt(targetSerangan.position.offset(0, targetSerangan.height ?? 1, 0));
-                    bot.attack(targetSerangan);
+                    
+                    // Critical Hit
+                    bot.setControlState('jump', true);
+                    bot.setControlState('jump', false);
+                    setTimeout(() => {
+                        if (targetSerangan && targetSerangan.isValid) bot.attack(targetSerangan);
+                    }, 300);
 
                     // Mundur 4 blok ke belakang setelah memukul creeper
                     try {
@@ -651,7 +682,13 @@ function createBot() {
 
             if (jarak < 3.5) {
                 bot.lookAt(targetSerangan.position.offset(0, targetSerangan.height ?? 1, 0));
-                bot.attack(targetSerangan);
+                
+                // CRITICAL HIT (Jump Attack)
+                bot.setControlState('jump', true);
+                bot.setControlState('jump', false);
+                setTimeout(() => {
+                    if (targetSerangan && targetSerangan.isValid) bot.attack(targetSerangan);
+                }, 300);
             }
 
             // Cek Darah Darurat saat Combat
@@ -672,6 +709,7 @@ function createBot() {
 
     function berhentiSerang() {
         if (loopSerangan) clearInterval(loopSerangan);
+        if (bot.hawkEye) bot.hawkEye.stop();
         loopSerangan = null; targetSerangan = null; bot.pathfinder.setGoal(null);
     }
 
