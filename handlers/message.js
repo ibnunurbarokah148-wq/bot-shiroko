@@ -146,6 +146,11 @@ function registerMessageHandler(sock, isJadibot = false) {
             msgType !== 'stickerMessage' && msgType !== 'documentMessage' &&
             msgType !== 'documentWithCaptionMessage') return;
 
+        // Emit status ke Web Dashboard (via Socket.IO) jika aktif
+        if (global.io) {
+            global.io.emit('bot_status', { isTyping: true, user: msg.pushName || 'Seseorang' });
+        }
+
         try {
             // Routing ke command modules — urutan sesuai arsitektur asli
             // Session handlers dicek di dalam masing-masing module
@@ -164,6 +169,13 @@ function registerMessageHandler(sock, isJadibot = false) {
             if (await ai.handle(ctx)) return;  // HARUS TERAKHIR — punya catch-all chat
         } catch (error) {
             console.error('🚨 ERROR HANDLER PESAN:', error);
+        } finally {
+            // Matikan status ngetik setelah selesai memproses (kasih delay sedikit biar natural)
+            if (global.io) {
+                setTimeout(() => {
+                    global.io.emit('bot_status', { isTyping: false });
+                }, 1000);
+            }
         }
     });
 }

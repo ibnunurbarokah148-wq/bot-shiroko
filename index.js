@@ -242,8 +242,23 @@ app.get('/api/dashboard', (req, res) => {
     res.json({ stats, services });
 });
 
-app.listen(3000, () => {
-    console.log('🌐 Express server berjalan di port 3000');
+const http = require('http');
+const server = http.createServer(app);
+const { Server } = require('socket.io');
+const io = new Server(server, {
+    cors: { origin: '*' }
+});
+global.io = io; // Jadikan global agar bisa diakses handler
+
+io.on('connection', (socket) => {
+    console.log('[WEBSOCKET] Client Web Dashboard terhubung:', socket.id);
+    socket.on('disconnect', () => {
+        console.log('[WEBSOCKET] Client Web terputus:', socket.id);
+    });
+});
+
+server.listen(3000, () => {
+    console.log('🌐 Express & Socket.IO server berjalan di port 3000');
 });
 
 // ==========================================
