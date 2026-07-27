@@ -36,11 +36,24 @@ async function loginPixiv() {
 // MODULE SHARE DENGAN WHATSAPP
 // ==========================================
 const { antrianGambar, prosesAntrianGambar } = require('./services/comfyui.service');
+const { upsert } = require('./config/database');
 
 // 2. KETIKA BOT ONLINE (Sudah Diperbarui ke clientReady)
 client.once('clientReady', async () => {
     console.log(`Nn... Sistem komunikasi Discord ${client.user.tag} sudah aktif, Sensei.`);
     await loginPixiv();
+    
+    const updateDiscordUsersCount = () => {
+        let count = 0;
+        client.guilds.cache.forEach(guild => {
+            count += guild.memberCount;
+        });
+        upsert('statistics', { id: 'discordUsers', value: count });
+    };
+
+    updateDiscordUsersCount(); // Run once at startup
+    setInterval(updateDiscordUsersCount, 60000); // And every minute
+
     setInterval(loginPixiv, 3600000);
 });
 

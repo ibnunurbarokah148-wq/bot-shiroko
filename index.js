@@ -213,6 +213,7 @@ app.get('/api/dashboard', (req, res) => {
     let imageGenerated = 0;
     let aiRequests = 0;
     let commandsCount = 0;
+    let discordUsers = 0;
 
     try {
         // Tarik data asli dari SQLite bot
@@ -224,11 +225,13 @@ app.get('/api/dashboard', (req, res) => {
         const statImageGen = getOne('statistics', 'imageGenerated');
         const statAiReq = getOne('statistics', 'aiRequests');
         const statCommands = getOne('statistics', 'commands');
+        const statDiscord = getOne('statistics', 'discordUsers');
 
         if (statTotalChat) totalChat = statTotalChat.value;
         if (statImageGen) imageGenerated = statImageGen.value;
         if (statAiReq) aiRequests = statAiReq.value;
         if (statCommands) commandsCount = statCommands.value;
+        if (statDiscord) discordUsers = statDiscord.value;
 
     } catch(e) {
         console.error('Gagal membaca SQLite untuk API Dashboard:', e);
@@ -238,7 +241,7 @@ app.get('/api/dashboard', (req, res) => {
     const stats = {
         totalChat: totalChat,
         imageGenerated: imageGenerated,
-        discordUsers: 0, // Belum disinkronkan
+        discordUsers: discordUsers,
         whatsappUsers: whatsappUsers,
         aiRequests: aiRequests,
         commands: commandsCount
