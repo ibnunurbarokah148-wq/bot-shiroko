@@ -51,6 +51,11 @@ async function handle(ctx) {
         // TAHAP 1: PILIH PROVIDER/SERVER
         if (sesi.step === 1 || !sesi.step) {
             if (pilihan === '1') {
+                if (state.comfyUIEnabled === false) {
+                    await reply('❌ Nn... Mohon maaf, mesin Render (Vast.ai) sedang *DIMATIKAN* oleh Admin saat ini. Silakan pilih server/provider lain.');
+                    return true;
+                }
+
                 const { dbPremium } = require('../config/db');
                 const dbEntry = dbPremium[senderId];
                 const isPremium = dbEntry && (typeof dbEntry === 'boolean' || dbEntry > Date.now());

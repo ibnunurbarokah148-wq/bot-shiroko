@@ -9,8 +9,9 @@ module.exports = {
     userAIMode: {},
     userOllamaModel: {},
 
-    // Model gambar aktif
+    // Model gambar aktif & Status ComfyUI
     currentImageModel: 'cagliostrolab/animagine-xl-3.1',
+    comfyUIEnabled: true,
 
     // Alarm & pengingat ibadah
     alarmSubuhState: { aktif: false, count: 0, timer: null },

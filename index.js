@@ -252,10 +252,36 @@ app.get('/api/dashboard', (req, res) => {
         { name: 'Cloudflare', status: 'ONLINE', icon: 'fas fa-cloud' },
         { name: 'OpenRouter', status: 'ONLINE', icon: 'fas fa-network-wired' },
         { name: 'Ollama', status: 'ONLINE', icon: 'fas fa-server' },
-        { name: 'ComfyUI', status: 'OFFLINE', icon: 'fas fa-palette' }
+        { name: 'ComfyUI', status: state.comfyUIEnabled ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-palette' }
     ];
 
     res.json({ stats, services });
+});
+
+// Endpoint untuk Control Panel (Dipanggil oleh Web Dashboard)
+app.post('/api/control', express.json(), (req, res) => {
+    const apiKey = req.headers['x-api-key'];
+    if (apiKey !== process.env.WEB_SECRET_KEY) {
+        return res.status(401).json({ status: 'error', message: 'Unauthorized. Invalid API Key.' });
+    }
+
+    const { action } = req.body;
+    
+    if (action === 'toggle_comfyui') {
+        state.comfyUIEnabled = !state.comfyUIEnabled;
+        console.log(`[CONTROL] Mesin ComfyUI sekarang: ${state.comfyUIEnabled ? 'ONLINE' : 'OFFLINE'}`);
+        res.json({ status: 'ok', message: `Mesin ComfyUI berhasil ${state.comfyUIEnabled ? 'diaktifkan' : 'dimatikan'}.` });
+    } 
+    else if (action === 'restart') {
+        console.log(`[CONTROL] Menerima perintah RESTART dari Web Dashboard.`);
+        res.json({ status: 'ok', message: 'Bot sedang dimuat ulang (PM2 akan otomatis menghidupkan).' });
+        setTimeout(() => {
+            process.exit(1);
+        }, 1000);
+    } 
+    else {
+        res.status(400).json({ status: 'error', message: 'Action tidak dikenali.' });
+    }
 });
 
 const http = require('http');
