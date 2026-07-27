@@ -126,6 +126,7 @@ function createBot() {
     let lastAiCall = 0;
     let sedangKerja = false;
     let sedangMencariKasur = false;
+    let sedangMencariLokasi = false;
 
     // --- STATE MODE MANDIRI (AUTONOMOUS AFK) ---
     let modeMandiri = false;
@@ -216,6 +217,39 @@ function createBot() {
         }, CONFIG.autoAfkInterval);
     });
 
+    bot.on('message', (jsonMsg) => {
+        const text = jsonMsg.toString();
+        
+        // Cek hasil eksekusi perintah /locate (Pencarian Bangunan)
+        if (sedangMencariLokasi && (text.includes('is at') || text.includes('ada di') || text.match(/\[-?\d+,\s*(?:~|-?\d+),\s*-?\d+\]/))) {
+            const regex = /\[(-?\d+),\s*(~|-?\d+),\s*(-?\d+)\]/;
+            const match = text.match(regex);
+            
+            if (match) {
+                sedangMencariLokasi = false; // Matikan status pencarian
+                const x = parseInt(match[1]);
+                const yRaw = match[2];
+                const z = parseInt(match[3]);
+                
+                bot.chat(`Nn. Titik koordinat dikonfirmasi di X: ${x}, Z: ${z}. Bergerak menuju lokasi...`);
+                modeMandiri = false;
+                sedangKerja = false;
+                
+                try {
+                    bot.pathfinder.setGoal(null);
+                    if (yRaw === '~') {
+                        // Jika Y adalah ~, berarti di permukaan tanah. Gunakan GoalXZ.
+                        bot.pathfinder.setGoal(new goals.GoalXZ(x, z));
+                    } else {
+                        // Jika ada tinggi spesifik (misal Stronghold bawah tanah)
+                        const y = parseInt(yRaw);
+                        bot.pathfinder.setGoal(new goals.GoalNear(x, y, z, 5));
+                    }
+                } catch (e) {}
+            }
+        }
+    });
+
     bot.on('chat', async (username, message) => {
         if (username === bot.username || !CONFIG.owners.includes(username)) return;
         const pk = message.toLowerCase();
@@ -252,10 +286,31 @@ function createBot() {
         }
 
         // ----------------------------------------------------------
-        //  2. FITUR BANTUAN (!help)
+        //  2. FITUR PENCARI BANGUNAN (MEMBUTUHKAN AKSES OP)
+        // ----------------------------------------------------------
+        if (pk.startsWith('cari ')) {
+            const bangunan = pk.replace('cari ', '').trim();
+            bot.chat(`Nn. Memulai pemindaian radar satelit untuk mencari [${bangunan}]...`);
+            sedangMencariLokasi = true;
+            
+            // Eksekusi command /locate (Membutuhkan bot di-OP oleh admin server)
+            bot.chat(`/locate structure ${bangunan}`);
+            
+            // Jika dalam 5 detik tidak ada koordinat yang ditangkap dari server
+            setTimeout(() => {
+                if (sedangMencariLokasi) {
+                    sedangMencariLokasi = false;
+                    bot.chat("Nn. Pemindaian gagal. Struktur tidak ditemukan, atau aku butuh akses Admin. Berikan aku OP (/op Shiroko) di konsol server, Sensei.");
+                }
+            }, 5000);
+            return;
+        }
+
+        // ----------------------------------------------------------
+        //  3. FITUR BANTUAN (!help)
         // ----------------------------------------------------------
         if (pk === '!help' || pk === 'bantuan' || pk === 'fitur') {
-            bot.chat("Nn. Pergerakan: ikut, berhenti, masuk, terobos, buka/tutup pintu.");
+            bot.chat("Nn. Pergerakan: ikut, cari [bangunan], berhenti, masuk, terobos, buka/tutup pintu.");
             await bot.waitForTicks(20);
             bot.chat("Nn. Kerja Manual: tebang, nambang [blok], rampok, simpan, buang [item/semua].");
             await bot.waitForTicks(20);
