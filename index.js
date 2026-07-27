@@ -203,6 +203,34 @@ app.post('/laporan-masuk', async (req, res) => {
         res.status(500).json({ status: 'error', message: error.message });
     }
 });
+// Endpoint API Dashboard Web Shiroko
+app.get('/api/dashboard', (req, res) => {
+    // Memberikan izin CORS agar web eksternal bisa mengakses
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    // (Bisa diganti dengan query SQLite ke depan)
+    const stats = {
+        totalChat: 45892,
+        imageGenerated: 2088,
+        discordUsers: 182,
+        whatsappUsers: 426,
+        aiRequests: 3088,
+        commands: 1280
+    };
+    
+    const services = [
+        { name: 'WhatsApp', status: 'ONLINE', icon: 'fab fa-whatsapp' },
+        { name: 'Discord', status: 'ONLINE', icon: 'fab fa-discord' },
+        { name: 'Minecraft', status: 'ONLINE', icon: 'fas fa-cube' },
+        { name: 'Gemini', status: 'ONLINE', icon: 'fas fa-brain' },
+        { name: 'Cloudflare', status: 'ONLINE', icon: 'fas fa-cloud' },
+        { name: 'OpenRouter', status: 'ONLINE', icon: 'fas fa-network-wired' },
+        { name: 'Ollama', status: 'ONLINE', icon: 'fas fa-server' },
+        { name: 'ComfyUI', status: 'OFFLINE', icon: 'fas fa-palette' }
+    ];
+
+    res.json({ stats, services });
+});
 
 app.listen(3000, () => {
     console.log('🌐 Express server berjalan di port 3000');
