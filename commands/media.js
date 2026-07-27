@@ -241,7 +241,7 @@ async function handle(ctx) {
         // TAHAP 1: PILIH PROVIDER (Cloudflare vs ArisuSoft)
         if (sesi.step === 1) {
             const { fetchCloudflareTTSModels } = require('../services/ai/providers/cloudflare');
-            const { fetchArisuTTSModels } = require('../services/ai/providers/arisu');
+            const { fetchTTSModels: fetchArisuTTSModels } = require('../services/ai/providers/arisu');
 
             if (pilihan === '1' || pilihan === 'cloudflare') {
                 await reply('⏳ Nn... Memindai semua model suara dari Cloudflare Workers AI...');
