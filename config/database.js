@@ -81,10 +81,17 @@ async function initDatabase() {
 
     db.run(`
         CREATE TABLE IF NOT EXISTS statistics (
-            key TEXT PRIMARY KEY,
+            id TEXT PRIMARY KEY,
             value INTEGER DEFAULT 0
         )
     `);
+
+    // Migrasi jika tabel lama terlanjur dibuat dengan kolom 'key'
+    try {
+        db.run(`ALTER TABLE statistics RENAME COLUMN key TO id`);
+    } catch(e) {
+        // Abaikan jika error (kolom sudah id, atau tabel baru dibuat benar)
+    }
 
     // Simpan ke disk setelah init
     saveToDisk();
@@ -111,11 +118,10 @@ function saveToDisk() {
 }
 
 /**
- * Simpan ke disk secara debounced (max 1x per 2 detik).
- * Dipanggil setelah setiap operasi write.
+ * Minta simpan ke disk dengan debounce (2 detik delay).
  */
 function scheduleSave() {
-    if (_saveTimer) return; // Sudah ada jadwal
+    if (_saveTimer) clearTimeout(_saveTimer);
     _saveTimer = setTimeout(() => {
         saveToDisk();
         _saveTimer = null;
@@ -207,7 +213,7 @@ function incrementStat(key) {
     if (!db) return;
     const existing = getOne('statistics', key);
     const currentVal = existing ? existing.value : 0;
-    upsert('statistics', { key, value: currentVal + 1 });
+    upsert('statistics', { id: key, value: currentVal + 1 });
 }
 
 // ==========================================
