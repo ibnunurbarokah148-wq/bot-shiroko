@@ -191,6 +191,10 @@ module.exports = {
                 });
 
                 chatCollector.on('collect', async m => {
+                    const { incrementStat } = require('../config/database');
+                    incrementStat('aiRequests');
+                    incrementStat('totalChat');
+
                     await privateChannel.sendTyping();
                     try {
                         let balasanAI = '';

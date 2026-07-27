@@ -36,7 +36,7 @@ async function loginPixiv() {
 // MODULE SHARE DENGAN WHATSAPP
 // ==========================================
 const { antrianGambar, prosesAntrianGambar } = require('./services/comfyui.service');
-const { upsert } = require('./config/database');
+const { upsert, incrementStat } = require('./config/database');
 
 // 2. KETIKA BOT ONLINE (Sudah Diperbarui ke clientReady)
 client.once('clientReady', async () => {
@@ -62,6 +62,16 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     const lower = message.content.toLowerCase();
+
+    // Deteksi command
+    if (lower === '!gacha' || lower === '!mybini' || lower.startsWith('!waifu') || lower.startsWith('!gambar ') || lower.startsWith('!bikin ') || lower === '!antrian') {
+        incrementStat('commands');
+        
+        // Command yang memanggil AI secara langsung
+        if (lower.startsWith('!gambar ') || lower.startsWith('!bikin ')) {
+            incrementStat('aiRequests');
+        }
+    }
 
     if (lower === '!gacha') return cmdGacha.handle(message, { pixiv });
     if (lower === '!mybini') return cmdMybini.handle(message, { client });
