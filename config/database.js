@@ -79,6 +79,13 @@ async function initDatabase() {
         )
     `);
 
+    db.run(`
+        CREATE TABLE IF NOT EXISTS statistics (
+            key TEXT PRIMARY KEY,
+            value INTEGER DEFAULT 0
+        )
+    `);
+
     // Simpan ke disk setelah init
     saveToDisk();
 
@@ -192,6 +199,17 @@ function updateColumn(table, id, column, value) {
     scheduleSave();
 }
 
+/**
+ * Increment statistik global di tabel statistics.
+ * @param {string} key
+ */
+function incrementStat(key) {
+    if (!db) return;
+    const existing = getOne('statistics', key);
+    const currentVal = existing ? existing.value : 0;
+    upsert('statistics', { key, value: currentVal + 1 });
+}
+
 // ==========================================
 // MIGRASI JSON → SQLITE
 // ==========================================
@@ -282,6 +300,7 @@ module.exports = {
     upsert,
     deleteOne,
     updateColumn,
+    incrementStat,
     migrateFromJSON,
     getDb: () => db
 };

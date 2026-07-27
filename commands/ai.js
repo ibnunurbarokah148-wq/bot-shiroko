@@ -211,6 +211,9 @@ async function handle(ctx) {
             const pertanyaan = textClean.substring(16).trim();
             const { provider, model } = AIProvider.resolveMode(userMode, senderId);
 
+            const { incrementStat } = require('../config/database');
+            incrementStat('aiRequests');
+
             const pesanInstruksi = `[TOLONG JAWAB PERTANYAAN INI SEBAGAI ASISTEN AKADEMIK YANG CERDAS DAN FORMAL]: ${pertanyaan}`;
 
             if (provider === 'gemini') {
@@ -285,6 +288,9 @@ async function handle(ctx) {
         try {
             await sock.sendPresenceUpdate('composing', from);
             const { provider, model } = AIProvider.resolveMode(userMode, senderId);
+
+            const { incrementStat } = require('../config/database');
+            incrementStat('aiRequests');
 
             const jawaban = await AIProvider.generate({
                 provider,

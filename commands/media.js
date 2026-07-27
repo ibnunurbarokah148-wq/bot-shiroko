@@ -171,6 +171,9 @@ async function handle(ctx) {
                         mimetype: mime,
                         caption: `🎨 *Ide Sensei:* ${promptMentah}\n☁️ *Mesin:* Cloudflare Workers AI (${namaModel})\n\nNn... Render dari Cloudflare AI berhasil diselesaikan! ⚡`
                     }, { quoted: targetMsg });
+                    
+                    const { incrementStat } = require('../config/database');
+                    incrementStat('imageGenerated');
                 } catch (cfErr) {
                     const { kembalikanLimit } = require('../config/db');
                     if (!isOwner) kembalikanLimit(senderId);
@@ -208,6 +211,9 @@ async function handle(ctx) {
                     } else {
                         throw new Error("Respons ArisuSoft tidak berisi URL/Base64 gambar yang valid");
                     }
+                    
+                    const { incrementStat } = require('../config/database');
+                    incrementStat('imageGenerated');
                 } catch (arisuErr) {
                     const { kembalikanLimit } = require('../config/db');
                     if (!isOwner) kembalikanLimit(senderId);

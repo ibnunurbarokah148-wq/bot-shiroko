@@ -146,6 +146,13 @@ function registerMessageHandler(sock, isJadibot = false) {
             msgType !== 'stickerMessage' && msgType !== 'documentMessage' &&
             msgType !== 'documentWithCaptionMessage') return;
 
+        // INCREMENT STATS
+        const { incrementStat } = require('../config/database');
+        incrementStat('totalChat');
+        if (textClean.startsWith('!')) {
+            incrementStat('commands');
+        }
+
         // Emit status ke Web Dashboard (via Socket.IO) jika aktif
         if (global.io) {
             global.io.emit('bot_status', { isTyping: true, user: msg.pushName || 'Seseorang' });

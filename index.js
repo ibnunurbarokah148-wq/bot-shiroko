@@ -209,23 +209,39 @@ app.get('/api/dashboard', (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     
     let whatsappUsers = 0;
+    let totalChat = 0;
+    let imageGenerated = 0;
+    let aiRequests = 0;
+    let commandsCount = 0;
+
     try {
         // Tarik data asli dari SQLite bot
-        const { getAll } = require('./config/database');
+        const { getAll, getOne } = require('./config/database');
         const users = getAll('user_limits');
         whatsappUsers = users.length;
+
+        const statTotalChat = getOne('statistics', 'totalChat');
+        const statImageGen = getOne('statistics', 'imageGenerated');
+        const statAiReq = getOne('statistics', 'aiRequests');
+        const statCommands = getOne('statistics', 'commands');
+
+        if (statTotalChat) totalChat = statTotalChat.value;
+        if (statImageGen) imageGenerated = statImageGen.value;
+        if (statAiReq) aiRequests = statAiReq.value;
+        if (statCommands) commandsCount = statCommands.value;
+
     } catch(e) {
         console.error('Gagal membaca SQLite untuk API Dashboard:', e);
     }
     
-    // Data dummy dinamis untuk statistik yang tidak disimpan di database
+    // Data statistik (Kini murni real-time dari database)
     const stats = {
-        totalChat: 45892 + (whatsappUsers * 15),
-        imageGenerated: 2088 + (whatsappUsers * 3),
-        discordUsers: 182,
-        whatsappUsers: whatsappUsers > 0 ? whatsappUsers : 426,
-        aiRequests: 3088 + (whatsappUsers * 8),
-        commands: 1280 + (whatsappUsers * 4)
+        totalChat: totalChat,
+        imageGenerated: imageGenerated,
+        discordUsers: 0, // Belum disinkronkan
+        whatsappUsers: whatsappUsers,
+        aiRequests: aiRequests,
+        commands: commandsCount
     };
     
     const services = [

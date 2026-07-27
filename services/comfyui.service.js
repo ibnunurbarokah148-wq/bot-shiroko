@@ -219,6 +219,10 @@ async function prosesAntrianGambar() {
                     caption: caption
                 }, { quoted: msg });
             }
+            
+            const { incrementStat } = require('../config/database');
+            incrementStat('imageGenerated');
+
 
         } catch (error) {
             // Fallback interaktif ke ArisuSoft jika ComfyUI mati / tidak terhubung atau butuh otentikasi
