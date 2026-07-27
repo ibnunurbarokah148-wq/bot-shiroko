@@ -569,23 +569,46 @@ function createBot() {
     });
 
     bot.on('entityHurt', (entity) => {
-        if (entity !== bot.entity) return;
-        
-        // Cari penyerang terdekat: mob jahat ATAU player yang bukan owner
-        const mobPenyerang = bot.nearestEntity(e => {
-            if (!e.name && !e.username) return false;
-            const distance = e.position.distanceTo(bot.entity.position);
-            if (distance > 16) return false;
+        // --- 1. JIKA BOT YANG DISERANG ---
+        if (entity === bot.entity) {
+            const mobPenyerang = bot.nearestEntity(e => {
+                if (!e.name && !e.username) return false;
+                const distance = e.position.distanceTo(bot.entity.position);
+                if (distance > 16) return false;
 
-            const isHostileMob = e.name && hostileMobs.includes(e.name.toLowerCase());
-            const isNaughtyPlayer = e.type === 'player' && e.username && !CONFIG.owners.includes(e.username.toLowerCase());
+                const isHostileMob = e.name && hostileMobs.includes(e.name.toLowerCase());
+                const isNaughtyPlayer = e.type === 'player' && e.username && !CONFIG.owners.includes(e.username.toLowerCase());
 
-            return isHostileMob || isNaughtyPlayer;
-        });
+                return isHostileMob || isNaughtyPlayer;
+            });
 
-        if (mobPenyerang) { 
-            bot.pathfinder.setGoal(null); 
-            mulaiSerang(mobPenyerang); 
+            if (mobPenyerang) { 
+                bot.pathfinder.setGoal(null); 
+                mulaiSerang(mobPenyerang); 
+            }
+        }
+        // --- 2. JIKA SENSEI (OWNER) YANG DISERANG ---
+        else if (entity.type === 'player' && entity.username && CONFIG.owners.includes(entity.username.toLowerCase())) {
+            // Cari entitas terdekat dari Sensei (maksimal 10 blok).
+            // Kalau Sensei kena fall damage / lava, biasanya tidak ada mob jahat di radius sedekat itu.
+            const pelaku = bot.nearestEntity(e => {
+                if (!e.name && !e.username) return false;
+                if (e === entity || e === bot.entity) return false; // Jangan target diri sendiri
+                
+                const jarakKeSensei = e.position.distanceTo(entity.position);
+                if (jarakKeSensei > 10) return false; // Terlalu jauh, mungkin Sensei jatuh sendiri (fall damage)
+
+                const isHostileMob = e.name && hostileMobs.includes(e.name.toLowerCase());
+                const isNaughtyPlayer = e.type === 'player' && e.username && !CONFIG.owners.includes(e.username.toLowerCase());
+
+                return isHostileMob || isNaughtyPlayer;
+            });
+
+            if (pelaku && targetSerangan !== pelaku) {
+                bot.chat(`Nn. Beraninya kau melukai Sensei...`);
+                bot.pathfinder.setGoal(null);
+                mulaiSerang(pelaku);
+            }
         }
     });
 
