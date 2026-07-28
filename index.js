@@ -203,6 +203,30 @@ app.post('/laporan-masuk', async (req, res) => {
         res.status(500).json({ status: 'error', message: error.message });
     }
 });
+// ==========================================
+// PORT CHECKER UNTUK STATUS AI LOKAL
+// ==========================================
+const net = require('net');
+let ollamaStatus = 'OFFLINE';
+let comfyUIStatus = 'OFFLINE';
+
+function checkPort(port, host) {
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(1000);
+        socket.on('connect', () => { socket.destroy(); resolve(true); });
+        socket.on('timeout', () => { socket.destroy(); resolve(false); });
+        socket.on('error', () => { resolve(false); });
+        socket.connect(port, host);
+    });
+}
+
+// Cek status secara otomatis setiap 2 detik di background
+setInterval(async () => {
+    ollamaStatus = (await checkPort(11434, '127.0.0.1')) ? 'ONLINE' : 'OFFLINE';
+    comfyUIStatus = (await checkPort(8188, '127.0.0.1')) ? 'ONLINE' : 'OFFLINE';
+}, 2000);
+
 // Endpoint API Dashboard Web Shiroko
 app.get('/api/dashboard', (req, res) => {
     // Memberikan izin CORS agar web eksternal bisa mengakses
@@ -254,8 +278,8 @@ app.get('/api/dashboard', (req, res) => {
         { name: 'Gemini', status: 'ONLINE', icon: 'fas fa-brain' },
         { name: 'Cloudflare', status: 'ONLINE', icon: 'fas fa-cloud' },
         { name: 'OpenRouter', status: 'ONLINE', icon: 'fas fa-network-wired' },
-        { name: 'Ollama', status: 'ONLINE', icon: 'fas fa-server' },
-        { name: 'ComfyUI', status: state.comfyUIEnabled ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-palette' }
+        { name: 'Ollama', status: ollamaStatus, icon: 'fas fa-server' },
+        { name: 'ComfyUI', status: comfyUIStatus, icon: 'fas fa-palette' }
     ];
 
     res.json({ stats, services });
