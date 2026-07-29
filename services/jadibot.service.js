@@ -25,7 +25,7 @@ async function startJadibot(sessionName, phoneNumber, replyFn) {
         auth: state,
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
-        browser: Browsers.ubuntu('Chrome'),
+        browser: ['Ubuntu', 'Chrome', '110.0.5585.95'],
         markOnlineOnConnect: true
     });
 
