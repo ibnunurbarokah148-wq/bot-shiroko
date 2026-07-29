@@ -3,7 +3,7 @@
 // Minimal bootstrap: Baileys + Express + Cron
 // ==========================================
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const cron = require('node-cron');
 const express = require('express');
@@ -38,8 +38,13 @@ process.on('uncaughtException', (err) => {
 // ==========================================
 async function startBot() {
     const { state: authState, saveCreds } = await useMultiFileAuthState('./auth_session');
+    
+    // Fetch latest WA Web version untuk mencegah error 405 (Method Not Allowed)
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`[WA] Menggunakan WA v${version.join('.')}, isLatest: ${isLatest}`);
 
     const sock = makeWASocket({
+        version,
         auth: {
             creds: authState.creds,
             keys: makeCacheableSignalKeyStore(authState.keys, pino({ level: 'silent' }))
