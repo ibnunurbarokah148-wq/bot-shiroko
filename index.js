@@ -51,7 +51,7 @@ async function startBot() {
         },
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
-        browser: Browsers.macOS('Desktop')
+        browser: ['Ubuntu', 'Chrome', '20.0.04']
     });
 
     // Simpan ke module untuk akses dari services (ComfyUI, cron, express, dll)
