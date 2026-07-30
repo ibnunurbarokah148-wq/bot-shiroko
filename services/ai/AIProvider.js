@@ -18,7 +18,7 @@ const state = require('../../config/state');
  */
 function resolveMode(mode, senderId) {
     const modeMap = {
-        'gemini':       { provider: 'gemini',      model: 'gemini-2.0-flash-lite-preview-02-05' },
+        'gemini':       { provider: 'gemini',      model: 'gemini-2.5-flash-lite' },
         'ollama':       { provider: 'ollama',      model: state.userOllamaModel[senderId] || 'gemma3:4b' },
         'openrouter':   { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || 'deepseek/deepseek-r1:free' },
         'or':           { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || 'deepseek/deepseek-r1:free' },

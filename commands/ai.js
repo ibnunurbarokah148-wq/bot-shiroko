@@ -414,7 +414,7 @@ async function handle(ctx) {
                 // Gemini mode khusus: one-shot (tanpa chat session)
                 await reply('Nn... Mengakses database cloud Gemini...');
                 const bensinGemini = getGeminiComponents();
-                const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite-preview-02-05" });
+                const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
                 const result = await modelPintarDinamis.generateContent(`Jawablah informatif & akurat:\n\nPertanyaan: ${pertanyaan}`);
                 await reply(`🧠 *SHIROKO PINTAR (GEMINI)*\n\n${result.response.text().trim()}`);
             } else {

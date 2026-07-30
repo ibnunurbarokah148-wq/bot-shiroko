@@ -32,7 +32,7 @@ function getGeminiComponents() {
     function getShirokoModel() {
         const { genAI } = getGeminiComponents();
         return genAI.getGenerativeModel({
-            model: "gemini-2.0-flash-lite-preview-02-05",
+            model: "gemini-2.5-flash-lite",
             generationConfig: getShirokoGenerationConfig(),
             systemInstruction: getShirokoSystemPrompt(true) // Default owner mode for Shiroko model
         });
@@ -45,7 +45,7 @@ function getGeminiComponents() {
     function getAkademikModel() {
         const { genAI } = getGeminiComponents();
         return genAI.getGenerativeModel({
-            model: "gemini-2.0-flash-lite-preview-02-05",
+            model: "gemini-2.5-flash-lite",
         generationConfig: { temperature: 0.7, topP: 0.9, maxOutputTokens: 8192 }
     });
 }
@@ -56,12 +56,12 @@ function getGeminiComponents() {
  * @param {string} options.prompt
  * @param {string} options.senderId
  * @param {boolean} options.isOwner
- * @param {string} [options.model='gemini-2.0-flash-lite-preview-02-05']
+ * @param {string} [options.model='gemini-2.5-flash-lite']
  * @param {string|null} [options.systemPrompt]
  * @param {Buffer|null} [options.imageBuffer]
  * @returns {Promise<string>}
  */
-async function generate({ prompt, senderId, isOwner, model = 'gemini-2.0-flash-lite-preview-02-05', systemPrompt = null, imageBuffer = null }) {
+async function generate({ prompt, senderId, isOwner, model = 'gemini-2.5-flash-lite', systemPrompt = null, imageBuffer = null }) {
     const { genAI } = getGeminiComponents();
 
     const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
