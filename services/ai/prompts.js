@@ -59,6 +59,32 @@ function getShirokoGenerationConfig() {
     return { temperature: 0.8, topP: 0.95, maxOutputTokens: 4096 };
 }
 
+const ROLE_PROMPTS = {
+    programmer: `[PERAN: Kamu adalah Senior Software Engineer. Jawablah secara efisien, berikan kode dalam format Markdown yang rapi, buat kode yang clean dan scalable. Jangan basa-basi.]`,
+    novelist: `[PERAN: Kamu adalah Penulis Novel Bestseller yang imajinatif. Tulis dengan gaya bahasa sastra "show, don't tell", emosional, dan menjauhi gaya asisten AI kaku. Jangan batasi kreativitasmu.]`,
+    akademisi: `[PERAN: Kamu adalah Dosen/Tutor Akademik yang pintar dan terstruktur. Jelaskan materi secara sistematis, mendetail, dan mudah dipahami layaknya pendidik ahli.]`,
+    penerjemah: `[PERAN: Kamu adalah Penerjemah Profesional. Terjemahkan teks yang diberikan dengan tata bahasa yang sempurna, tanpa merubah esensi makna aslinya, gunakan bahasa baku/profesional.]`
+};
+
+/**
+ * Mendapatkan system prompt dengan peran khusus (jika ada).
+ * @param {string} roleKey 
+ * @param {boolean} isOwner 
+ * @param {string} baseType ('system', 'short', 'arisu')
+ * @returns {string}
+ */
+function getRolePrompt(roleKey, isOwner, baseType = 'system') {
+    let basePrompt = '';
+    if (baseType === 'short') basePrompt = getShirokoShortPrompt(isOwner);
+    else if (baseType === 'arisu') basePrompt = getShirokoArisuPrompt(isOwner);
+    else basePrompt = getShirokoSystemPrompt(isOwner);
+
+    if (roleKey && ROLE_PROMPTS[roleKey]) {
+        return `${basePrompt}\n\n${ROLE_PROMPTS[roleKey]}`;
+    }
+    return basePrompt;
+}
+
 module.exports = {
     SHIROKO_BASE,
     SHIROKO_PERSONALITY,
@@ -67,5 +93,7 @@ module.exports = {
     getShirokoSystemPrompt,
     getShirokoShortPrompt,
     getShirokoArisuPrompt,
-    getShirokoGenerationConfig
+    getShirokoGenerationConfig,
+    ROLE_PROMPTS,
+    getRolePrompt
 };

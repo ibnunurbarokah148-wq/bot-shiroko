@@ -4,10 +4,13 @@
 //          sesiOllamaMode, obrolan AI, penangkapan gambar
 // ==========================================
 const axios = require('axios');
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
 const state = require('../config/state');
 const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
 const AIProvider = require('../services/ai/AIProvider');
 const { getGeminiComponents } = require('../services/ai/providers/gemini');
+const { ROLE_PROMPTS, getRolePrompt } = require('../services/ai/prompts');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, isGroup, textClean, textLower,
@@ -208,6 +211,50 @@ async function handle(ctx) {
     }
 
     // ==========================================
+    // PERAN / PROFESI MODE
+    // ==========================================
+    if (textLower.startsWith('!peran') || textLower.startsWith('!profesi')) {
+        const args = textClean.split(' ')[1];
+        const roleKeys = Object.keys(ROLE_PROMPTS);
+        
+        if (!args) {
+            let teks = `💼 *PILIH PERAN / PROFESI SHIROKO* 💼\n\nNn... Sensei ingin Shiroko berperan sebagai apa hari ini?\n\n`;
+            teks += `1. 💻 Programmer (Senior Software Engineer)\n`;
+            teks += `2. 📖 Novelist (Penulis Sastra)\n`;
+            teks += `3. 🎓 Akademisi (Tutor/Dosen)\n`;
+            teks += `4. 🌐 Penerjemah (Translator Profesional)\n`;
+            teks += `5. 🌸 Normal (Kembali jadi Waifu/Asisten)\n\n`;
+            teks += `Ketik *!peran [angka]* (contoh: *!peran 1*)`;
+            await reply(teks);
+            return true;
+        }
+
+        const roleMap = { '1': 'programmer', '2': 'novelist', '3': 'akademisi', '4': 'penerjemah', '5': 'normal' };
+        const chosenRole = roleMap[args] || (roleKeys.includes(args.toLowerCase()) ? args.toLowerCase() : null);
+
+        if (!chosenRole) {
+            await reply('Nn... Pilihan peran tidak valid. Ketik *!peran* untuk melihat daftar.');
+            return true;
+        }
+
+        if(!state.userRole) state.userRole = {};
+        
+        if (chosenRole === 'normal') {
+            delete state.userRole[senderId];
+            if (state.userSystemPrompt && state.userSystemPrompt[senderId]) delete state.userSystemPrompt[senderId];
+            await reply('🌸 *MODE NORMAL AKTIF*\n\nNn... Shiroko sudah kembali ke wujud asisten/istri Sensei seperti biasa.');
+        } else {
+            state.userRole[senderId] = chosenRole;
+            if (state.userSystemPrompt && state.userSystemPrompt[senderId]) delete state.userSystemPrompt[senderId];
+            const roleNama = chosenRole.charAt(0).toUpperCase() + chosenRole.slice(1);
+            await reply(`✅ *PERAN ${roleNama.toUpperCase()} AKTIF*\n\nNn... Mulai sekarang Shiroko akan berperilaku sebagai ${roleNama}. ✨`);
+        }
+        
+        AIProvider.clearMemory(senderId);
+        return true;
+    }
+
+    // ==========================================
     // AI MODE
     // ==========================================
     if (textLower.startsWith('!aimode')) {
@@ -362,12 +409,16 @@ async function handle(ctx) {
     }
 
     // ==========================================
-    // RADAR PENANGKAP GAMBAR UNTUK NGOBROL
+    // RADAR PENANGKAP GAMBAR & FILE UNTUK NGOBROL
     // ==========================================
     let chatImageBuffer = null;
+    let extractedFileText = "";
+
     if (pemicuObrolan) {
         const isTargetImage = msgType === 'imageMessage';
         const isQuotedImage = isQuoted && quotedType === 'imageMessage';
+        const isTargetDoc = msgType === 'documentMessage';
+        const isQuotedDoc = isQuoted && quotedType === 'documentMessage';
 
         if (isTargetImage || isQuotedImage) {
             const messageToDownload = isQuotedImage ? quotedMsg?.imageMessage : msg?.message?.imageMessage;
@@ -379,13 +430,39 @@ async function handle(ctx) {
                     console.error("Gagal download gambar chat:", e);
                 }
             }
+        } else if (isTargetDoc || isQuotedDoc) {
+            const docMsg = isQuotedDoc ? quotedMsg?.documentMessage : msg?.message?.documentMessage;
+            if (docMsg) {
+                try {
+                    await reply('Nn... Sedang membaca dokumen yang Sensei kirim...');
+                    const docBuffer = await downloadMediaBaileys(docMsg, 'document');
+                    const fileName = docMsg.fileName || 'document.txt';
+                    const mimeType = docMsg.mimetype || '';
+                    
+                    if (fileName.endsWith('.pdf') || mimeType.includes('pdf')) {
+                        const pdfData = await pdfParse(docBuffer);
+                        extractedFileText = pdfData.text;
+                    } else if (fileName.endsWith('.docx') || mimeType.includes('wordprocessingml')) {
+                        const docxData = await mammoth.extractRawText({ buffer: docBuffer });
+                        extractedFileText = docxData.value;
+                    } else {
+                        // Anggap teks biasa (.txt, .md, .csv, dll)
+                        extractedFileText = docBuffer.toString('utf-8');
+                    }
+                    
+                    if (!pesanUser) pesanUser = "Nn... Tolong rangkum atau jelaskan isi dokumen ini.";
+                } catch (e) {
+                    console.error("Gagal membaca dokumen:", e);
+                    await reply('Nn... Maaf, Shiroko tidak bisa membaca dokumen tersebut. Pastikan formatnya PDF, DOCX, atau TXT.');
+                }
+            }
         }
     }
 
     // ==========================================
     // MESIN OBROLAN AI — UNIFIED via AIProvider
     // ==========================================
-    if (pemicuObrolan && (pesanUser || chatImageBuffer)) {
+    if (pemicuObrolan && (pesanUser || chatImageBuffer || extractedFileText)) {
         const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
         const userMode = state.userAIMode[senderId] || defaultMode;
         const cost = getAiCost(userMode);
@@ -397,14 +474,26 @@ async function handle(ctx) {
 
             const { incrementStat } = require('../config/database');
             incrementStat('aiRequests');
+            
+            // Gabungkan teks dokumen dengan pesan user jika ada
+            let finalPrompt = pesanUser;
+            if (extractedFileText) {
+                finalPrompt = `${pesanUser}\n\n[ISI DOKUMEN DARI USER]:\n${extractedFileText.substring(0, 15000)}`; // limit chars
+            }
+            
+            let finalSystemPrompt = state.userSystemPrompt ? state.userSystemPrompt[senderId] : null;
+            if (!finalSystemPrompt && state.userRole && state.userRole[senderId]) {
+                const baseType = (provider === 'cloudflare') ? 'short' : ((provider === 'arisu') ? 'arisu' : 'system');
+                finalSystemPrompt = getRolePrompt(state.userRole[senderId], isOwner, baseType);
+            }
 
             const jawaban = await AIProvider.generate({
                 provider,
                 model,
-                prompt: pesanUser,
+                prompt: finalPrompt,
                 senderId,
                 isOwner,
-                systemPrompt: state.userSystemPrompt ? state.userSystemPrompt[senderId] : null,
+                systemPrompt: finalSystemPrompt,
                 imageBuffer: chatImageBuffer
             });
 
@@ -426,6 +515,9 @@ async function handle(ctx) {
         // Reset userSystemPrompt if they use !lupa to revert back to normal Shiroko AI mode!
         if (state.userSystemPrompt && state.userSystemPrompt[senderId]) {
             delete state.userSystemPrompt[senderId];
+        }
+        if (state.userRole && state.userRole[senderId]) {
+            delete state.userRole[senderId];
         }
 
         if (berhasilLupa) {
