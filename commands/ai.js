@@ -414,7 +414,7 @@ async function handle(ctx) {
                 // Gemini mode khusus: one-shot (tanpa chat session)
                 await reply('Nn... Mengakses database cloud Gemini...');
                 const bensinGemini = getGeminiComponents();
-                const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite-preview-02-05" });
                 const result = await modelPintarDinamis.generateContent(`Jawablah informatif & akurat:\n\nPertanyaan: ${pertanyaan}`);
                 await reply(`🧠 *SHIROKO PINTAR (GEMINI)*\n\n${result.response.text().trim()}`);
             } else {
@@ -427,8 +427,8 @@ async function handle(ctx) {
 
         } catch (error) {
             kembalikanLimit(senderId, cost);
-            await reply('Nn... Mesin kecerdasan akademik sedang mengalami gangguan teknis: ' + error.message);
             console.error('🚨 ERROR SHIROKO PINTAR:', error);
+            await reply(`Nn... Mesin kecerdasan akademik sedang mengalami gangguan teknis:\n_${error.message}_`);
         }
         return true;
     }
@@ -542,7 +542,8 @@ async function handle(ctx) {
             return true;
         } catch (error) {
             kembalikanLimit(senderId, cost);
-            await reply('Nn... Memori Shiroko eror, ketik !lupa.');
+            console.error('🚨 AI Chat Error:', error);
+            await reply(`Nn... Terjadi kesalahan dari server AI:\n_${error.message}_\n\n*(Coba ketik !lupa jika dirasa memori percakapan nyangkut)*`);
         }
         return true;
     }
