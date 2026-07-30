@@ -257,6 +257,39 @@ async function handle(ctx) {
     // ==========================================
     // AI MODE
     // ==========================================
+    
+    // Helper function untuk filter model berdasarkan peran (Role)
+    function filterModelsByRole(models, role, provider) {
+        if (!role || role === 'normal') return models; // Tampilkan semua jika normal
+
+        const keywords = {
+            'programmer': {
+                'cloudflare': ['coder', 'code', 'qwq', 'r1', 'deepseek'],
+                'openrouter': ['code', 'coder', 'reasoning']
+            },
+            'novelist': {
+                'cloudflare': ['70b', '120b', 'mistral', 'glm'],
+                'openrouter': ['550b', '120b']
+            },
+            'akademisi': {
+                'cloudflare': ['70b', '120b', 'r1', 'qwq'],
+                'openrouter': ['550b', '31b', '20b']
+            },
+            'penerjemah': {
+                'cloudflare': ['70b', 'gemma', '26b', '120b'],
+                'openrouter': ['31b', 'flash', '26b']
+            }
+        };
+
+        const currentKeywords = keywords[role]?.[provider] || [];
+        const filtered = models.filter(m => {
+            const str = (m.name + " " + m.id).toLowerCase();
+            return currentKeywords.some(kw => str.includes(kw));
+        });
+
+        return filtered.length > 0 ? filtered : models;
+    }
+
     if (textLower.startsWith('!aimode')) {
         const args = textClean.split(' ')[1];
         const allowedModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
@@ -300,13 +333,17 @@ async function handle(ctx) {
         } else if (args === 'openrouter' || args === 'or') {
             try {
                 await reply('Nn... Men-scan daftar model live dari OpenRouter API...');
-                const models = await AIProvider.fetchModels('openrouter');
+                let models = await AIProvider.fetchModels('openrouter');
 
                 if (!models || models.length === 0) { await reply('Nn... Tidak ada model OpenRouter yang tersedia.'); return true; }
 
+                const userRole = state.userRole ? state.userRole[senderId] : null;
+                models = filterModelsByRole(models, userRole, 'openrouter');
+
                 state.sesiOpenRouterMode[senderId] = { list: models };
 
-                let teksList = `🌐 *DAFTAR MODEL OPENROUTER LIVE*\n\nNn... Sensei, pilih otak OpenRouter yang mau dipakai dengan membalas angkanya:\n\n`;
+                let roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
+                let teksList = `🌐 *DAFTAR MODEL OPENROUTER LIVE*${roleNotice}\n\nNn... Sensei, pilih otak OpenRouter yang mau dipakai dengan membalas angkanya:\n\n`;
                 models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name}\n`; });
                 teksList += `\n_Ketik *batal* untuk membatalkan._`;
 
@@ -318,13 +355,17 @@ async function handle(ctx) {
         } else if (args === 'cloudflare' || args === 'cf') {
             try {
                 await reply('Nn... Men-scan daftar model AI resmi dari Cloudflare...');
-                const models = await AIProvider.fetchModels('cloudflare');
+                let models = await AIProvider.fetchModels('cloudflare');
 
                 if (!models || models.length === 0) { await reply('Nn... Tidak ada model Cloudflare yang ditemukan.'); return true; }
 
+                const userRole = state.userRole ? state.userRole[senderId] : null;
+                models = filterModelsByRole(models, userRole, 'cloudflare');
+
                 state.sesiCloudflareMode[senderId] = { list: models };
 
-                let teksList = `☁️ *DAFTAR MODEL CLOUDFLARE AI LIVE*\n\nNn... Sensei, pilih otak Cloudflare AI yang mau dipakai dengan membalas angkanya:\n\n`;
+                let roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
+                let teksList = `☁️ *DAFTAR MODEL CLOUDFLARE AI LIVE*${roleNotice}\n\nNn... Sensei, pilih otak Cloudflare AI yang mau dipakai dengan membalas angkanya:\n\n`;
                 models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name}\n`; });
                 teksList += `\n_Ketik *batal* untuk membatalkan._`;
 
