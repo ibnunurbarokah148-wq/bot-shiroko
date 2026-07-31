@@ -289,13 +289,8 @@ async function prosesAntrianGambar() {
     // Buka kunci (Unlock)
     sedangRender = false;
 
-    // [AUTO-STOP VAST.AI] Set timer untuk mematikan mesin setelah 1 menit idle
-    if (process.env.VAST_API_KEY && process.env.VAST_INSTANCE_ID) {
-        vastIdleTimer = setTimeout(async () => {
-            console.log("⏳ VAST.AI: Mesin sudah menganggur 1 menit. Mematikan...");
-            await stopVastInstance();
-        }, 1 * 60 * 1000);
-    }
+    // [MODIFIKASI SENSEI]: Auto-stop Vast.ai (idle 1 menit) dinonaktifkan.
+    // Mesin Vast.ai akan tetap menyala meskipun sedang idle/tidak ada request.
 }
 
 module.exports = {
