@@ -1,5 +1,5 @@
 const { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require('discord.js');
-const { antrianGambar, prosesAntrianGambar } = require('../services/comfyui.service');
+const { antrianGambar, prosesAntrianGambar, isComfyUIActive } = require('../services/comfyui.service');
 const axios = require('axios');
 
 module.exports = {
@@ -27,6 +27,11 @@ module.exports = {
             await interaction.update({ content: 'Nn... Memproses pilihanmu...', components: [] }).catch(() => { });
 
             if (interaction.customId === 'img_comfyui' || interaction.customId === 'img_comfyui_sfw') {
+                if (!isComfyUIActive()) {
+                    await message.reply('❌ Nn... Mohon maaf, mesin Render GPU ComfyUI sedang *DIMATIKAN*. (Jam Operasional otomatis: 07:00 - 23:00 WIB). Silakan pilih opsi rendering lain seperti ArisuSoft.');
+                    return;
+                }
+
                 let finalPrompt = promptMentah;
                 if (interaction.customId === 'img_comfyui_sfw') {
                     finalPrompt += ", safe, fully clothed, no nsfw";

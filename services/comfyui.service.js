@@ -12,6 +12,24 @@ const antrianGambar = [];
 let sedangRender = false;
 let vastIdleTimer = null; // Timer untuk mematikan mesin
 
+/**
+ * Mengecek apakah ComfyUI aktif dan berada dalam jam operasional (07:00 - 22:59 WIB)
+ */
+function isComfyUIActive() {
+    if (!state.comfyUIEnabled) return false;
+    
+    // Cek waktu WIB (UTC+7)
+    const nowWibStr = new Date().toLocaleString("en-US", {timeZone: "Asia/Jakarta"});
+    const nowWib = new Date(nowWibStr);
+    const hour = nowWib.getHours();
+    
+    // Mati dari 23:00 sampai 06:59
+    if (hour >= 23 || hour < 7) {
+        return false;
+    }
+    return true;
+}
+
 async function prosesAntrianGambar() {
     // Kalau mesin lagi jalan, atau antrean kosong, batalkan eksekusi
     if (sedangRender || antrianGambar.length === 0) return;
@@ -282,5 +300,6 @@ async function prosesAntrianGambar() {
 
 module.exports = {
     antrianGambar,
-    prosesAntrianGambar
+    prosesAntrianGambar,
+    isComfyUIActive
 };

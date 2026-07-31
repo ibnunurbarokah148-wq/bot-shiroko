@@ -10,7 +10,7 @@ const state = require('../config/state');
 const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
 const { getGeminiComponents, getShirokoModel } = require('../services/ai/providers/gemini');
 const { tambahMetadataStiker } = require('../utils/sticker');
-const { antrianGambar, prosesAntrianGambar } = require('../services/comfyui.service');
+const { antrianGambar, prosesAntrianGambar, isComfyUIActive } = require('../services/comfyui.service');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, textClean, textLower, msgType,
@@ -51,8 +51,8 @@ async function handle(ctx) {
         // TAHAP 1: PILIH PROVIDER/SERVER
         if (sesi.step === 1 || !sesi.step) {
             if (pilihan === '1') {
-                if (state.comfyUIEnabled === false) {
-                    await reply('❌ Nn... Mohon maaf, mesin Render (Vast.ai) sedang *DIMATIKAN* oleh Admin saat ini. Silakan pilih server/provider lain.');
+                if (!isComfyUIActive()) {
+                    await reply('❌ Nn... Mohon maaf, mesin Render GPU ComfyUI sedang *DIMATIKAN*. (Jam Operasional otomatis: 07:00 - 23:00 WIB). Silakan pilih server/provider lain (misalnya nomor 2 atau 3).');
                     return true;
                 }
 
