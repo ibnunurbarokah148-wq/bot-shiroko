@@ -18,10 +18,10 @@ const CONFIG = {
 //  ZONA AMAN RUMAH (ANTI-HANCUR)
 // ============================================================
 const CONFIG_RUMAH = {
-    petiX: 82,
-    petiY: 72,
-    petiZ: 37,
-    radiusAman: 20 // Jarak aman (blok). Shiroko dilarang menambang di radius ini!
+    petiX: process.env.MC_HOME_X ? parseInt(process.env.MC_HOME_X) : 82,
+    petiY: process.env.MC_HOME_Y ? parseInt(process.env.MC_HOME_Y) : 72,
+    petiZ: process.env.MC_HOME_Z ? parseInt(process.env.MC_HOME_Z) : 37,
+    radiusAman: process.env.MC_HOME_RADIUS ? parseInt(process.env.MC_HOME_RADIUS) : 20
 };
 
 const kamusBlok = {
