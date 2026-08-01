@@ -3,7 +3,7 @@
 // Handler: !mc start, !mc stop, !mc status, !mc chat
 // Khusus Owner
 // ==========================================
-const { startMcBot, stopMcBot, getMinecraftStatus, getMinecraftBot } = require('../minecraft');
+const { startMcBot, stopMcBot, getMinecraftStatus, getMinecraftBot } = require('../services/minecraft');
 
 async function handle(ctx) {
     const { sock, from, senderId, isOwner, textClean, textLower, reply } = ctx;
