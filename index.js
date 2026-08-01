@@ -351,4 +351,4 @@ initDatabase().then(() => {
 // MULAI BOT DISCORD & MINECRAFT (SHARED MEMORY)
 // ==========================================
 require('./bot-dc.js');
-require('./minecraft.js');
+// require('./minecraft.js'); // Dihapus karena sudah pindah ke services/minecraft/

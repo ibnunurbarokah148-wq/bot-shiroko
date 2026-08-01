@@ -1,7 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const { getGeminiComponents } = require('./services/ai/providers/gemini');
-const PixivApi = require('pixiv-api-client');
 const axios = require('axios');
 const cmdGacha = require('./commands-dc/gacha');
 const cmdMybini = require('./commands-dc/mybini');
@@ -20,28 +19,16 @@ const client = new Client({
     ]
 });
 
-const pixiv = new PixivApi();
-
-async function loginPixiv() {
-    try {
-        if (!process.env.PIXIV_REFRESH_TOKEN) return;
-        await pixiv.refreshAccessToken(process.env.PIXIV_REFRESH_TOKEN);
-        console.log('Nn... Koneksi ke brankas Pixiv berhasil diperbarui, Sensei.');
-    } catch (err) {
-        console.error('Gagal menyambung ke Pixiv:', err.message);
-    }
-}
-
 // ==========================================
 // MODULE SHARE DENGAN WHATSAPP
 // ==========================================
+const { pixiv } = require('./services/pixiv.service');
 const { antrianGambar, prosesAntrianGambar } = require('./services/comfyui.service');
 const { upsert, incrementStat } = require('./config/database');
 
 // 2. KETIKA BOT ONLINE (Sudah Diperbarui ke clientReady)
 client.once('clientReady', async () => {
     console.log(`Nn... Sistem komunikasi Discord ${client.user.tag} sudah aktif, Sensei.`);
-    await loginPixiv();
     
     const updateDiscordUsersCount = () => {
         let count = 0;
@@ -53,8 +40,6 @@ client.once('clientReady', async () => {
 
     updateDiscordUsersCount(); // Run once at startup
     setInterval(updateDiscordUsersCount, 60000); // And every minute
-
-    setInterval(loginPixiv, 3600000);
 });
 
 // 3. DETEKSI PESAN DARI USER
