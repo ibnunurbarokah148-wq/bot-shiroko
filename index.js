@@ -196,6 +196,12 @@ app.get('/', (req, res) => {
 });
 
 app.post('/laporan-masuk', async (req, res) => {
+    // 🛡️ Keamanan: Hanya terima request jika API Key cocok
+    const apiKey = req.headers['x-api-key'];
+    if (apiKey !== process.env.WEB_SECRET_KEY) {
+        return res.status(401).json({ status: 'error', message: 'Unauthorized. Invalid API Key.' });
+    }
+
     const { pesan } = req.body;
     if (!pesan) return res.status(400).json({ status: 'error', message: 'Field "pesan" wajib diisi.' });
 
