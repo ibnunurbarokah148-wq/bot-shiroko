@@ -74,11 +74,17 @@ function setupLifecycleEvents(bot, createBotFn) {
         const mcData = require('minecraft-data')(bot.version);
         const movements = new Movements(bot, mcData);
 
-        movements.canDig = false;
+        movements.canDig = true; // Mengizinkan bot memecahkan blok jika jalurnya terhalang
+        movements.allow1by1towers = true; // Mengizinkan bot membangun jalan (naro blok)
+        movements.allowFreeFall = true;
         movements.canOpenDoors = true;
 
-        if (mcData.itemsByName['dirt']) {
-            movements.scafoldingBlocks = [mcData.itemsByName['dirt'].id];
+        movements.scafoldingBlocks = [];
+        const balokBantuan = ['dirt', 'cobblestone', 'netherrack', 'stone', 'sand'];
+        for (const namaBlok of balokBantuan) {
+            if (mcData.itemsByName[namaBlok]) {
+                movements.scafoldingBlocks.push(mcData.itemsByName[namaBlok].id);
+            }
         }
 
         bot.pathfinder.setMovements(movements);

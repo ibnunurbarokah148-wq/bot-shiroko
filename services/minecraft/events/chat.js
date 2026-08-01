@@ -211,19 +211,46 @@ async function handleChat(bot, username, message, mcData) {
 
     // STATUS
     if (pk.includes('status')) {
-        const items = bot.inventory.items().map(i => `${i.name}x${i.count}`).join(', ') || 'kosong';
-        bot.chat(`Nn. HP: ${Math.round(bot.health)}. Inv: ${items}`);
+        const invMap = {};
+        for (const item of bot.inventory.items()) {
+            invMap[item.name] = (invMap[item.name] || 0) + item.count;
+        }
+        const invArray = Object.entries(invMap).map(([name, count]) => `${name} x${count}`);
+        let invStr = invArray.join(', ') || 'kosong';
+        
+        // Cegah pesan terlalu panjang agar tidak error (limit chat Minecraft ~256 karakter)
+        if (invStr.length > 100) invStr = invStr.substring(0, 100) + '... (Gunakan !inv untuk selengkapnya)';
+        
+        bot.chat(`Nn. HP: ${Math.round(bot.health)}/20. Makanan: ${Math.round(bot.food)}/20. Inv: ${invStr}`);
         return;
     }
 
     // INVENTARIS
     if (pk.includes('inv') || pk.includes('inventaris')) {
-        const items = bot.inventory.items();
-        if (items.length === 0) {
+        if (bot.inventory.items().length === 0) {
             bot.chat("Nn. Inventory kosong. Belum ada yang dirampok.");
-        } else {
-            bot.chat(`Nn. Jarahan: ${items.map(i => `${i.name}x${i.count}`).join(', ')}`);
+            return;
         }
+        
+        const invMap = {};
+        for (const item of bot.inventory.items()) {
+            invMap[item.name] = (invMap[item.name] || 0) + item.count;
+        }
+        const invArray = Object.entries(invMap).map(([name, count]) => `${name} x${count}`);
+        
+        bot.chat(`Nn. Laporan Tas (${invArray.length} jenis item):`);
+        
+        // Kirim dalam beberapa pesan jika panjang
+        let currentMsg = "";
+        for (let i = 0; i < invArray.length; i++) {
+            if (currentMsg.length + invArray[i].length > 200) {
+                bot.chat(currentMsg);
+                currentMsg = "";
+            }
+            currentMsg += (currentMsg ? ", " : "") + invArray[i];
+        }
+        if (currentMsg) bot.chat(currentMsg);
+        
         return;
     }
 

@@ -56,7 +56,13 @@ function getMinecraftStatus() {
         return { online: false };
     }
     const pos = state.activeMcBot.entity.position;
-    const items = state.activeMcBot.inventory.items().map(i => `${i.name} x${i.count}`).join(', ') || 'Kosong';
+    
+    const invMap = {};
+    for (const item of state.activeMcBot.inventory.items()) {
+        invMap[item.name] = (invMap[item.name] || 0) + item.count;
+    }
+    const items = Object.entries(invMap).map(([name, count]) => `${name} x${count}`).join(', ') || 'Kosong';
+    
     return {
         online: true,
         username: state.activeMcBot.username,
