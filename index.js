@@ -21,6 +21,7 @@ const jadibotService = require('./services/jadibot.service');
 const { initDatabase, migrateFromJSON } = require('./config/database');
 const { startAutoCleanup } = require('./utils/cleanup');
 const alarmService = require('./services/alarm.service');
+const { initPrayerScheduler } = require('./services/prayer.service');
 
 // Services (auto-init saat di-require: Pixiv login, AI memory cleanup)
 require('./services/pixiv.service');
@@ -130,27 +131,10 @@ cron.schedule('0 0 * * *', () => {
 }, { timezone: "Asia/Jakarta" });
 
 // ==========================================
-// CRON JOB: AI Smart Alarm Salat (5 waktu)
+// CRON JOB: AI Dynamic Prayer Scheduler (Presisi Cibuntu, Cibitung, Kab. Bekasi)
 // Dijalankan SEKALI di luar startBot()
 // ==========================================
-const jadwalSalat = [
-    { jam: '0 4 * * *', nama: 'Subuh', waktu: '04:00' },
-    { jam: '5 12 * * *', nama: 'Zuhur', waktu: '12:05' },
-    { jam: '20 15 * * *', nama: 'Ashar', waktu: '15:20' },
-    { jam: '15 18 * * *', nama: 'Maghrib', waktu: '18:15' },
-    { jam: '30 19 * * *', nama: 'Isya', waktu: '19:30' },
-];
-
-jadwalSalat.forEach(({ jam, nama, waktu }) => {
-    cron.schedule(jam, async () => {
-        if (!state.alarmSalatAktif) return;
-        if (nama === 'Subuh') {
-            await alarmService.triggerSubuhAlarm();
-        } else {
-            await alarmService.triggerSalatAlarm(nama, waktu);
-        }
-    }, { timezone: "Asia/Jakarta" });
-});
+initPrayerScheduler();
 
 // ==========================================
 // EXPRESS API (Laporan Minecraft / Webhook)

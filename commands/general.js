@@ -3,6 +3,7 @@
 // ==========================================
 const { ID_OWNER, JATAH_HARIAN } = require('../config/constants');
 const { dbLimit, dbRole, dbCoba, simpanCoba } = require('../config/db');
+const prayerService = require('../services/prayer.service');
 
 async function handle(ctx) {
     const { senderId, isOwner, textClean, textLower, msg, reply } = ctx;
@@ -54,6 +55,15 @@ async function handle(ctx) {
     }
 
     // ==========================================
+    // JADWAL SALAT & IMSAKIYAH (PRESISI BEKASI)
+    // ==========================================
+    if (['!jadwal', '!jadwalsholat', '!sholat', '!jadwalsalat', '!salat'].includes(textLower)) {
+        const scheduleMsg = await prayerService.getFormattedPrayerSchedule();
+        await reply(scheduleMsg);
+        return true;
+    }
+
+    // ==========================================
     // MENU UTAMA BOT
     // ==========================================
     if (textLower === '!menu' || textLower === '!fitur') {
@@ -80,6 +90,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ \`!shiroko [pesan]\`
 *║* ➸ \`!shiroko_pintar [tanya]\`
 *║* ➸ !aimode [mode] (Ganti Otak AI)
+*║* ➸ !jadwal (Jadwal Salat & Imsakiyah)
 *║* ➸ !lupa (Reset Memori AI)
 *║* ➸ !limit (Cek Sisa Limit)
 *║* ➸ !ping (Cek Status Bot)
