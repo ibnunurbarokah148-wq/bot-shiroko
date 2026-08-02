@@ -1,111 +1,66 @@
 // ==========================================
-// COMMAND: ALARM & PENGINGAT IBADAH
-// Handler: alarm subuh, sesi salat, !testsalat, !testsubuh, !maafshiroko
+// COMMAND: ALARM & PENGINGAT IBADAH (AI-POWERED)
+// Handler: respon alarm adaptif, !testsalat, !testsubuh, !alarmstatus, !maafshiroko
 // ==========================================
 const state = require('../config/state');
-const { getCoreNumber } = require('../utils/helpers');
+const alarmService = require('../services/alarm.service');
 
 async function handle(ctx) {
-    const { sock, senderId, isOwner, textLower, isQuoted, quotedTextLower, reply } = ctx;
-    const coreSender = getCoreNumber(senderId);
+    const { sock, senderId, isOwner, textLower, text, reply } = ctx;
 
-    // Detect if user is replying (quoting) an alarm message
-    const isQuotingAlarmSubuh = isQuoted && (
-        quotedTextLower.includes('alarm subuh') ||
-        quotedTextLower.includes('bangun, sensei') ||
-        quotedTextLower.includes('siram air')
-    );
-
-    const isQuotingSalat = isQuoted && (
-        quotedTextLower.includes('notifikasi taktis') ||
-        quotedTextLower.includes('waktu ibadah') ||
-        quotedTextLower.includes('segera ambil wudhu')
-    );
-
-    // ==========================================
-    // SENSOR BANGUN SUBUH (WAJIB REPLY PESAN ALARM SUBUH)
-    // ==========================================
-    if (isOwner && state.alarmSubuhState.aktif) {
-        if (isQuotingAlarmSubuh) {
-            const isBangun = ['iya', 'bangun', 'laksanakan', 'siap', 'sudah', 'oke', 'ok'].some(k => textLower.includes(k));
-            
-            if (isBangun) {
-                if (state.alarmSubuhState.timer) clearInterval(state.alarmSubuhState.timer);
-                state.alarmSubuhState.aktif = false;
-                state.alarmSubuhState.count = 0;
-                state.alarmSubuhState.timer = null;
-                await reply(`Nn... *(Mengusap keringat di dahi)*. Kerja bagus karena sudah bangun tepat waktu, Sensei. Shiroko senang sekali. Cepat ambil wudhu dan salat ya, Shiroko tungguin dari sini. ✨`);
-                return true;
-            } else {
-                await reply(`Nn... Sensei! Tidak ada alasan, cepat bangun dan segera ambil wudhu sekarang! 😡💢`);
-                return true;
-            }
-        }
-    }
-
-    // ==========================================
-    // HANDLER SESI SALAT (WAJIB REPLY PESAN NOTIFIKASI SALAT)
-    // ==========================================
-    if (isOwner && (state.sesiSalat[coreSender] || isQuotingSalat)) {
-        if (isQuotingSalat) {
-            const isLaksanakan = ['laksanakan', 'iya', 'siap', 'sudah', 'oke', 'ok', 'otw'].some(k => textLower.includes(k));
-            const isAbaikan = ['abaikan', 'nanti', 'tidak', 'ga', 'gak'].some(k => textLower.includes(k));
-
-            delete state.sesiSalat[coreSender];
-
-            if (isLaksanakan) {
-                await reply(`Nn... Alhamdulillah. Cepat laksanakan ibadahnya, Sensei. Shiroko jaga markas di sini. 🤍`);
-                return true;
-            } else if (isAbaikan) {
-                await reply(`Nn... *(Menatap tajam)*... Sensei, ibadah itu wajib. Jangan ditunda-tunda. 💢`);
-                return true;
-            } else {
-                await reply(`Nn... Apapun perkataan Sensei, yang terpenting sekarang adalah segera ambil wudhu dan laksanakan ibadahnya! 🐺✨`);
-                return true;
-            }
-        }
-    }
-
-    // ==========================================
-    // ALAT TESTING SALAT/SUBUH
-    // ==========================================
-    if (textLower === '!testsalat') {
+    // 1. CEK COMMAND MANAGEMENT ALARM
+    if (textLower === '!alarmstatus' || textLower === '!statusalarm') {
         if (!isOwner) return false;
-        await reply(`🔔 *Notifikasi Taktis (Uji Coba)* 🔔\n\nNn... Sensei. Ini sudah masuk waktu ibadah *Zuhur* (12:00). Segera ambil wudhu.\n\nBalas dengan:\n*Laksanakan*\n*Abaikan*`);
-        state.sesiSalat[getCoreNumber(senderId)] = { step: 1, salat: 'Zuhur' };
+        const stats = alarmService.getAlarmStats();
+        const activeSess = state.activeAlarmSession;
+        
+        let statusMsg = `📊 *STATUS AI SMART ALARM SHIROKO* 📊\n\n`;
+        statusMsg += `• Status Sistem: ${state.alarmSalatAktif ? '🟢 Aktif' : '🔴 Nonaktif'}\n`;
+        statusMsg += `• Sesi Sedang Berjalan: ${activeSess ? `🚨 ${activeSess.salatName} (Panggilan ${activeSess.level}/3)` : '⚪ Tidak ada'}\n`;
+        statusMsg += `• Streak Bangun Tepat Waktu: 🔥 ${stats.wake_streak || 0} hari\n`;
+        statusMsg += `• Total Mengabaikan Alarm: ⚠️ ${stats.ignore_count || 0} kali\n`;
+        statusMsg += `• Aktivitas Terakhir: ${stats.last_action || 'Belum ada'}\n\n`;
+        statusMsg += `_Ketik !testsubuh atau !testsalat untuk menguji coba._`;
+        
+        await reply(statusMsg);
         return true;
     }
 
-    if (textLower === '!maafshiroko') {
+    if (textLower.startsWith('!testsalat')) {
         if (!isOwner) return false;
-        state.alarmSalatAktif = true;
-        await reply('Nn... Sistem pengingat ibadah telah diaktifkan kembali. Shiroko siap siaga. 🐺✨');
+        const args = text.trim().split(/\s+/).slice(1);
+        const salatName = args[0] ? args[0].charAt(0).toUpperCase() + args[0].slice(1) : 'Zuhur';
+        
+        await reply(`Nn... Memulai simulasi AI Alarm Salat *${salatName}*...`);
+        await alarmService.triggerSalatAlarm(salatName, '12:05', true);
         return true;
     }
 
     if (textLower === '!testsubuh') {
         if (!isOwner) return false;
-        if (state.alarmSubuhState.timer) clearInterval(state.alarmSubuhState.timer);
-        await reply('Nn... Memulai simulasi alarm Subuh (10 detik/panggilan)...');
-
-        state.alarmSubuhState.aktif = true;
-        state.alarmSubuhState.count = 1;
-        await sock.sendMessage(senderId, { text: `🔔 *ALARM SUBUH (Panggilan 1/3)* 🔔\n\nNn... Bangun, Sensei.\n_(Balas *iya* jika sudah bangun)_` });
-
-        state.alarmSubuhState.timer = setInterval(() => {
-            state.alarmSubuhState.count++;
-            if (state.alarmSubuhState.count === 2) sock.sendMessage(senderId, { text: `⏰ *ALARM SUBUH (Panggilan 2/3)* ⏰\n\nNn... Sensei? Ayo bangun... 😟` });
-            else if (state.alarmSubuhState.count === 3) sock.sendMessage(senderId, { text: `🚨 *ALARM SUBUH (Panggilan 3/3 - FINAL)* 🚨\n\nSENSEI!!! Shiroko siram air nih! 😡💢` });
-            else if (state.alarmSubuhState.count > 3) {
-                sock.sendMessage(senderId, { text: `💤 *Sistem Pengingat Subuh Dihentikan* 💤\n\nNn... Shiroko matikan alarmnya ya... 😔🤍` });
-                clearInterval(state.alarmSubuhState.timer);
-                state.alarmSubuhState.aktif = false;
-                state.alarmSubuhState.count = 0;
-                state.alarmSubuhState.timer = null;
-            }
-        }, 10 * 1000);
+        await reply('Nn... Memulai simulasi AI Smart Alarm Subuh (Interval cepat 20 detik/level)...');
+        await alarmService.triggerSubuhAlarm(true);
         return true;
     }
+
+    if (textLower === '!maafshiroko' || textLower === '!aktifkanalarm') {
+        if (!isOwner) return false;
+        state.alarmSalatAktif = true;
+        await reply('Nn... Sistem AI Smart Alarm dan pengingat ibadah telah diaktifkan kembali. Shiroko siap siaga. 🐺✨');
+        return true;
+    }
+
+    if (textLower === '!matikanalarm') {
+        if (!isOwner) return false;
+        state.alarmSalatAktif = false;
+        alarmService.stopActiveAlarm();
+        await reply('Nn... Sistem pengingat ibadah dinonaktifkan sementara. Ketik !aktifkanalarm untuk menyalakannya lagi.');
+        return true;
+    }
+
+    // 2. CEK APAKAH USER MERESPONS ALARM (ACTIVE ALARM / QUOTE)
+    const handledResponse = await alarmService.handleAlarmResponse(ctx);
+    if (handledResponse) return true;
 
     return false;
 }

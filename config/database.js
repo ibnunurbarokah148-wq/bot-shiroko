@@ -86,6 +86,16 @@ async function initDatabase() {
         )
     `);
 
+    db.run(`
+        CREATE TABLE IF NOT EXISTS alarm_stats (
+            id TEXT PRIMARY KEY,
+            wake_streak INTEGER DEFAULT 0,
+            ignore_count INTEGER DEFAULT 0,
+            last_responded_at INTEGER DEFAULT 0,
+            last_action TEXT DEFAULT ''
+        )
+    `);
+
     // Migrasi jika tabel lama terlanjur dibuat dengan kolom 'key'
     try {
         db.run(`ALTER TABLE statistics RENAME COLUMN key TO id`);

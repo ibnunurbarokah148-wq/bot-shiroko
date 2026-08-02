@@ -20,6 +20,7 @@ const { setSocket, getSocket } = require('./utils/socket');
 const jadibotService = require('./services/jadibot.service');
 const { initDatabase, migrateFromJSON } = require('./config/database');
 const { startAutoCleanup } = require('./utils/cleanup');
+const alarmService = require('./services/alarm.service');
 
 // Services (auto-init saat di-require: Pixiv login, AI memory cleanup)
 require('./services/pixiv.service');
@@ -129,9 +130,8 @@ cron.schedule('0 0 * * *', () => {
 }, { timezone: "Asia/Jakarta" });
 
 // ==========================================
-// CRON JOB: Alarm Salat (5 waktu)
+// CRON JOB: AI Smart Alarm Salat (5 waktu)
 // Dijalankan SEKALI di luar startBot()
-// Menggunakan global.waSocket agar selalu merujuk koneksi terbaru
 // ==========================================
 const jadwalSalat = [
     { jam: '0 4 * * *', nama: 'Subuh', waktu: '04:00' },
@@ -141,46 +141,13 @@ const jadwalSalat = [
     { jam: '30 19 * * *', nama: 'Isya', waktu: '19:30' },
 ];
 
-const idOwnerJid = ID_OWNER[0] + '@s.whatsapp.net';
-
 jadwalSalat.forEach(({ jam, nama, waktu }) => {
     cron.schedule(jam, async () => {
         if (!state.alarmSalatAktif) return;
-        const sock = getSocket(); // Selalu ambil koneksi terbaru
-        if (!sock) return;
-
         if (nama === 'Subuh') {
-            if (state.alarmSubuhState.timer) clearInterval(state.alarmSubuhState.timer);
-            state.alarmSubuhState.aktif = true;
-            state.alarmSubuhState.count = 1;
-
-            try {
-                await sock.sendMessage(idOwnerJid, { text: `🔔 *ALARM SUBUH (Panggilan 1/3)* 🔔\n\nNn... Bangun, Sensei.\n_(Balas *iya* jika sudah bangun)_` });
-            } catch (e) { console.error('Gagal mengirim alarm Subuh:', e.message); }
-
-            state.alarmSubuhState.timer = setInterval(async () => {
-                const s = getSocket(); // Ambil koneksi terbaru di setiap interval
-                if (!s) return;
-                state.alarmSubuhState.count++;
-                try {
-                    if (state.alarmSubuhState.count === 2) await s.sendMessage(idOwnerJid, { text: `⏰ *ALARM SUBUH (Panggilan 2/3)* ⏰\n\nNn... Sensei? Ayo bangun... 😟` });
-                    else if (state.alarmSubuhState.count === 3) await s.sendMessage(idOwnerJid, { text: `🚨 *ALARM SUBUH (Panggilan 3/3 - FINAL)* 🚨\n\nSENSEI!!! Shiroko siram air nih! 😡💢` });
-                    else if (state.alarmSubuhState.count > 3) {
-                        await s.sendMessage(idOwnerJid, { text: `💤 *Sistem Pengingat Subuh Dihentikan* 💤\n\nNn... Shiroko matikan alarmnya ya... 😔🤍` });
-                        clearInterval(state.alarmSubuhState.timer);
-                        state.alarmSubuhState.aktif = false;
-                        state.alarmSubuhState.count = 0;
-                        state.alarmSubuhState.timer = null;
-                    }
-                } catch (e) { console.error('Gagal mengirim loop alarm Subuh:', e.message); }
-            }, 5 * 60 * 1000);
+            await alarmService.triggerSubuhAlarm();
         } else {
-            try {
-                await sock.sendMessage(idOwnerJid, {
-                    text: `🔔 *Notifikasi Taktis* 🔔\n\nNn... Sensei. Ini sudah masuk waktu ibadah *${nama}* (${waktu}). Segera ambil wudhu.\n\nBalas dengan:\n*Laksanakan*\n*Abaikan*`
-                });
-                state.sesiSalat[getCoreNumber(idOwnerJid)] = { step: 1, salat: nama };
-            } catch (e) { console.error(`Gagal mengirim notifikasi salat ${nama}:`, e.message); }
+            await alarmService.triggerSalatAlarm(nama, waktu);
         }
     }, { timezone: "Asia/Jakarta" });
 });
