@@ -11,6 +11,7 @@ const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
 const { getGeminiComponents, getShirokoModel } = require('../services/ai/providers/gemini');
 const { tambahMetadataStiker } = require('../utils/sticker');
 const { antrianGambar, prosesAntrianGambar, isComfyUIActive } = require('../services/comfyui.service');
+const sharp = require('sharp');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, textClean, textLower, msgType,
@@ -657,23 +658,26 @@ async function handle(ctx) {
         if (!cekDanPotongLimit(senderId)) { await reply('Nn... Token habis.'); return true; }
 
         try {
-            await reply('Nn... Sedang mengekstraksi visual dari stiker, mohon tunggu...');
+            await reply('Nn... Sedang mengekstraksi dan mengonversi visual stiker menjadi gambar nyata, mohon tunggu...');
             const stickerMessageObject = quotedMsg.stickerMessage;
             const mediaBuffer = await downloadMediaBaileys(stickerMessageObject, 'sticker');
 
+            // Konversi dari WebP ke PNG berkualitas tinggi
+            const pngBuffer = await sharp(mediaBuffer)
+                .png({ quality: 100 })
+                .toBuffer();
+
             await sock.sendMessage(from,
                 {
-                    document: mediaBuffer,
-                    mimetype: 'image/webp',
-                    fileName: 'stiker_ori.webp',
-                    caption: 'Nn... Ini dia gambar mentahan stikernya, Sensei! 🐺✨'
+                    image: pngBuffer,
+                    caption: 'Nn... Ini dia gambarnya, Sensei! 🐺🖼️'
                 },
                 { quoted: msg }
             );
         } catch (error) {
             console.error('🚨 ERROR TOIMG:', error.message);
             kembalikanLimit(senderId);
-            await reply('Nn... Gagal mengonversi stiker. Pastikan stikernya bukan stiker video/animasi (GIF).');
+            await reply('Nn... Gagal mengonversi stiker. Pastikan stikernya valid dan bukan stiker animasi (GIF).');
         }
         return true;
     }

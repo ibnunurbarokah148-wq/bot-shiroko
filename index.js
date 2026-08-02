@@ -19,6 +19,7 @@ const { getCoreNumber } = require('./utils/helpers');
 const { setSocket, getSocket } = require('./utils/socket');
 const jadibotService = require('./services/jadibot.service');
 const { initDatabase, migrateFromJSON } = require('./config/database');
+const { startAutoCleanup } = require('./utils/cleanup');
 
 // Services (auto-init saat di-require: Pixiv login, AI memory cleanup)
 require('./services/pixiv.service');
@@ -348,6 +349,7 @@ initDatabase().then(() => {
     console.log('[STARTUP] Database SQLite berhasil diinisialisasi.');
     // Migrasi data JSON lama (hanya berjalan sekali)
     migrateFromJSON();
+    startAutoCleanup();
     return startBot();
 }).then(() => {
     if (jadibotService.resumeAllJadibots) jadibotService.resumeAllJadibots();

@@ -5,6 +5,8 @@ const { state } = require('../state');
 const { CONFIG, kamusBlok, daftarMakanan, hostileMobs } = require('../config');
 const { mulaiSerang, berhentiSerang } = require('../actions/combat');
 const { amankanBarangKePeti, tebangPohonDanAmbil, mulaiNambang, isAreaAman } = require('../actions/work');
+const { ID_OWNER } = require('../../../config/constants');
+const globalState = require('../../../config/state');
 
 async function handleChat(bot, username, message, mcData) {
     if (username === bot.username || !CONFIG.owners.includes(username)) return;
@@ -60,11 +62,33 @@ async function handleChat(bot, username, message, mcData) {
     if (pk === '!help' || pk === 'bantuan' || pk === 'fitur') {
         bot.chat("Nn. Pergerakan: ikut, cari [bangunan], berhenti, masuk, terobos, buka/tutup pintu.");
         await bot.waitForTicks(20);
-        bot.chat("Nn. Kerja Manual: tebang, nambang [blok], rampok, simpan, buang [item/semua].");
+        bot.chat("Nn. Kerja: tebang, nambang [blok], rampok, simpan, buang [item/semua].");
         await bot.waitForTicks(20);
-        bot.chat("Nn. Status & Combat: status, inv, makan, tidur, serang [target], maaf.");
+        bot.chat("Nn. Status & AI: status, inv, aimode [opsi], makan, tidur, serang [target], maaf.");
         await bot.waitForTicks(20);
         bot.chat("Nn. AFK: mode mandiri, mode mandiri [batu/kayu], mode mandiri mati.");
+        return;
+    }
+
+    // AIMODE (CEK ATAU GANTI MODEL AI IN-GAME)
+    if (pk.startsWith('aimode') || pk.startsWith('!aimode')) {
+        const targetMode = pk.replace(/^!?aimode\s*/i, '').trim();
+        if (!targetMode) {
+            const currentMode = state.mcAiMode || (globalState.userAiMode ? globalState.userAiMode[ID_OWNER] : null) || 'arisu-gemini';
+            const { provider, model } = AIProvider.resolveMode(currentMode, ID_OWNER);
+            bot.chat(`Nn. Mode AI aktif: [${currentMode}] (${provider}/${model}).`);
+            bot.chat("Opsi: ds3, ds4, glm, qwen, arisu-gemini, gemini, cf, or, ollama, gpt, grok");
+            return;
+        }
+
+        const validModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
+        if (validModes.includes(targetMode)) {
+            state.mcAiMode = targetMode;
+            const { provider, model } = AIProvider.resolveMode(targetMode, ID_OWNER);
+            bot.chat(`Nn. Otak AI dialihkan ke [${targetMode}] (${provider}/${model}), Sensei!`);
+        } else {
+            bot.chat(`Nn. Mode [${targetMode}] tidak dikenal. Contoh: aimode ds3, aimode gemini, aimode cf`);
+        }
         return;
     }
 
@@ -212,16 +236,17 @@ async function handleChat(bot, username, message, mcData) {
     // STATUS
     if (pk.includes('status')) {
         const invMap = {};
+        let totalItemCount = 0;
         for (const item of bot.inventory.items()) {
             invMap[item.name] = (invMap[item.name] || 0) + item.count;
+            totalItemCount += item.count;
         }
-        const invArray = Object.entries(invMap).map(([name, count]) => `${name} x${count}`);
-        let invStr = invArray.join(', ') || 'kosong';
+        const sortedEntries = Object.entries(invMap).sort((a, b) => b[1] - a[1]);
+        const jenisCount = sortedEntries.length;
+        const top3 = sortedEntries.slice(0, 3).map(([name, count]) => `${name} x${count}`).join(', ');
+        const topStr = top3 ? ` (Top: ${top3})` : '';
         
-        // Cegah pesan terlalu panjang agar tidak error (limit chat Minecraft ~256 karakter)
-        if (invStr.length > 100) invStr = invStr.substring(0, 100) + '... (Gunakan !inv untuk selengkapnya)';
-        
-        bot.chat(`Nn. HP: ${Math.round(bot.health)}/20. Makanan: ${Math.round(bot.food)}/20. Inv: ${invStr}`);
+        bot.chat(`Nn. HP: ${Math.round(bot.health)}/20 | Makanan: ${Math.round(bot.food)}/20 | Tas: ${jenisCount} jenis / ${totalItemCount} item${topStr}. Ketik 'inv' untuk rincian.`);
         return;
     }
 
@@ -340,23 +365,60 @@ async function handleChat(bot, username, message, mcData) {
 
     // AI RESPONS (FALLBACK JIKA BUKAN PERINTAH)
     const sekarang = Date.now();
-    if (sekarang - state.lastAiCall < CONFIG.aiCooldown) return;
+    if (state.lastAiCall && sekarang - state.lastAiCall < 2500) {
+        bot.chat("Nn... Tunggu sebentar, Sensei.");
+        return;
+    }
     state.lastAiCall = sekarang;
 
     try {
-        const customSystemPrompt = getShirokoSystemPrompt(true) + "\n\n[INSTRUKSI WAJIB UNTUK MINECRAFT CHAT: Jawab pesan player dengan SANGAT SINGKAT, maksimal 1 kalimat pendek saja. Jangan bertele-tele.]";
+        const customSystemPrompt = getShirokoSystemPrompt(true) + "\n\n[INSTRUKSI WAJIB UNTUK MINECRAFT CHAT: Jawab pesan player dengan SANGAT SINGKAT, maksimal 1 kalimat pendek padat. Jangan gunakan formatting markdown bold/italic yang aneh. Selalu mulai dengan 'Nn... '.]";
         
-        const aiReply = await AIProvider.generate({
-            provider: 'gemini',
-            model: 'gemini-2.5-flash-lite', // Updated to match other fixes
-            prompt: `${username} berkata: ${message}`,
-            senderId: `mc_${username}`,
-            isOwner: true,
-            systemPrompt: customSystemPrompt
-        });
+        // Mode AI ditentukan dari: 1. Mode in-game jika ada -> 2. Mode WA Owner -> 3. Fallback arisu-gemini
+        const activeAiMode = state.mcAiMode || (globalState.userAiMode ? globalState.userAiMode[ID_OWNER] : null) || 'arisu-gemini';
+        const resolved = AIProvider.resolveMode(activeAiMode, ID_OWNER);
 
-        if (aiReply) bot.chat(aiReply.replace(/\n/g, ' '));
-    } catch (err) {}
+        let aiReply = null;
+        try {
+            aiReply = await AIProvider.generate({
+                provider: resolved.provider,
+                model: resolved.model,
+                prompt: `${username} berkata: ${message}`,
+                senderId: `mc_${username}`,
+                isOwner: true,
+                systemPrompt: customSystemPrompt
+            });
+        } catch (primaryErr) {
+            console.warn(`[MC AI] Model ${resolved.provider}/${resolved.model} gagal, mencoba fallback Arisu:`, primaryErr.message);
+            // Fallback ke Arisu deepseek-v3 jika primary gagal
+            try {
+                aiReply = await AIProvider.generate({
+                    provider: 'arisu',
+                    model: 'deepseek-v3',
+                    prompt: `${username} berkata: ${message}`,
+                    senderId: `mc_${username}`,
+                    isOwner: true,
+                    systemPrompt: customSystemPrompt
+                });
+            } catch (fallbackErr) {
+                console.error('[MC AI] Semua provider AI gagal:', fallbackErr.message);
+            }
+        }
+
+        if (aiReply && typeof aiReply === 'string') {
+            let cleanReply = aiReply.replace(/\n+/g, ' ').replace(/[\*_~`#]/g, '').trim();
+            // Batasi panjang chat minecraft maksimal 220 karakter
+            if (cleanReply.length > 220) {
+                cleanReply = cleanReply.substring(0, 217) + '...';
+            }
+            bot.chat(cleanReply);
+        } else {
+            bot.chat("Nn... Kepalaku agak pusing, ada gangguan jaringan sinyal AI, Sensei.");
+        }
+    } catch (err) {
+        console.error('[MC AI Chat Error]:', err.message);
+        bot.chat("Nn... Maaf Sensei, sedang ada gangguan koneksi AI.");
+    }
 }
 
 module.exports = {

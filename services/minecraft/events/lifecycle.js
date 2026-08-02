@@ -75,19 +75,28 @@ function setupLifecycleEvents(bot, createBotFn) {
         const movements = new Movements(bot, mcData);
 
         movements.canDig = true; // Mengizinkan bot memecahkan blok jika jalurnya terhalang
-        movements.allow1by1towers = true; // Mengizinkan bot membangun jalan (naro blok)
-        movements.allowFreeFall = true;
+        movements.allow1by1towers = true; // Mengizinkan bot membangun menara/tangga (naro blok)
+        movements.allowFreeFall = true; // Mengizinkan terjun aman
         movements.canOpenDoors = true;
+        movements.allowParkour = true; // Mengizinkan melompati jurang 1-2 blok
+        movements.allowSprinting = true; // Mengizinkan lari kencang saat mengejar
+        movements.liquidCost = 3; // Mengurangi hambatan air agar tidak gampang stuck saat berenang
 
-        movements.scafoldingBlocks = [];
-        const balokBantuan = ['dirt', 'cobblestone', 'netherrack', 'stone', 'sand'];
+        const scaffoldingIds = [];
+        const balokBantuan = [
+            'dirt', 'cobblestone', 'netherrack', 'stone', 'sand', 'gravel',
+            'oak_planks', 'spruce_planks', 'birch_planks', 'cobbled_deepslate', 'deepslate'
+        ];
         for (const namaBlok of balokBantuan) {
             if (mcData.itemsByName[namaBlok]) {
-                movements.scafoldingBlocks.push(mcData.itemsByName[namaBlok].id);
+                scaffoldingIds.push(mcData.itemsByName[namaBlok].id);
             }
         }
+        movements.scafoldingBlocks = scaffoldingIds;
+        movements.scaffoldingBlocks = scaffoldingIds; // Support kedua varian nama properti library
 
         bot.pathfinder.setMovements(movements);
+        state.defaultMovements = movements;
         bot.waktuSpawn = Date.now();
 
         console.log(`[MC] Bot berhasil spawn di koordinat: ${bot.entity.position}`);
