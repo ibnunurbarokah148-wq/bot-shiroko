@@ -9,7 +9,7 @@ const { Vec3 } = require('vec3');
 //  KONFIGURASI
 // ============================================================
 const mcVer = process.env.MC_VERSION;
-const mcVersion = (!mcVer || mcVer.toLowerCase() === 'auto' || mcVer.toLowerCase() === 'false') ? false : mcVer;
+const mcVersion = (mcVer && mcVer.toLowerCase() !== 'auto' && mcVer.toLowerCase() !== 'false') ? mcVer : '1.21.1';
 
 const CONFIG = {
     host: process.env.MC_HOST || 'id-1.zknesia.app',

@@ -6,7 +6,7 @@ const CONFIG = {
     host: process.env.MC_HOST || 'id-1.zknesia.app',
     port: parseInt(process.env.MC_PORT || '25675'),
     username: process.env.MC_USERNAME || 'Ritian223',
-    version: (!process.env.MC_VERSION || process.env.MC_VERSION.toLowerCase() === 'auto' || process.env.MC_VERSION.toLowerCase() === 'false') ? false : process.env.MC_VERSION,
+    version: (process.env.MC_VERSION && process.env.MC_VERSION.toLowerCase() !== 'auto' && process.env.MC_VERSION.toLowerCase() !== 'false') ? process.env.MC_VERSION : '1.21.1',
     auth: process.env.MC_AUTH || 'offline',
     owners: process.env.MC_OWNERS ? process.env.MC_OWNERS.split(',').map(s => s.trim().toLowerCase()) : ['rukaajah'],
     reconnectDelay: 5000,
