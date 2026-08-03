@@ -89,7 +89,7 @@ function setupLifecycleEvents(bot, createBotFn) {
         movements.allowParkour = true;
         movements.allowSprinting = true;
         movements.allowEntityDetection = true;
-        movements.allowFreeMotion = true;
+        movements.allowFreeMotion = false; // PENTING: harus false agar pathfinder tidak bypass kalkulasi rute & lompatan
         movements.maxDropDown = 4;
         movements.jumpCost = 0;
         movements.scafoldingBlocks = [];
@@ -113,28 +113,61 @@ function setupLifecycleEvents(bot, createBotFn) {
             console.log(`[PATH] Goal reached!`);
         });
 
-        // --- AUTO-STEP: Deteksi blok solid di depan bot dan paksa lompat ---
-        // isCollidedHorizontally mungkin undefined di versi ini, jadi kita cek blok langsung.
-        // PENTING: HANYA set jump=true, TIDAK PERNAH jump=false.
+        // --- AUTO-STEP: Sustained multi-tick jump melewati rintangan 1 blok ---
+        // Saat bot melompat, momentum maju (forward + sprint) HARUS dipertahankan di udara selama ~8 tick (400ms)
+        // agar bot tidak jatuh kembali di blok yang sama.
+        let isJumpingObstacle = false;
+        let jumpObstacleTicks = 0;
+
         bot.on('physicsTick', () => {
-            if (!bot.entity || !bot.entity.onGround || !bot.getControlState('forward')) return;
+            if (!bot.entity) return;
 
-            // Hitung arah depan berdasarkan yaw bot
-            const yaw = bot.entity.yaw;
-            const dx = -Math.sin(yaw);
-            const dz = -Math.cos(yaw);
+            // Jika sedang dalam fase melompat rintangan, pertahankan momentum maju di udara
+            if (isJumpingObstacle) {
+                jumpObstacleTicks++;
+                bot.setControlState('forward', true);
+                bot.setControlState('sprint', true);
 
-            // Cek blok di depan bot pada level kaki (offset 0.3 blok ke depan)
-            const feetPos = bot.entity.position;
-            const checkX = feetPos.x + dx * 0.65;
-            const checkZ = feetPos.z + dz * 0.65;
-            
-            // Cek blok di level kaki (harus dilompati)
-            const blockAtFeet = bot.blockAt(feetPos.offset(dx * 0.65, 0, dz * 0.65));
-            
-            if (blockAtFeet && blockAtFeet.boundingBox === 'block') {
-                // Ada blok solid di depan di level kaki → harus lompat
-                bot.setControlState('jump', true);
+                if (jumpObstacleTicks <= 4) {
+                    bot.setControlState('jump', true);
+                } else {
+                    bot.setControlState('jump', false);
+                }
+
+                // Selesai jika sudah mendarat kembali di atas tebing atau melewati batas tick
+                if ((jumpObstacleTicks > 4 && bot.entity.onGround) || jumpObstacleTicks > 10) {
+                    isJumpingObstacle = false;
+                    jumpObstacleTicks = 0;
+                }
+                return;
+            }
+
+            // Cek saat bot sedang jalan maju dan berada di tanah
+            if (bot.entity.onGround && bot.getControlState('forward')) {
+                const yaw = bot.entity.yaw;
+                const dx = -Math.sin(yaw);
+                const dz = -Math.cos(yaw);
+                const feetPos = bot.entity.position;
+
+                // Cek blok tepat di depan kaki (jarak 0.5 - 0.7 blok)
+                const checkDistances = [0.5, 0.7];
+                for (const dist of checkDistances) {
+                    const blockAtFeet = bot.blockAt(feetPos.offset(dx * dist, 0, dz * dist));
+                    const blockAboveFeet = bot.blockAt(feetPos.offset(dx * dist, 1, dz * dist));
+                    const blockHeadroom = bot.blockAt(feetPos.offset(0, 2, 0));
+
+                    // Ada blok solid di kaki, tapi atasnya kosong (bisa dipanjat) dan kepala aman
+                    if (blockAtFeet && blockAtFeet.boundingBox === 'block' &&
+                        (!blockAboveFeet || blockAboveFeet.boundingBox !== 'block') &&
+                        (!blockHeadroom || blockHeadroom.boundingBox !== 'block')) {
+                        isJumpingObstacle = true;
+                        jumpObstacleTicks = 0;
+                        bot.setControlState('jump', true);
+                        bot.setControlState('forward', true);
+                        bot.setControlState('sprint', true);
+                        break;
+                    }
+                }
             }
         });
         if (state.unstuckInterval) clearInterval(state.unstuckInterval);

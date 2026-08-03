@@ -108,7 +108,7 @@ function createBot() {
         movements.allowParkour = true;
         movements.allowSprinting = true;
         movements.allowEntityDetection = true;
-        movements.allowFreeMotion = true;
+        movements.allowFreeMotion = false; // PENTING: harus false agar pathfinder tidak bypass rute & lompatan
         movements.maxDropDown = 4;
         movements.jumpCost = 0;
         movements.scafoldingBlocks = [];
@@ -116,18 +116,54 @@ function createBot() {
         bot.pathfinder.setMovements(movements);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
 
-        // --- AUTO-STEP: Deteksi blok solid di depan bot dan paksa lompat ---
-        bot.on('physicsTick', () => {
-            if (!bot.entity || !bot.entity.onGround || !bot.getControlState('forward')) return;
+        // --- AUTO-STEP: Sustained multi-tick jump melewati rintangan 1 blok ---
+        let isJumpingObstacle = false;
+        let jumpObstacleTicks = 0;
 
-            const yaw = bot.entity.yaw;
-            const dx = -Math.sin(yaw);
-            const dz = -Math.cos(yaw);
-            const feetPos = bot.entity.position;
-            const blockAtFeet = bot.blockAt(feetPos.offset(dx * 0.65, 0, dz * 0.65));
-            
-            if (blockAtFeet && blockAtFeet.boundingBox === 'block') {
-                bot.setControlState('jump', true);
+        bot.on('physicsTick', () => {
+            if (!bot.entity) return;
+
+            if (isJumpingObstacle) {
+                jumpObstacleTicks++;
+                bot.setControlState('forward', true);
+                bot.setControlState('sprint', true);
+
+                if (jumpObstacleTicks <= 4) {
+                    bot.setControlState('jump', true);
+                } else {
+                    bot.setControlState('jump', false);
+                }
+
+                if ((jumpObstacleTicks > 4 && bot.entity.onGround) || jumpObstacleTicks > 10) {
+                    isJumpingObstacle = false;
+                    jumpObstacleTicks = 0;
+                }
+                return;
+            }
+
+            if (bot.entity.onGround && bot.getControlState('forward')) {
+                const yaw = bot.entity.yaw;
+                const dx = -Math.sin(yaw);
+                const dz = -Math.cos(yaw);
+                const feetPos = bot.entity.position;
+
+                const checkDistances = [0.5, 0.7];
+                for (const dist of checkDistances) {
+                    const blockAtFeet = bot.blockAt(feetPos.offset(dx * dist, 0, dz * dist));
+                    const blockAboveFeet = bot.blockAt(feetPos.offset(dx * dist, 1, dz * dist));
+                    const blockHeadroom = bot.blockAt(feetPos.offset(0, 2, 0));
+
+                    if (blockAtFeet && blockAtFeet.boundingBox === 'block' &&
+                        (!blockAboveFeet || blockAboveFeet.boundingBox !== 'block') &&
+                        (!blockHeadroom || blockHeadroom.boundingBox !== 'block')) {
+                        isJumpingObstacle = true;
+                        jumpObstacleTicks = 0;
+                        bot.setControlState('jump', true);
+                        bot.setControlState('forward', true);
+                        bot.setControlState('sprint', true);
+                        break;
+                    }
+                }
             }
         });
         let lastBotPos = null;
