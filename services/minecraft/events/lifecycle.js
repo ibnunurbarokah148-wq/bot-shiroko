@@ -100,27 +100,10 @@ function setupLifecycleEvents(bot, createBotFn) {
         console.log(`[MC] Bot berhasil spawn di koordinat: ${bot.entity.position}`);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
 
-        // --- SISTEM REAL-TIME AUTO-JUMP & AUTO-SWIM (PHYSICS TICK 50MS) ---
-        bot.on('physicsTick', () => {
-            if (!bot.entity) return;
-
-            // 1. Auto-Swim jika di dalam air
-            if (bot.entity.isInWater) {
-                bot.setControlState('jump', true);
-                return;
-            }
-
-            // 2. Real-time Step-Up Auto-Jump saat mendaki / menabrak undakan 1 blok ke atas
-            const isMoving = bot.getControlState('forward') || (bot.pathfinder && bot.pathfinder.isMoving());
-            if (isMoving && bot.entity.onGround && bot.entity.isCollidedHorizontally) {
-                bot.setControlState('jump', true);
-            } else if (!bot.entity.onGround) {
-                // Segera lepas tombol lompat di udara agar lompatan natural dan pendaratan mulus
-                bot.setControlState('jump', false);
-            }
-        });
-
         // --- SISTEM ANTI-NYANGKUT / RECOVERY WATCHDOG ---
+        // CATATAN: JANGAN pakai bot.on('physicsTick') untuk override jump/forward,
+        // karena pathfinder internal sudah punya logika lompat sendiri (canWalkJump/canSprintJump).
+        // Menimpa controlState di physicsTick akan MEMBATALKAN lompatan pathfinder.
         if (state.unstuckInterval) clearInterval(state.unstuckInterval);
         let lastBotPos = null;
         let stuckCount = 0;
@@ -130,9 +113,17 @@ function setupLifecycleEvents(bot, createBotFn) {
 
             if (bot.pathfinder.isMoving() || bot.pathfinder.goal) {
                 const currentPos = bot.entity.position;
-                if (lastBotPos && currentPos.distanceTo(lastBotPos) < 0.2) {
+                if (lastBotPos && currentPos.distanceTo(lastBotPos) < 0.15) {
                     stuckCount++;
-                    if (stuckCount >= 2) {
+                    // Nyangkut >= 3 detik: paksa lompat + maju, lalu recalculate path
+                    if (stuckCount >= 3) {
+                        console.log(`[MC] Anti-stuck: bot nyangkut di ${currentPos}, mencoba recovery...`);
+                        // Simpan goal saat ini sebelum reset
+                        const currentGoal = bot.pathfinder.goal;
+                        const isDynamic = bot.pathfinder.dynamic;
+                        // Reset path dulu agar pathfinder tidak fight dengan kita
+                        bot.pathfinder.setGoal(null);
+                        // Paksa gerak manual: lompat + maju
                         bot.setControlState('jump', true);
                         bot.setControlState('forward', true);
                         bot.setControlState('sprint', true);
@@ -140,7 +131,11 @@ function setupLifecycleEvents(bot, createBotFn) {
                             bot.setControlState('jump', false);
                             bot.setControlState('forward', false);
                             bot.setControlState('sprint', false);
-                        }, 500);
+                            // Re-assign goal setelah gerak manual selesai, agar pathfinder recalculate dari posisi baru
+                            if (currentGoal) {
+                                bot.pathfinder.setGoal(currentGoal, isDynamic);
+                            }
+                        }, 600);
                         stuckCount = 0;
                     }
                 } else {

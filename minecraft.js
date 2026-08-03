@@ -115,26 +115,10 @@ function createBot() {
         bot.pathfinder.setMovements(movements);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
 
-        // --- SISTEM REAL-TIME AUTO-JUMP (PHYSICS TICK 50MS) ---
-        bot.on('physicsTick', () => {
-            if (!bot.entity) return;
-
-            // 1. Auto-Swim jika di dalam air
-            if (bot.entity.isInWater) {
-                bot.setControlState('jump', true);
-                return;
-            }
-
-            // 2. Real-time Step-Up Auto-Jump saat mendaki / menabrak undakan 1 blok ke atas
-            const isMoving = bot.getControlState('forward') || (bot.pathfinder && bot.pathfinder.isMoving());
-            if (isMoving && bot.entity.onGround && bot.entity.isCollidedHorizontally) {
-                bot.setControlState('jump', true);
-            } else if (!bot.entity.onGround) {
-                bot.setControlState('jump', false);
-            }
-        });
-
-        // --- SISTEM ANTI-NYANGKUT (MENDAKI & MEDAN SULIT) ---
+        // --- SISTEM ANTI-NYANGKUT / RECOVERY WATCHDOG ---
+        // CATATAN: JANGAN pakai bot.on('physicsTick') untuk override jump/forward,
+        // karena pathfinder internal sudah punya logika lompat sendiri (canWalkJump/canSprintJump).
+        // Menimpa controlState di physicsTick akan MEMBATALKAN lompatan pathfinder.
         let lastBotPos = null;
         let stuckCount = 0;
         setInterval(() => {
@@ -142,9 +126,13 @@ function createBot() {
 
             if (bot.pathfinder.isMoving() || bot.pathfinder.goal) {
                 const currentPos = bot.entity.position;
-                if (lastBotPos && currentPos.distanceTo(lastBotPos) < 0.2) {
+                if (lastBotPos && currentPos.distanceTo(lastBotPos) < 0.15) {
                     stuckCount++;
-                    if (stuckCount >= 2) {
+                    if (stuckCount >= 3) {
+                        console.log(`[MC] Anti-stuck: bot nyangkut di ${currentPos}, mencoba recovery...`);
+                        const currentGoal = bot.pathfinder.goal;
+                        const isDynamic = bot.pathfinder.dynamic;
+                        bot.pathfinder.setGoal(null);
                         bot.setControlState('jump', true);
                         bot.setControlState('forward', true);
                         bot.setControlState('sprint', true);
@@ -152,7 +140,10 @@ function createBot() {
                             bot.setControlState('jump', false);
                             bot.setControlState('forward', false);
                             bot.setControlState('sprint', false);
-                        }, 500);
+                            if (currentGoal) {
+                                bot.pathfinder.setGoal(currentGoal, isDynamic);
+                            }
+                        }, 600);
                         stuckCount = 0;
                     }
                 } else {
