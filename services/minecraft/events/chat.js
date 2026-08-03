@@ -2,14 +2,14 @@ const { goals } = require('mineflayer-pathfinder');
 const AIProvider = require('../../ai/AIProvider');
 const { getShirokoSystemPrompt } = require('../../ai/prompts');
 const { state } = require('../state');
-const { CONFIG, kamusBlok, daftarMakanan, hostileMobs } = require('../config');
+const { CONFIG, kamusBlok, daftarMakanan, hostileMobs, isOwner } = require('../config');
 const { mulaiSerang, berhentiSerang } = require('../actions/combat');
 const { amankanBarangKePeti, tebangPohonDanAmbil, mulaiNambang, isAreaAman } = require('../actions/work');
 const { ID_OWNER } = require('../../../config/constants');
 const globalState = require('../../../config/state');
 
 async function handleChat(bot, username, message, mcData) {
-    if (username === bot.username || !CONFIG.owners.includes(username)) return;
+    if (!username || username === bot.username || !isOwner(username)) return;
     const pk = message.toLowerCase();
 
     // 1. MODE MANDIRI (AUTO AFK)
@@ -73,9 +73,10 @@ async function handleChat(bot, username, message, mcData) {
     // AIMODE (CEK ATAU GANTI MODEL AI IN-GAME)
     if (pk.startsWith('aimode') || pk.startsWith('!aimode')) {
         const targetMode = pk.replace(/^!?aimode\s*/i, '').trim();
+        const ownerId = Array.isArray(ID_OWNER) ? ID_OWNER[0] : ID_OWNER;
         if (!targetMode) {
-            const currentMode = state.mcAiMode || (globalState.userAiMode ? globalState.userAiMode[ID_OWNER] : null) || 'arisu-gemini';
-            const { provider, model } = AIProvider.resolveMode(currentMode, ID_OWNER);
+            const currentMode = state.mcAiMode || (globalState.userAiMode ? (globalState.userAiMode[ownerId] || (Array.isArray(ID_OWNER) && globalState.userAiMode[ID_OWNER[1]])) : null) || 'arisu-gemini';
+            const { provider, model } = AIProvider.resolveMode(currentMode, ownerId);
             bot.chat(`Nn. Mode AI aktif: [${currentMode}] (${provider}/${model}).`);
             bot.chat("Opsi: ds3, ds4, glm, qwen, arisu-gemini, gemini, cf, or, ollama, gpt, grok");
             return;
@@ -84,7 +85,7 @@ async function handleChat(bot, username, message, mcData) {
         const validModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
         if (validModes.includes(targetMode)) {
             state.mcAiMode = targetMode;
-            const { provider, model } = AIProvider.resolveMode(targetMode, ID_OWNER);
+            const { provider, model } = AIProvider.resolveMode(targetMode, ownerId);
             bot.chat(`Nn. Otak AI dialihkan ke [${targetMode}] (${provider}/${model}), Sensei!`);
         } else {
             bot.chat(`Nn. Mode [${targetMode}] tidak dikenal. Contoh: aimode ds3, aimode gemini, aimode cf`);
@@ -103,7 +104,7 @@ async function handleChat(bot, username, message, mcData) {
     if (pk.includes('ikut')) {
         state.modeMandiri = false; state.sedangKerja = false; try { bot.stopDigging(); } catch (e) { }
         if (state.loopIkutJauh) { clearInterval(state.loopIkutJauh); state.loopIkutJauh = null; }
-        const namaSesuai = Object.keys(bot.players).find(name => name.toLowerCase().includes(username.toLowerCase()));
+        const namaSesuai = Object.keys(bot.players).find(name => isOwner(name) || name.toLowerCase().includes(username.toLowerCase()));
         const playerTarget = namaSesuai ? bot.players[namaSesuai] : null;
 
         if (playerTarget && playerTarget.entity) {
@@ -120,7 +121,7 @@ async function handleChat(bot, username, message, mcData) {
         state.modeMandiri = false; state.sedangKerja = false; try { bot.stopDigging(); } catch (e) { }
         if (state.loopIkutJauh) { clearInterval(state.loopIkutJauh); state.loopIkutJauh = null; }
         bot.pathfinder.setGoal(null);
-        const namaSesuai = Object.keys(bot.players).find(name => name.toLowerCase().includes(username.toLowerCase()));
+        const namaSesuai = Object.keys(bot.players).find(name => isOwner(name) || name.toLowerCase().includes(username.toLowerCase()));
         const playerTarget = namaSesuai ? bot.players[namaSesuai] : null;
 
         if (playerTarget && playerTarget.entity) {
@@ -160,7 +161,7 @@ async function handleChat(bot, username, message, mcData) {
     if (pk.includes('terobos') || pk.includes('maju') || pk.includes('sini')) {
         state.modeMandiri = false; state.sedangKerja = false; try { bot.stopDigging(); } catch (e) { }
         bot.pathfinder.setGoal(null);
-        const namaSesuai = Object.keys(bot.players).find(name => name.toLowerCase().includes(username.toLowerCase()));
+        const namaSesuai = Object.keys(bot.players).find(name => isOwner(name) || name.toLowerCase().includes(username.toLowerCase()));
         const playerTarget = namaSesuai ? bot.players[namaSesuai] : null;
 
         if (playerTarget && playerTarget.entity) {
@@ -356,7 +357,7 @@ async function handleChat(bot, username, message, mcData) {
             bot.chat("Nn. Menuju kasur.");
             try {
                 bot.pathfinder.setGoal(null);
-                await bot.pathfinder.goto(new goals.GoalNear(kasur.position.x, kasur.position.y, kasur.position.z, 2));
+                await bot.pathfinder.goto(new goals.GoalGetToBlock(kasur.position.x, kasur.position.y, kasur.position.z));
                 await bot.sleep(kasur);
             } catch (e) { bot.chat("Nn. Tidak bisa tidur sekarang. Kasur terhalang atau ini masih siang."); }
         } else { bot.chat("Nn. Tidak ada kasur di sekitarku, Sensei."); }
@@ -375,8 +376,9 @@ async function handleChat(bot, username, message, mcData) {
         const customSystemPrompt = getShirokoSystemPrompt(true) + "\n\n[INSTRUKSI WAJIB UNTUK MINECRAFT CHAT: Jawab pesan player dengan SANGAT SINGKAT, maksimal 1 kalimat pendek padat. Jangan gunakan formatting markdown bold/italic yang aneh. Selalu mulai dengan 'Nn... '.]";
         
         // Mode AI ditentukan dari: 1. Mode in-game jika ada -> 2. Mode WA Owner -> 3. Fallback arisu-gemini
-        const activeAiMode = state.mcAiMode || (globalState.userAiMode ? globalState.userAiMode[ID_OWNER] : null) || 'arisu-gemini';
-        const resolved = AIProvider.resolveMode(activeAiMode, ID_OWNER);
+        const ownerId = Array.isArray(ID_OWNER) ? ID_OWNER[0] : ID_OWNER;
+        const activeAiMode = state.mcAiMode || (globalState.userAiMode ? (globalState.userAiMode[ownerId] || (Array.isArray(ID_OWNER) && globalState.userAiMode[ID_OWNER[1]])) : null) || 'arisu-gemini';
+        const resolved = AIProvider.resolveMode(activeAiMode, ownerId);
 
         let aiReply = null;
         try {

@@ -1,7 +1,7 @@
 const { Movements, goals } = require('mineflayer-pathfinder');
 const hawkeye = require('minecrafthawkeye').default;
 const { state, clearAllIntervals } = require('../state');
-const { CONFIG, hostileMobs, daftarMakanan, kamusBlok, CONFIG_RUMAH } = require('../config');
+const { CONFIG, hostileMobs, daftarMakanan, kamusBlok, CONFIG_RUMAH, isOwner } = require('../config');
 const { mulaiSerang, berhentiSerang, pasangSenjataTerbaik } = require('../actions/combat');
 const { amankanBarangKePeti, tebangPohonDanAmbil, mulaiNambang, bergerakAcak, isAreaAman } = require('../actions/work');
 const { getSocket } = require('../../../utils/socket');
@@ -74,26 +74,12 @@ function setupLifecycleEvents(bot, createBotFn) {
         const mcData = require('minecraft-data')(bot.version);
         const movements = new Movements(bot, mcData);
 
-        movements.canDig = true; // Mengizinkan bot memecahkan blok jika jalurnya terhalang
-        movements.allow1by1towers = true; // Mengizinkan bot membangun menara/tangga (naro blok)
-        movements.allowFreeFall = true; // Mengizinkan terjun aman
+        movements.canDig = false;
         movements.canOpenDoors = true;
-        movements.allowParkour = true; // Mengizinkan melompati jurang 1-2 blok
-        movements.allowSprinting = true; // Mengizinkan lari kencang saat mengejar
-        movements.liquidCost = 3; // Mengurangi hambatan air agar tidak gampang stuck saat berenang
 
-        const scaffoldingIds = [];
-        const balokBantuan = [
-            'dirt', 'cobblestone', 'netherrack', 'stone', 'sand', 'gravel',
-            'oak_planks', 'spruce_planks', 'birch_planks', 'cobbled_deepslate', 'deepslate'
-        ];
-        for (const namaBlok of balokBantuan) {
-            if (mcData.itemsByName[namaBlok]) {
-                scaffoldingIds.push(mcData.itemsByName[namaBlok].id);
-            }
+        if (mcData.itemsByName['dirt']) {
+            movements.scafoldingBlocks = [mcData.itemsByName['dirt'].id];
         }
-        movements.scafoldingBlocks = scaffoldingIds;
-        movements.scaffoldingBlocks = scaffoldingIds; // Support kedua varian nama properti library
 
         bot.pathfinder.setMovements(movements);
         state.defaultMovements = movements;
@@ -174,7 +160,7 @@ function setupLifecycleEvents(bot, createBotFn) {
                 if (distance > 16) return false;
 
                 const isHostileMob = e.name && hostileMobs.includes(e.name.toLowerCase());
-                const isNaughtyPlayer = e.type === 'player' && e.username && !CONFIG.owners.includes(e.username.toLowerCase());
+                const isNaughtyPlayer = e.type === 'player' && e.username && !isOwner(e.username);
 
                 return isHostileMob || isNaughtyPlayer;
             });
@@ -185,7 +171,7 @@ function setupLifecycleEvents(bot, createBotFn) {
             }
         }
         // 2. JIKA SENSEI (OWNER) YANG DISERANG
-        else if (entity.type === 'player' && entity.username && CONFIG.owners.includes(entity.username.toLowerCase())) {
+        else if (entity.type === 'player' && entity.username && isOwner(entity.username)) {
             const pelaku = bot.nearestEntity(e => {
                 if (!e.name && !e.username) return false;
                 if (e === entity || e === bot.entity) return false; 
@@ -194,7 +180,7 @@ function setupLifecycleEvents(bot, createBotFn) {
                 if (jarakKeSensei > 10) return false; 
 
                 const isHostileMob = e.name && hostileMobs.includes(e.name.toLowerCase());
-                const isNaughtyPlayer = e.type === 'player' && e.username && !CONFIG.owners.includes(e.username.toLowerCase());
+                const isNaughtyPlayer = e.type === 'player' && e.username && !isOwner(e.username);
 
                 return isHostileMob || isNaughtyPlayer;
             });
@@ -279,7 +265,7 @@ function setupLifecycleEvents(bot, createBotFn) {
             if (kasur) {
                 try {
                     bot.pathfinder.setGoal(null);
-                    await bot.pathfinder.goto(new goals.GoalNear(kasur.position.x, kasur.position.y, kasur.position.z, 2));
+                    await bot.pathfinder.goto(new goals.GoalGetToBlock(kasur.position.x, kasur.position.y, kasur.position.z));
                     await bot.sleep(kasur);
                     bot.chat("Nn. Sudah malam. Aku tidur dulu, Sensei.");
                 } catch (err) { }
