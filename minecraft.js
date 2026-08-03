@@ -103,11 +103,12 @@ function createBot() {
         mcData = require('minecraft-data')(bot.version);
         const movements = new Movements(bot, mcData);
 
-        movements.canDig = false;
+        movements.canDig = true;
         movements.canOpenDoors = true;
         movements.allowParkour = true;
         movements.allowSprinting = true;
         movements.allowEntityDetection = true;
+        movements.allowFreeMotion = true;
         movements.maxDropDown = 4;
         movements.jumpCost = 0;
         movements.scafoldingBlocks = [];

@@ -84,11 +84,12 @@ function setupLifecycleEvents(bot, createBotFn) {
         const mcData = require('minecraft-data')(bot.version);
         const movements = new Movements(bot, mcData);
 
-        movements.canDig = false;
+        movements.canDig = true;
         movements.canOpenDoors = true;
         movements.allowParkour = true;
         movements.allowSprinting = true;
         movements.allowEntityDetection = true;
+        movements.allowFreeMotion = true;
         movements.maxDropDown = 4;
         movements.jumpCost = 0;
         movements.scafoldingBlocks = [];
@@ -99,6 +100,18 @@ function setupLifecycleEvents(bot, createBotFn) {
 
         console.log(`[MC] Bot berhasil spawn di koordinat: ${bot.entity.position}`);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
+
+        // --- DEBUG: Log pathfinding events ---
+        bot.on('path_update', (r) => {
+            console.log(`[PATH] status=${r.status} path_length=${r.path.length} ${r.status === 'noPath' ? 'GAGAL CARI JALUR!' : ''}`);
+            if (r.path.length > 0) {
+                const next = r.path[0];
+                console.log(`[PATH] next_node: x=${next.x.toFixed(1)} y=${next.y.toFixed(1)} z=${next.z.toFixed(1)} toBreak=${next.toBreak.length} toPlace=${next.toPlace.length}`);
+            }
+        });
+        bot.on('goal_reached', (goal) => {
+            console.log(`[PATH] Goal reached!`);
+        });
 
         // --- SISTEM ANTI-NYANGKUT / RECOVERY WATCHDOG ---
         // CATATAN: JANGAN pakai bot.on('physicsTick') untuk override jump/forward,
