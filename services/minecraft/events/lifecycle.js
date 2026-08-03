@@ -12,17 +12,27 @@ function setupLifecycleEvents(bot, createBotFn) {
 
     // --- AUTHME AUTO LOGIN / REGISTER ---
     bot.on('windowOpen', (window) => {
-        const title = window.title ? window.title.toLowerCase() : '';
-        if (title.includes('login') || title.includes('register') || title.includes('pin') || title.includes('auth')) {
-            setTimeout(() => {
-                try { bot.closeWindow(window); } catch(e){}
-            }, 5000);
-        } else {
-            if (!bot.waktuSpawn) bot.waktuSpawn = Date.now();
-            if (Date.now() - bot.waktuSpawn < 10000) {
-                setTimeout(() => { try { bot.closeWindow(window); } catch(e){} }, 2000);
+        try {
+            let title = '';
+            if (typeof window.title === 'string') {
+                title = window.title.toLowerCase();
+            } else if (window.title && typeof window.title === 'object') {
+                title = JSON.stringify(window.title).toLowerCase();
+            } else if (window.title) {
+                title = String(window.title).toLowerCase();
             }
-        }
+
+            if (title.includes('login') || title.includes('register') || title.includes('pin') || title.includes('auth')) {
+                setTimeout(() => {
+                    try { bot.closeWindow(window); } catch(e){}
+                }, 5000);
+            } else {
+                if (!bot.waktuSpawn) bot.waktuSpawn = Date.now();
+                if (Date.now() - bot.waktuSpawn < 10000) {
+                    setTimeout(() => { try { bot.closeWindow(window); } catch(e){} }, 2000);
+                }
+            }
+        } catch (err) {}
     });
 
     bot.on('message', (jsonMsg) => {
