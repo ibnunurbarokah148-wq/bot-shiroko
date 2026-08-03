@@ -109,29 +109,36 @@ function createBot() {
         movements.allowSprinting = true;
         movements.allowEntityDetection = true;
         movements.maxDropDown = 4;
-        movements.jumpCost = 0.1;
-
-        const availableScaffold = [];
-        for (const bName of ['dirt', 'cobblestone', 'stone', 'netherrack', 'oak_planks']) {
-            if (mcData.itemsByName[bName]) {
-                availableScaffold.push(mcData.itemsByName[bName].id);
-            }
-        }
-        movements.scafoldingBlocks = availableScaffold;
+        movements.jumpCost = 0;
+        movements.scafoldingBlocks = [];
 
         bot.pathfinder.setMovements(movements);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
+
+        // --- SISTEM REAL-TIME AUTO-JUMP (PHYSICS TICK 50MS) ---
+        bot.on('physicsTick', () => {
+            if (!bot.entity) return;
+
+            // 1. Auto-Swim jika di dalam air
+            if (bot.entity.isInWater) {
+                bot.setControlState('jump', true);
+                return;
+            }
+
+            // 2. Real-time Step-Up Auto-Jump saat mendaki / menabrak undakan 1 blok ke atas
+            const isMoving = bot.getControlState('forward') || (bot.pathfinder && bot.pathfinder.isMoving());
+            if (isMoving && bot.entity.onGround && bot.entity.isCollidedHorizontally) {
+                bot.setControlState('jump', true);
+            } else if (!bot.entity.onGround) {
+                bot.setControlState('jump', false);
+            }
+        });
 
         // --- SISTEM ANTI-NYANGKUT (MENDAKI & MEDAN SULIT) ---
         let lastBotPos = null;
         let stuckCount = 0;
         setInterval(() => {
             if (!bot.entity || !bot.pathfinder) return;
-
-            const blockIn = bot.blockAt(bot.entity.position);
-            if (blockIn && (blockIn.name === 'water' || blockIn.name === 'flowing_water')) {
-                bot.setControlState('jump', true);
-            }
 
             if (bot.pathfinder.isMoving() || bot.pathfinder.goal) {
                 const currentPos = bot.entity.position;
@@ -140,10 +147,12 @@ function createBot() {
                     if (stuckCount >= 2) {
                         bot.setControlState('jump', true);
                         bot.setControlState('forward', true);
+                        bot.setControlState('sprint', true);
                         setTimeout(() => {
                             bot.setControlState('jump', false);
                             bot.setControlState('forward', false);
-                        }, 400);
+                            bot.setControlState('sprint', false);
+                        }, 500);
                         stuckCount = 0;
                     }
                 } else {

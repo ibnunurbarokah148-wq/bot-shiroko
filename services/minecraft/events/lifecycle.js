@@ -90,15 +90,8 @@ function setupLifecycleEvents(bot, createBotFn) {
         movements.allowSprinting = true;
         movements.allowEntityDetection = true;
         movements.maxDropDown = 4;
-        movements.jumpCost = 0.1;
-
-        const availableScaffold = [];
-        for (const bName of ['dirt', 'cobblestone', 'stone', 'netherrack', 'oak_planks']) {
-            if (mcData.itemsByName[bName]) {
-                availableScaffold.push(mcData.itemsByName[bName].id);
-            }
-        }
-        movements.scafoldingBlocks = availableScaffold;
+        movements.jumpCost = 0;
+        movements.scafoldingBlocks = [];
 
         bot.pathfinder.setMovements(movements);
         state.defaultMovements = movements;
@@ -107,7 +100,27 @@ function setupLifecycleEvents(bot, createBotFn) {
         console.log(`[MC] Bot berhasil spawn di koordinat: ${bot.entity.position}`);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
 
-        // --- SISTEM ANTI-NYANGKUT / AUTO-UNSTUCK (KHUSUS MENDAKI & MEDAN SULIT) ---
+        // --- SISTEM REAL-TIME AUTO-JUMP & AUTO-SWIM (PHYSICS TICK 50MS) ---
+        bot.on('physicsTick', () => {
+            if (!bot.entity) return;
+
+            // 1. Auto-Swim jika di dalam air
+            if (bot.entity.isInWater) {
+                bot.setControlState('jump', true);
+                return;
+            }
+
+            // 2. Real-time Step-Up Auto-Jump saat mendaki / menabrak undakan 1 blok ke atas
+            const isMoving = bot.getControlState('forward') || (bot.pathfinder && bot.pathfinder.isMoving());
+            if (isMoving && bot.entity.onGround && bot.entity.isCollidedHorizontally) {
+                bot.setControlState('jump', true);
+            } else if (!bot.entity.onGround) {
+                // Segera lepas tombol lompat di udara agar lompatan natural dan pendaratan mulus
+                bot.setControlState('jump', false);
+            }
+        });
+
+        // --- SISTEM ANTI-NYANGKUT / RECOVERY WATCHDOG ---
         if (state.unstuckInterval) clearInterval(state.unstuckInterval);
         let lastBotPos = null;
         let stuckCount = 0;
@@ -115,25 +128,19 @@ function setupLifecycleEvents(bot, createBotFn) {
         state.unstuckInterval = setInterval(() => {
             if (!bot.entity || !bot.pathfinder) return;
 
-            // 1. Auto-Swim jika di dalam air
-            const blockIn = bot.blockAt(bot.entity.position);
-            if (blockIn && (blockIn.name === 'water' || blockIn.name === 'flowing_water')) {
-                bot.setControlState('jump', true);
-            }
-
-            // 2. Deteksi nyangkut saat sedang pathfinding
             if (bot.pathfinder.isMoving() || bot.pathfinder.goal) {
                 const currentPos = bot.entity.position;
                 if (lastBotPos && currentPos.distanceTo(lastBotPos) < 0.2) {
                     stuckCount++;
-                    // Nyangkut lebih dari 2 detik saat ada perintah jalan/ikut
                     if (stuckCount >= 2) {
                         bot.setControlState('jump', true);
                         bot.setControlState('forward', true);
+                        bot.setControlState('sprint', true);
                         setTimeout(() => {
                             bot.setControlState('jump', false);
                             bot.setControlState('forward', false);
-                        }, 400);
+                            bot.setControlState('sprint', false);
+                        }, 500);
                         stuckCount = 0;
                     }
                 } else {
