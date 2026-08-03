@@ -116,10 +116,17 @@ function createBot() {
         bot.pathfinder.setMovements(movements);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
 
-        // --- SISTEM ANTI-NYANGKUT / RECOVERY WATCHDOG ---
-        // CATATAN: JANGAN pakai bot.on('physicsTick') untuk override jump/forward,
-        // karena pathfinder internal sudah punya logika lompat sendiri (canWalkJump/canSprintJump).
-        // Menimpa controlState di physicsTick akan MEMBATALKAN lompatan pathfinder.
+        // --- AUTO-STEP: physicsTick yang HANYA menambahkan jump (tidak pernah membatalkan) ---
+        // Bug pathfinder: canStraightLine() menganggap selisih Y < 1 blok = "sudah sampai",
+        // sehingga memilih "sprint lurus tanpa lompat" padahal ada blok solid di depan.
+        // Fix: Jika bot sedang jalan maju + menabrak dinding + di tanah → paksa lompat.
+        // PENTING: Kita TIDAK PERNAH set jump=false di sini, agar tidak membatalkan lompatan pathfinder.
+        bot.on('physicsTick', () => {
+            if (!bot.entity) return;
+            if (bot.entity.onGround && bot.entity.isCollidedHorizontally && bot.getControlState('forward')) {
+                bot.setControlState('jump', true);
+            }
+        });
         let lastBotPos = null;
         let stuckCount = 0;
         setInterval(() => {
