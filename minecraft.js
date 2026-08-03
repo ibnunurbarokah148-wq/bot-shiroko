@@ -105,13 +105,56 @@ function createBot() {
 
         movements.canDig = false;
         movements.canOpenDoors = true;
+        movements.allowParkour = true;
+        movements.allowSprinting = true;
+        movements.allowEntityDetection = true;
+        movements.maxDropDown = 4;
+        movements.jumpCost = 0.1;
 
-        if (mcData.itemsByName['dirt']) {
-            movements.scafoldingBlocks = [mcData.itemsByName['dirt'].id];
+        const availableScaffold = [];
+        for (const bName of ['dirt', 'cobblestone', 'stone', 'netherrack', 'oak_planks']) {
+            if (mcData.itemsByName[bName]) {
+                availableScaffold.push(mcData.itemsByName[bName].id);
+            }
         }
+        movements.scafoldingBlocks = availableScaffold;
 
         bot.pathfinder.setMovements(movements);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
+
+        // --- SISTEM ANTI-NYANGKUT (MENDAKI & MEDAN SULIT) ---
+        let lastBotPos = null;
+        let stuckCount = 0;
+        setInterval(() => {
+            if (!bot.entity || !bot.pathfinder) return;
+
+            const blockIn = bot.blockAt(bot.entity.position);
+            if (blockIn && (blockIn.name === 'water' || blockIn.name === 'flowing_water')) {
+                bot.setControlState('jump', true);
+            }
+
+            if (bot.pathfinder.isMoving() || bot.pathfinder.goal) {
+                const currentPos = bot.entity.position;
+                if (lastBotPos && currentPos.distanceTo(lastBotPos) < 0.2) {
+                    stuckCount++;
+                    if (stuckCount >= 2) {
+                        bot.setControlState('jump', true);
+                        bot.setControlState('forward', true);
+                        setTimeout(() => {
+                            bot.setControlState('jump', false);
+                            bot.setControlState('forward', false);
+                        }, 400);
+                        stuckCount = 0;
+                    }
+                } else {
+                    stuckCount = 0;
+                    lastBotPos = currentPos.clone();
+                }
+            } else {
+                stuckCount = 0;
+                lastBotPos = null;
+            }
+        }, 1000);
 
         // --- RADAR AUTO-ATTACK ---
         if (radarInterval) clearInterval(radarInterval); // Hapus otak lama jika ada

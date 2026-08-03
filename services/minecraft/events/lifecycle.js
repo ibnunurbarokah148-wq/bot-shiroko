@@ -86,10 +86,19 @@ function setupLifecycleEvents(bot, createBotFn) {
 
         movements.canDig = false;
         movements.canOpenDoors = true;
+        movements.allowParkour = true;
+        movements.allowSprinting = true;
+        movements.allowEntityDetection = true;
+        movements.maxDropDown = 4;
+        movements.jumpCost = 0.1;
 
-        if (mcData.itemsByName['dirt']) {
-            movements.scafoldingBlocks = [mcData.itemsByName['dirt'].id];
+        const availableScaffold = [];
+        for (const bName of ['dirt', 'cobblestone', 'stone', 'netherrack', 'oak_planks']) {
+            if (mcData.itemsByName[bName]) {
+                availableScaffold.push(mcData.itemsByName[bName].id);
+            }
         }
+        movements.scafoldingBlocks = availableScaffold;
 
         bot.pathfinder.setMovements(movements);
         state.defaultMovements = movements;
@@ -97,6 +106,45 @@ function setupLifecycleEvents(bot, createBotFn) {
 
         console.log(`[MC] Bot berhasil spawn di koordinat: ${bot.entity.position}`);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
+
+        // --- SISTEM ANTI-NYANGKUT / AUTO-UNSTUCK (KHUSUS MENDAKI & MEDAN SULIT) ---
+        if (state.unstuckInterval) clearInterval(state.unstuckInterval);
+        let lastBotPos = null;
+        let stuckCount = 0;
+
+        state.unstuckInterval = setInterval(() => {
+            if (!bot.entity || !bot.pathfinder) return;
+
+            // 1. Auto-Swim jika di dalam air
+            const blockIn = bot.blockAt(bot.entity.position);
+            if (blockIn && (blockIn.name === 'water' || blockIn.name === 'flowing_water')) {
+                bot.setControlState('jump', true);
+            }
+
+            // 2. Deteksi nyangkut saat sedang pathfinding
+            if (bot.pathfinder.isMoving() || bot.pathfinder.goal) {
+                const currentPos = bot.entity.position;
+                if (lastBotPos && currentPos.distanceTo(lastBotPos) < 0.2) {
+                    stuckCount++;
+                    // Nyangkut lebih dari 2 detik saat ada perintah jalan/ikut
+                    if (stuckCount >= 2) {
+                        bot.setControlState('jump', true);
+                        bot.setControlState('forward', true);
+                        setTimeout(() => {
+                            bot.setControlState('jump', false);
+                            bot.setControlState('forward', false);
+                        }, 400);
+                        stuckCount = 0;
+                    }
+                } else {
+                    stuckCount = 0;
+                    lastBotPos = currentPos.clone();
+                }
+            } else {
+                stuckCount = 0;
+                lastBotPos = null;
+            }
+        }, 1000);
 
         // --- RADAR AUTO-ATTACK ---
         if (state.radarInterval) clearInterval(state.radarInterval); 
