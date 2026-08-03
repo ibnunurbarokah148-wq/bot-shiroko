@@ -116,14 +116,17 @@ function createBot() {
         bot.pathfinder.setMovements(movements);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
 
-        // --- AUTO-STEP: physicsTick yang HANYA menambahkan jump (tidak pernah membatalkan) ---
-        // Bug pathfinder: canStraightLine() menganggap selisih Y < 1 blok = "sudah sampai",
-        // sehingga memilih "sprint lurus tanpa lompat" padahal ada blok solid di depan.
-        // Fix: Jika bot sedang jalan maju + menabrak dinding + di tanah → paksa lompat.
-        // PENTING: Kita TIDAK PERNAH set jump=false di sini, agar tidak membatalkan lompatan pathfinder.
+        // --- AUTO-STEP: Deteksi blok solid di depan bot dan paksa lompat ---
         bot.on('physicsTick', () => {
-            if (!bot.entity) return;
-            if (bot.entity.onGround && bot.entity.isCollidedHorizontally && bot.getControlState('forward')) {
+            if (!bot.entity || !bot.entity.onGround || !bot.getControlState('forward')) return;
+
+            const yaw = bot.entity.yaw;
+            const dx = -Math.sin(yaw);
+            const dz = -Math.cos(yaw);
+            const feetPos = bot.entity.position;
+            const blockAtFeet = bot.blockAt(feetPos.offset(dx * 0.65, 0, dz * 0.65));
+            
+            if (blockAtFeet && blockAtFeet.boundingBox === 'block') {
                 bot.setControlState('jump', true);
             }
         });

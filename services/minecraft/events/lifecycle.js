@@ -113,14 +113,27 @@ function setupLifecycleEvents(bot, createBotFn) {
             console.log(`[PATH] Goal reached!`);
         });
 
-        // --- AUTO-STEP: physicsTick yang HANYA menambahkan jump (tidak pernah membatalkan) ---
-        // Bug pathfinder: canStraightLine() menganggap selisih Y < 1 blok = "sudah sampai",
-        // sehingga memilih "sprint lurus tanpa lompat" padahal ada blok solid di depan.
-        // Fix: Jika bot sedang jalan maju + menabrak dinding + di tanah → paksa lompat.
-        // PENTING: Kita TIDAK PERNAH set jump=false di sini, agar tidak membatalkan lompatan pathfinder.
+        // --- AUTO-STEP: Deteksi blok solid di depan bot dan paksa lompat ---
+        // isCollidedHorizontally mungkin undefined di versi ini, jadi kita cek blok langsung.
+        // PENTING: HANYA set jump=true, TIDAK PERNAH jump=false.
         bot.on('physicsTick', () => {
-            if (!bot.entity) return;
-            if (bot.entity.onGround && bot.entity.isCollidedHorizontally && bot.getControlState('forward')) {
+            if (!bot.entity || !bot.entity.onGround || !bot.getControlState('forward')) return;
+
+            // Hitung arah depan berdasarkan yaw bot
+            const yaw = bot.entity.yaw;
+            const dx = -Math.sin(yaw);
+            const dz = -Math.cos(yaw);
+
+            // Cek blok di depan bot pada level kaki (offset 0.3 blok ke depan)
+            const feetPos = bot.entity.position;
+            const checkX = feetPos.x + dx * 0.65;
+            const checkZ = feetPos.z + dz * 0.65;
+            
+            // Cek blok di level kaki (harus dilompati)
+            const blockAtFeet = bot.blockAt(feetPos.offset(dx * 0.65, 0, dz * 0.65));
+            
+            if (blockAtFeet && blockAtFeet.boundingBox === 'block') {
+                // Ada blok solid di depan di level kaki → harus lompat
                 bot.setControlState('jump', true);
             }
         });
