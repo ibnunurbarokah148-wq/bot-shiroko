@@ -612,10 +612,10 @@ function createBot() {
     async function bergerakAcak() {
         sedangKerja = true;
         try {
-            const x = bot.entity.position.x + (Math.random() * 20 - 10);
-            const z = bot.entity.position.z + (Math.random() * 20 - 10);
-            bot.pathfinder.setGoal(new goals.GoalNear(x, bot.entity.position.y, z, 2));
-            await bot.waitForTicks(60);
+            const x = Math.floor(bot.entity.position.x + (Math.random() * 24 - 12));
+            const z = Math.floor(bot.entity.position.z + (Math.random() * 24 - 12));
+            bot.pathfinder.setGoal(new goals.GoalXZ(x, z));
+            await bot.waitForTicks(50);
         } catch (e) { }
         sedangKerja = false;
     }
@@ -626,8 +626,12 @@ function createBot() {
             while (pohon && sedangKerja) {
                 if (bot.inventory.emptySlotCount() === 0) break;
 
-                // 1. JALAN DULU (Gunakan GoalNear agar bot tidak memanjat pohon)
-                await bot.pathfinder.goto(new goals.GoalNear(pohon.position.x, pohon.position.y, pohon.position.z, 1.5));
+                // 1. JALAN DULU (Mendekat ke pohon)
+                try {
+                    await bot.pathfinder.goto(new goals.GoalLookAtBlock(pohon.position, bot.world));
+                } catch (errPath) {
+                    await bot.pathfinder.goto(new goals.GoalNear(pohon.position.x, pohon.position.y, pohon.position.z, 2));
+                }
                 if (!sedangKerja) break;
 
                 // 2. SETELAH SAMPAI, BARU PEGANG KAPAK (Mencegah nebang pakai tanah)
@@ -638,7 +642,9 @@ function createBot() {
                 }
 
                 // 3. TEBANG
-                await bot.dig(pohon);
+                if (bot.canDigBlock(pohon)) {
+                    await bot.dig(pohon);
+                }
                 await bot.waitForTicks(5);
 
                 pohon = bot.findBlock({
@@ -665,8 +671,12 @@ function createBot() {
             while (block && sedangKerja) {
                 if (bot.inventory.emptySlotCount() === 0) break;
 
-                // 1. JALAN DULU (Mendekat saja ke target)
-                await bot.pathfinder.goto(new goals.GoalNear(block.position.x, block.position.y, block.position.z, 1.5));
+                // 1. JALAN DULU (Mendekat ke target)
+                try {
+                    await bot.pathfinder.goto(new goals.GoalLookAtBlock(block.position, bot.world));
+                } catch (errPath) {
+                    await bot.pathfinder.goto(new goals.GoalNear(block.position.x, block.position.y, block.position.z, 2));
+                }
                 if (!sedangKerja) break;
 
                 // 2. SETELAH SAMPAI, BARU PEGANG BELIUNG
@@ -685,7 +695,9 @@ function createBot() {
                 }
 
                 // 3. HANCURKAN BLOK
-                await bot.dig(block);
+                if (bot.canDigBlock(block)) {
+                    await bot.dig(block);
+                }
                 await bot.waitForTicks(5);
 
                 block = bot.findBlock({

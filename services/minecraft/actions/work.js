@@ -69,10 +69,10 @@ async function amankanBarangKePeti(bot) {
 async function bergerakAcak(bot) {
     state.sedangKerja = true;
     try {
-        const x = bot.entity.position.x + (Math.random() * 20 - 10);
-        const z = bot.entity.position.z + (Math.random() * 20 - 10);
-        bot.pathfinder.setGoal(new goals.GoalNear(x, bot.entity.position.y, z, 2));
-        await bot.waitForTicks(60);
+        const x = Math.floor(bot.entity.position.x + (Math.random() * 24 - 12));
+        const z = Math.floor(bot.entity.position.z + (Math.random() * 24 - 12));
+        bot.pathfinder.setGoal(new goals.GoalXZ(x, z));
+        await bot.waitForTicks(50);
     } catch (e) { }
     state.sedangKerja = false;
 }
@@ -119,7 +119,12 @@ async function mulaiNambang(bot, blockId, namaBlok) {
         while (block && state.sedangKerja) {
             if (bot.inventory.emptySlotCount() === 0) break;
 
-            await bot.pathfinder.goto(new goals.GoalNear(block.position.x, block.position.y, block.position.z, 1.5));
+            try {
+                await bot.pathfinder.goto(new goals.GoalLookAtBlock(block.position, bot.world));
+            } catch (errPath) {
+                // Fallback jika GoalLookAtBlock gagal
+                await bot.pathfinder.goto(new goals.GoalNear(block.position.x, block.position.y, block.position.z, 2));
+            }
             if (!state.sedangKerja) break;
 
             const itemDiTangan = bot.inventory.slots[bot.getEquipmentDestSlot('hand')];
@@ -136,7 +141,9 @@ async function mulaiNambang(bot, blockId, namaBlok) {
                 }
             }
 
-            await bot.dig(block);
+            if (bot.canDigBlock(block)) {
+                await bot.dig(block);
+            }
             await bot.waitForTicks(5);
 
             block = bot.findBlock({
