@@ -8,13 +8,16 @@ const { Vec3 } = require('vec3');
 // ============================================================
 //  KONFIGURASI
 // ============================================================
+const mcVer = process.env.MC_VERSION;
+const mcVersion = (!mcVer || mcVer.toLowerCase() === 'auto' || mcVer.toLowerCase() === 'false') ? false : mcVer;
+
 const CONFIG = {
-    host: 'sgp-1.zknesia.app',
-    port: 25675,
-    username: 'Ritian223',
-    version: '1.20.1',
-    auth: 'offline',
-    owners: ['rukaajah'],
+    host: process.env.MC_HOST || 'id-1.zknesia.app',
+    port: parseInt(process.env.MC_PORT || '25675'),
+    username: process.env.MC_USERNAME || 'Ritian223',
+    version: mcVersion,
+    auth: process.env.MC_AUTH || 'offline',
+    owners: process.env.MC_OWNERS ? process.env.MC_OWNERS.split(',').map(s => s.trim().toLowerCase()) : ['rukaajah'],
     reconnectDelay: 5000,
     aiCooldown: 3000,
     autoAfkInterval: 55000
@@ -24,10 +27,10 @@ const CONFIG = {
 //  ZONA AMAN RUMAH (ANTI-HANCUR)
 // ============================================================
 const CONFIG_RUMAH = {
-    petiX: 82,
-    petiY: 72,
-    petiZ: 37,
-    radiusAman: 20 // Jarak aman (blok). Shiroko dilarang menambang di radius ini!
+    petiX: process.env.MC_HOME_X ? parseInt(process.env.MC_HOME_X) : 82,
+    petiY: process.env.MC_HOME_Y ? parseInt(process.env.MC_HOME_Y) : 72,
+    petiZ: process.env.MC_HOME_Z ? parseInt(process.env.MC_HOME_Z) : 37,
+    radiusAman: process.env.MC_HOME_RADIUS ? parseInt(process.env.MC_HOME_RADIUS) : 20 // Jarak aman (blok). Shiroko dilarang menambang di radius ini!
 };
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
