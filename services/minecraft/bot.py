@@ -12,6 +12,7 @@ if sys.platform == 'win32':
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
         pass
+
 # Optional load_dotenv (Node.js already passes env vars)
 try:
     from dotenv import load_dotenv
@@ -30,16 +31,10 @@ except ImportError:
 
 from javascript import require, On, Once, AsyncTask, off
 
-# Resolve project root
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
-HAWKEYE_PATH = os.path.join(ROOT_DIR, 'node_modules', 'minecrafthawkeye', 'dist', 'index.js').replace('\\', '/')
-
-# Require Node.js modules via JSPyBridge
-mineflayer = require('mineflayer')
-mineflayer_pathfinder = require('mineflayer-pathfinder')
-vec3 = require('vec3')
-hawkeye_plugin = require(HAWKEYE_PATH)
-minecraft_data = require('minecraft-data')
+# Import the javascript libraries
+mineflayer = require("mineflayer")
+mineflayer_pathfinder = require("mineflayer-pathfinder")
+vec3 = require("vec3")
 
 CONFIG = {
     "host": os.getenv("MC_HOST", "id-1.zknesia.app"),
@@ -50,92 +45,56 @@ CONFIG = {
     "owners": [s.strip().lower() for s in os.getenv("MC_OWNERS", "rukaajah").split(",") if s.strip()]
 }
 
-CONFIG_RUMAH = {
-    "petiX": int(os.getenv("MC_HOME_X", "82")),
-    "petiY": int(os.getenv("MC_HOME_Y", "72")),
-    "petiZ": int(os.getenv("MC_HOME_Z", "37")),
-    "radiusAman": int(os.getenv("MC_HOME_RADIUS", "20"))
-}
+def vec3_to_str(v):
+    if not v:
+        return "x: ?, y: ?, z: ?"
+    return f"x: {v['x']:.2f}, y: {v['y']:.2f}, z: {v['z']:.2f}"
 
-HOSTILE_MOBS = [
-    'zombie', 'zombie_villager', 'skeleton', 'creeper', 'spider', 'cave_spider',
-    'enderman', 'witch', 'slime', 'phantom', 'drowned', 'husk', 'stray',
-    'pillager', 'vindicator', 'evoker'
-]
-
-DAFTAR_MAKANAN = [
-    'apple', 'bread', 'cooked_beef', 'cooked_chicken',
-    'cooked_porkchop', 'cooked_mutton', 'cooked_rabbit',
-    'cooked_salmon', 'carrot', 'baked_potato', 'golden_apple'
-]
-
-KAMUS_BLOK = {
-    "tanah": "dirt",
-    "batu": "stone",
-    "cobblestone": "cobblestone",
-    "kayu": "oak_log",
-    "pasir": "sand",
-    "arang": "coal_ore",
-    "besi": "iron_ore",
-    "emas": "gold_ore",
-    "berlian": "diamond_ore"
-}
+def send_ipc(ipc_type, data):
+    """Mengirim event ke Node.js Controller via stdout JSON IPC"""
+    msg = json.dumps({"ipc_type": ipc_type, "data": data})
+    print(f"__IPC_MESSAGE_START__{msg}__IPC_MESSAGE_END__", flush=True)
 
 def is_owner(username):
     if not username:
         return False
-    clean_user = username.lower().lstrip(".*_").strip()
-    for o in CONFIG["owners"]:
-        if clean_user == o or username.lower() == o:
-            return True
-    return False
+    return username.lower() in CONFIG["owners"]
 
-def send_ipc(msg_type, data):
-    """Kirim event terstruktur ke Node.js (index.js) via stdout JSON line."""
-    payload = json.dumps({"ipc_type": msg_type, "data": data})
-    print(f"__IPC_MESSAGE_START__{payload}__IPC_MESSAGE_END__", flush=True)
 
-class ShirokoPythonBot:
-    def __init__(self):
-        self.bot = None
-        self.reconnect = True
-        self.mode_mandiri = False
-        self.fokus_mandiri = None
-        self.sedang_kerja = False
-        self.sedang_makan = False
-        self.target_serangan = None
-        self.loop_serangan = None
-        self.loop_ikut = None
-        self.loop_mandiri = None
-        self.loop_radar = None
-        self.loop_unstuck = None
-        self.default_movements = None
-        self.mc_data = None
-        self.waktu_spawn = None
-
-    def log(self, message, color="cyan"):
-        fn = getattr(chalk, color, chalk.cyan)
-        print(fn(f"[{CONFIG['username']} Py] {message}"), flush=True)
-
-    def start(self):
-        self.log(f"Menghubungkan ke {CONFIG['host']}:{CONFIG['port']} (Versi {CONFIG['version']})...", "yellow")
-        self.bot = mineflayer.createBot({
+class MCBot:
+    def __init__(self, bot_name):
+        self.bot_args = {
             "host": CONFIG["host"],
             "port": CONFIG["port"],
-            "username": CONFIG["username"],
+            "username": bot_name,
             "version": CONFIG["version"],
             "auth": CONFIG["auth"],
-            "hideErrors": False
-        })
-        self.bot.loadPlugin(mineflayer_pathfinder.pathfinder)
+            "hideErrors": False,
+        }
+        self.reconnect = True
+        self.bot_name = bot_name
+        self.bot = None
+        self.following_player = None
+        self.loop_follow = False
+
+        self.start_bot()
+
+    def log(self, message, color="cyan"):
+        fn = getattr(chalk, color, getattr(chalk, "cyan", lambda m: m))
+        print(fn(f"[{self.bot_name}] {message}"), flush=True)
+
+    def pathfind_to_goal(self, goal_location, range_dist=1):
         try:
-            self.bot.loadPlugin(hawkeye_plugin['default'] or hawkeye_plugin)
+            self.bot.pathfinder.setGoal(
+                mineflayer_pathfinder.pathfinder.goals.GoalNear(
+                    goal_location["x"], goal_location["y"], goal_location["z"], range_dist
+                )
+            )
         except Exception as e:
-            self.log(f"Warning: HawkEye plugin load skipped: {e}", "yellow")
-        self.register_events()
+            self.log(f"Error while trying to run pathfind_to_goal: {e}", "red")
 
     def run_and_jump(self):
-        """Manuver lompat rintangan bertenaga non-blocking (aman tanpa waitForTicks timeout)."""
+        """Manuver lompat bertenaga ala MineflayerPython 12-jumper-bot."""
         def do_jump():
             try:
                 self.bot.setControlState("forward", True)
@@ -150,233 +109,65 @@ class ShirokoPythonBot:
         t = threading.Thread(target=do_jump, daemon=True)
         t.start()
 
-    def register_events(self):
-        @On(self.bot, "login")
-        def on_login(this, *args):
-            self.log(f"Login sukses ke server!", "green")
-            send_ipc("login", {"status": "success", "username": CONFIG["username"]})
+    def start_bot(self):
+        self.log(f"Menghubungkan ke {CONFIG['host']}:{CONFIG['port']}...", "yellow")
+        self.bot = mineflayer.createBot(self.bot_args)
+        self.bot.loadPlugin(mineflayer_pathfinder.pathfinder)
 
-        @On(self.bot, "spawn")
-        def on_spawn(this, *args):
-            self.waktu_spawn = time.time()
-            self.mc_data = minecraft_data(self.bot.version or "1.21.1")
-            
-            Movements = mineflayer_pathfinder.Movements
-            movements = Movements(self.bot, self.mc_data)
-            movements.canDig = False
-            movements.canOpenDoors = True
-            movements.allowParkour = False  # False agar tidak loncat liar saat turun/naik 1 blok
-            movements.allowSprinting = True
-            movements.allow1by1towers = False
-            movements.allowEntityDetection = True
-            movements.allowFreeMotion = False
-            movements.maxDropDown = 4
-            movements.jumpCost = 1.0
-            movements.scafoldingBlocks = []
+        self.start_events()
 
-            self.bot.pathfinder.setMovements(movements)
-            self.default_movements = movements
-
-            pos = self.bot.entity.position
-            self.log(f"Spawn di posisi: x={pos.x:.1f}, y={pos.y:.1f}, z={pos.z:.1f}", "green")
-            send_ipc("spawn", {"x": pos.x, "y": pos.y, "z": pos.z})
-
-            self.start_radar()
-            self.start_unstuck_checker()
-
-        @On(self.bot, "death")
-        def on_death(this, *args):
-            self.log("Bot mati! Respawning...", "red")
-            self.stop_all_loops()
-            send_ipc("death", {})
-
-        @On(self.bot, "kicked")
-        def on_kicked(this, reason=None, loggedIn=None, *args):
-            self.log(f"Kicked dari server: {reason}", "redBright")
-            send_ipc("kicked", {"reason": str(reason)})
-
-        @On(self.bot, "end")
-        def on_end(this, reason=None, *args):
-            self.log(f"Koneksi terputus: {reason}", "red")
-            self.stop_all_loops()
-            send_ipc("disconnected", {"reason": str(reason)})
-            if self.reconnect:
-                self.log("Mencoba menghubungkan ulang dalam 5 detik...", "cyanBright")
-                time.sleep(5)
-                self.start()
-
-        @On(self.bot, "health")
-        def on_health(this, *args):
-            if not self.bot or not self.bot.entity:
-                return
-            health = self.bot.health
-            food = self.bot.food
-            if food < 14 and not self.sedang_makan:
-                self.auto_eat()
-
-        @On(self.bot, "chat")
-        def on_chat(this, username=None, message=None, *args):
-            self.handle_chat(username, message)
-
-        @On(self.bot, "messagestr")
-        def on_messagestr(this, message=None, messagePosition=None, jsonMsg=None, sender=None, verified=None, *args):
-            if not message or not isinstance(message, str):
-                return
-            for owner_name in CONFIG["owners"]:
-                if owner_name in message.lower():
-                    parts = message.split(":")
-                    if len(parts) >= 2:
-                        user_candidate = parts[0].strip().split()[-1]
-                        msg_body = ":".join(parts[1:]).strip()
-                        if is_owner(user_candidate):
-                            self.handle_chat(user_candidate, msg_body)
-
-    def handle_chat(self, username, message):
-        if not message or not username:
-            return
-        clean_msg = message.strip()
-        self.log(f"Chat [{username}]: {clean_msg}", "magenta")
-        send_ipc("chat", {"username": username, "message": clean_msg})
-
-        if not is_owner(username):
-            return
-
-        pk = clean_msg.lower()
-        goals = mineflayer_pathfinder.goals
-
-        # 1. IKUT
-        if "ikut" in pk:
-            self.mode_mandiri = False
-            self.sedang_kerja = False
-            self.stop_follow()
-            player = self.find_player(username)
-            if player and player.entity:
-                self.bot.chat("Nn. Mengikutimu dari dekat, Sensei.")
-                self.start_follow(player)
-            else:
-                self.bot.chat("Nn. Terlalu jauh. Menunggumu mendekat, Sensei.")
-            return
-
-        # 2. BERHENTI / DIAM / TUNGGU
-        if any(k in pk for k in ["berhenti", "tunggu", "diam"]):
-            self.mode_mandiri = False
-            self.sedang_kerja = False
-            self.stop_follow()
-            self.berhenti_serang()
-            self.bot.pathfinder.setGoal(None)
-            self.bot.clearControlStates()
-            self.bot.chat("Nn. Aku berhenti dan standby di sini.")
-            return
-
-        # 3. LOMPAT (Run and jump)
-        if "lompat" in pk or "jump" in pk:
-            self.bot.chat("Nn. Melompat.")
-            self.run_and_jump()
-            return
-
-        # 4. KESINI / MASUK
-        if any(k in pk for k in ["masuk", "ke sini", "kesini"]):
-            self.stop_follow()
-            player = self.find_player(username)
-            if player and player.entity:
-                self.bot.chat("Nn. Menuju posisimu, Sensei.")
-                p = player.entity.position
-                self.bot.pathfinder.setGoal(goals.GoalNear(p.x, p.y, p.z, 1.5))
-            else:
-                self.bot.chat("Nn. Posisi Sensei belum terlihat di radar.")
-            return
-
-        # 5. TEROBOS / MAJU
-        if any(k in pk for k in ["terobos", "maju", "sini"]):
-            player = self.find_player(username)
-            if player and player.entity and player.entity.position:
-                p = player.entity.position
-                try:
-                    self.bot.lookAt(vec3(p.x, p.y + 1.6, p.z), True)
-                except Exception:
-                    pass
-            self.bot.chat("Nn. Menerobos maju.")
-            self.bot.setControlState("forward", True)
-            time.sleep(1.2)
-            self.bot.setControlState("forward", False)
-            return
-
-        # 6. TUTUP / BUKA PINTU
-        if "tutup pintu" in pk or "buka pintu" in pk:
-            action_name = "tutup" if "tutup" in pk else "buka"
-            pintu = self.bot.findBlock({
-                "matching": lambda b: b is not None and ("door" in b.name or "gate" in b.name),
-                "maxDistance": 4
-            })
-            if pintu:
-                try:
-                    self.bot.activateBlock(pintu)
-                    self.bot.chat(f"Nn. Pintu sudah di-{action_name}.")
-                except Exception:
-                    self.bot.chat("Nn. Tidak dapat menjangkau pintu.")
-            else:
-                self.bot.chat("Nn. Tidak ada pintu di dekatku.")
-            return
-
-        # 7. STATUS
-        if "status" in pk or "posisi" in pk:
-            if self.bot.entity and self.bot.entity.position:
-                pos = self.bot.entity.position
-                self.bot.chat(f"Nn. Posisi: {pos.x:.0f}, {pos.y:.0f}, {pos.z:.0f} | Darah: {self.bot.health}/20 | Makanan: {self.bot.food}/20")
-            return
-
-        # 8. MANDIRI
-        if "mandiri" in pk or "kerja" in pk:
-            self.mode_mandiri = True
-            self.fokus_mandiri = "kayu" if "kayu" in pk else "bebas"
-            self.bot.chat(f"Nn. Mode mandiri aktif (Fokus: {self.fokus_mandiri}).")
-            return
-
-    def find_player(self, username):
+    def find_player(self, sender, message=""):
         if not self.bot or not self.bot.players:
-            return None
-        players = self.bot.players
-        for name in players:
-            if is_owner(name) or username.lower() in name.lower():
-                return players[name]
-        return None
+            return None, None
+        local_players = self.bot.players
+        for el in local_players:
+            p = local_players[el]
+            if not p:
+                continue
+            p_uuid = str(p.get("uuid", ""))
+            p_username = str(p.get("username", "")).lower()
+            
+            # Cek kecocokan UUID pengirim atau owner
+            if p_uuid == str(sender) or is_owner(p_username) or p_username in message.lower():
+                if p.get("entity") and p["entity"].get("position"):
+                    pos = p["entity"]["position"]
+                    loc = vec3(pos["x"], pos["y"], pos["z"])
+                    return p, loc
+        return None, None
 
-    def start_follow(self, player_target):
+    def start_follow_loop(self, player_data):
         self.stop_follow()
-        if not player_target or not player_target.entity:
-            return
-
-        goals = mineflayer_pathfinder.goals
-        try:
-            self.bot.pathfinder.setGoal(goals.GoalFollow(player_target.entity, 2.5), True)
-        except Exception as e:
-            self.log(f"Error setGoal follow: {e}", "red")
+        self.loop_follow = True
 
         def follow_worker():
-            while self.loop_ikut and self.bot and self.bot.entity:
+            while self.loop_follow and self.bot and self.bot.entity:
                 try:
-                    if player_target and player_target.entity and player_target.entity.position and self.bot.entity.position:
+                    if player_data and player_data.get("entity") and player_data["entity"].get("position"):
                         bp = self.bot.entity.position
-                        pp = player_target.entity.position
-                        dx = pp.x - bp.x
-                        dy = pp.y - bp.y
-                        dz = pp.z - bp.z
+                        pp = player_data["entity"]["position"]
+                        dx = pp["x"] - bp["x"]
+                        dy = pp["y"] - bp["y"]
+                        dz = pp["z"] - bp["z"]
                         dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-                        if dist <= 3.0:
+
+                        if dist > 3.0:
+                            self.pathfind_to_goal(pp, range_dist=2)
+                        elif dist <= 2.0:
+                            if self.bot.pathfinder.isMoving():
+                                self.bot.pathfinder.setGoal(None)
                             try:
-                                self.bot.lookAt(vec3(pp.x, pp.y + 1.6, pp.z), True)
+                                self.bot.lookAt(vec3(pp["x"], pp["y"] + 1.6, pp["z"]))
                             except Exception:
                                 pass
                 except Exception:
                     pass
                 time.sleep(1.0)
 
-        self.loop_ikut = True
         t = threading.Thread(target=follow_worker, daemon=True)
         t.start()
 
     def stop_follow(self):
-        self.loop_ikut = False
+        self.loop_follow = False
         if self.bot and self.bot.pathfinder:
             try:
                 self.bot.pathfinder.setGoal(None)
@@ -384,196 +175,178 @@ class ShirokoPythonBot:
             except Exception:
                 pass
 
-    def start_radar(self):
-        def radar_worker():
-            while self.bot:
-                try:
-                    if self.bot.entity and not self.target_serangan:
-                        bpos = self.bot.entity.position
-                        if bpos:
-                            best_mob = None
-                            min_dist = 8.0
-                            entities = self.bot.entities
-                            for entity_id in entities:
-                                try:
-                                    e = entities[entity_id]
-                                    if not e or not e.name:
-                                        continue
-                                    ename = str(e.name).lower()
-                                    if ename in HOSTILE_MOBS and e.position:
-                                        dx = e.position.x - bpos.x
-                                        dy = e.position.y - bpos.y
-                                        dz = e.position.z - bpos.z
-                                        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-                                        if dist < min_dist:
-                                            min_dist = dist
-                                            best_mob = e
-                                except Exception:
-                                    continue
-                            
-                            if best_mob:
-                                self.mulai_serang(best_mob)
-                except Exception:
-                    pass
-                time.sleep(1.0)
+    def start_events(self):
+        # Login event
+        @On(self.bot, "login")
+        def login(this, *args):
+            self.log(chalk.green(f"Login sukses ke server {CONFIG['host']}:{CONFIG['port']}"))
+            send_ipc("login", {"status": "success", "username": self.bot_name})
 
-        t = threading.Thread(target=radar_worker, daemon=True)
-        t.start()
+        # Spawn event
+        @On(self.bot, "spawn")
+        def spawn(this, *args):
+            pos = self.bot.entity.position
+            self.log(chalk.green(f"Spawn di posisi: {vec3_to_str(pos)}"))
+            self.bot.chat("Nn... Shiroko siap bertugas, Sensei.")
+            send_ipc("spawn", {"x": pos.x if hasattr(pos, 'x') else pos['x'], 
+                               "y": pos.y if hasattr(pos, 'y') else pos['y'], 
+                               "z": pos.z if hasattr(pos, 'z') else pos['z']})
 
-    def start_unstuck_checker(self):
-        def unstuck_worker():
-            last_x = None
-            last_y = None
-            last_z = None
-            stuck_count = 0
-            while self.bot:
-                try:
-                    if self.bot.entity and self.bot.pathfinder and self.bot.pathfinder.isMoving():
-                        cpos = self.bot.entity.position
-                        if cpos:
-                            if last_x is not None:
-                                dx = cpos.x - last_x
-                                dy = cpos.y - last_y
-                                dz = cpos.z - last_z
-                                dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-                                if dist < 0.1:
-                                    stuck_count += 1
-                                    if stuck_count >= 5:
-                                        self.log(f"Anti-stuck: terhalang di ({cpos.x:.1f}, {cpos.y:.1f}, {cpos.z:.1f}), micro-hop...", "yellow")
-                                        self.bot.clearControlStates()
-                                        self.run_and_jump()
-                                        stuck_count = 0
-                                else:
-                                    stuck_count = 0
-                            last_x = cpos.x
-                            last_y = cpos.y
-                            last_z = cpos.z
-                    else:
-                        stuck_count = 0
-                        last_x = None
-                except Exception:
-                    pass
-                time.sleep(1.0)
+        # Kicked event
+        @On(self.bot, "kicked")
+        def kicked(this, reason=None, loggedIn=None, *args):
+            self.log(chalk.redBright(f"Kicked dari server: {reason}"))
+            send_ipc("kicked", {"reason": str(reason)})
 
-        t = threading.Thread(target=unstuck_worker, daemon=True)
-        t.start()
+        # Messagestr event (Chat & Commands)
+        @On(self.bot, "messagestr")
+        def messagestr(this, message=None, messagePosition=None, jsonMsg=None, sender=None, verified=None, *args):
+            if not message or not isinstance(message, str):
+                return
 
-    def mulai_serang(self, target):
-        self.target_serangan = target
-        self.pasang_senjata_terbaik()
-        goals = mineflayer_pathfinder.goals
+            msg_lower = message.strip().lower()
+            self.log(f"Chat: {message}")
 
-        def combat_worker():
-            while self.target_serangan and self.bot and self.bot.entity:
-                try:
-                    if not self.target_serangan.isValid or not self.target_serangan.position or (self.target_serangan.health and self.target_serangan.health <= 0):
-                        self.bot.chat("Nn. Ancaman berhasil dieliminasi.")
-                        self.berhenti_serang()
-                        break
+            # 1. QUIT
+            if "quit" in msg_lower or "keluar" in msg_lower:
+                for o in CONFIG["owners"]:
+                    if o in msg_lower or is_owner(str(sender)):
+                        self.bot.chat("Nn. Sampai jumpa, Sensei.")
+                        self.reconnect = False
+                        this.quit()
+                        return
 
-                    bp = self.bot.entity.position
-                    tp = self.target_serangan.position
-                    dx = tp.x - bp.x
-                    dy = tp.y - bp.y
-                    dz = tp.z - bp.z
-                    jarak = math.sqrt(dx*dx + dy*dy + dz*dz)
+            # 2. IKUT / FOLLOW
+            if any(k in msg_lower for k in ["ikut", "follow", "ikuti aku"]):
+                p_data, p_loc = self.find_player(sender, msg_lower)
+                if p_loc:
+                    self.bot.chat("Nn. Siap mengikuti Sensei.")
+                    self.log(chalk.magenta(f"Following player at {vec3_to_str(p_loc)}"))
+                    self.start_follow_loop(p_data)
+                else:
+                    self.bot.chat("Nn. Posisi Sensei belum terlihat.")
+                return
 
-                    self.bot.pathfinder.setGoal(goals.GoalFollow(self.target_serangan, 2.0), True)
+            # 3. COME TO ME / KESINI / MASUK
+            if any(k in msg_lower for k in ["come to me", "kesini", "ke sini", "masuk", "sini"]):
+                self.stop_follow()
+                p_data, p_loc = self.find_player(sender, msg_lower)
+                if p_loc:
+                    self.bot.chat("Nn. Menuju posisimu.")
+                    self.log(chalk.magenta(f"Pathfinding to {vec3_to_str(p_loc)}"))
+                    self.pathfind_to_goal(p_loc, range_dist=1)
+                else:
+                    self.bot.chat("Nn. Posisi tidak ditemukan.")
+                return
 
-                    if jarak < 3.5:
-                        h = self.target_serangan.height or 1.0
-                        self.bot.lookAt(vec3(tp.x, tp.y + h, tp.z), True)
-                        self.bot.attack(self.target_serangan)
+            # 4. LOOK AT ME / LIHAT AKU
+            if any(k in msg_lower for k in ["look at me", "lihat aku", "tatap"]):
+                p_data, p_loc = self.find_player(sender, msg_lower)
+                if p_loc:
+                    try:
+                        self.bot.lookAt(vec3(p_loc["x"], p_loc["y"] + 1.6, p_loc["z"]))
+                        self.bot.chat("Nn. Aku melihatmu, Sensei.")
+                    except Exception:
+                        pass
+                return
 
-                except Exception as e:
-                    self.log(f"Combat error: {e}", "red")
-                    break
-                time.sleep(0.5)
+            # 5. JUMP / LOMPAT
+            if any(k in msg_lower for k in ["lompat", "jump"]):
+                self.bot.chat("Nn. Melompat!")
+                self.run_and_jump()
+                return
 
-        t = threading.Thread(target=combat_worker, daemon=True)
-        t.start()
+            # 6. STOP / BERHENTI
+            if any(k in msg_lower for k in ["stop", "berhenti", "diam", "standby"]):
+                self.stop_follow()
+                self.bot.chat("Nn. Standby.")
+                return
 
-    def berhenti_serang(self):
-        self.target_serangan = None
-        if self.bot and self.bot.hawkEye:
-            try:
-                self.bot.hawkEye.stop()
-            except Exception:
-                pass
+            # 7. STATUS / POSISI
+            if any(k in msg_lower for k in ["status", "posisi"]):
+                if self.bot.entity and self.bot.entity.position:
+                    pos = self.bot.entity.position
+                    self.bot.chat(f"Nn. Posisi: {pos.x:.0f}, {pos.y:.0f}, {pos.z:.0f} | HP: {self.bot.health}/20 | Food: {self.bot.food}/20")
+                return
 
-    def pasang_senjata_terbaik(self):
-        urutan = ['netherite_sword', 'diamond_sword', 'iron_sword', 'golden_sword', 'stone_sword', 'wooden_sword', 'netherite_axe', 'diamond_axe', 'iron_axe']
-        items = self.bot.inventory.items()
-        for pedang in urutan:
-            found = next((i for i in items if pedang in i.name), None)
-            if found:
-                try:
-                    self.bot.equip(found, 'hand')
-                    break
-                except Exception:
-                    pass
-        # Shield offhand
-        shield = next((i for i in items if 'shield' in i.name), None)
-        if shield:
-            try:
-                self.bot.equip(shield, 'off-hand')
-            except Exception:
-                pass
+            # 8. BUKA / TUTUP PINTU
+            if "pintu" in msg_lower or "door" in msg_lower or "gate" in msg_lower:
+                act = "tutup" if "tutup" in msg_lower or "close" in msg_lower else "buka"
+                pintu = self.bot.findBlock({
+                    "matching": lambda b: b is not None and ("door" in str(b.name) or "gate" in str(b.name)),
+                    "maxDistance": 4
+                })
+                if pintu:
+                    try:
+                        self.bot.activateBlock(pintu)
+                        self.bot.chat(f"Nn. Pintu sudah di-{act}.")
+                    except Exception:
+                        self.bot.chat("Nn. Tidak dapat menjangkau pintu.")
+                else:
+                    self.bot.chat("Nn. Tidak ada pintu di dekatku.")
+                return
 
-    def auto_eat(self):
-        self.sedang_makan = True
-        items = self.bot.inventory.items()
-        makanan = next((i for i in items if any(f in i.name for f in DAFTAR_MAKANAN)), None)
-        if makanan:
-            try:
-                self.bot.equip(makanan, 'hand')
-                self.bot.consume()
-            except Exception:
-                pass
-        self.sedang_makan = False
+        # End event
+        @On(self.bot, "end")
+        def end(this, reason=None, *args):
+            self.log(chalk.red(f"Disconnected: {reason}"))
+            self.stop_follow()
+            send_ipc("disconnected", {"reason": str(reason)})
 
-    def stop_all_loops(self):
-        self.stop_follow()
-        self.berhenti_serang()
-        self.mode_mandiri = False
-        self.sedang_kerja = False
+            # Turn off old events
+            off(self.bot, "login", login)
+            off(self.bot, "spawn", spawn)
+            off(self.bot, "kicked", kicked)
+            off(self.bot, "messagestr", messagestr)
 
-def listen_node_ipc(bot_instance):
-    """Mendengar perintah dari Node.js via stdin JSON."""
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
+            # Reconnect
+            if self.reconnect:
+                self.log(chalk.cyanBright("Attempting to reconnect in 5s..."))
+                time.sleep(5)
+                self.start_bot()
+
+            off(self.bot, "end", end)
+
+
+def start_ipc_listener(bot_instance):
+    """Mendengarkan stdin dari Controller Node.js untuk command WhatsApp"""
+    while True:
         try:
-            req = json.loads(line)
-            cmd = req.get("cmd")
+            line = sys.stdin.readline()
+            if not line:
+                break
+            line = line.strip()
+            if not line:
+                continue
+
+            cmd_data = json.loads(line)
+            cmd = cmd_data.get("cmd")
+
             if cmd == "chat":
-                msg = req.get("msg", "")
-                if bot_instance.bot and msg:
+                msg = cmd_data.get("msg", "")
+                if bot_instance.bot:
                     bot_instance.bot.chat(msg)
+            elif cmd == "status":
+                if bot_instance.bot and bot_instance.bot.entity and bot_instance.bot.entity.position:
+                    pos = bot_instance.bot.entity.position
+                    send_ipc("status_response", {
+                        "online": True,
+                        "health": bot_instance.bot.health,
+                        "food": bot_instance.bot.food,
+                        "x": pos.x if hasattr(pos, 'x') else pos['x'],
+                        "y": pos.y if hasattr(pos, 'y') else pos['y'],
+                        "z": pos.z if hasattr(pos, 'z') else pos['z']
+                    })
             elif cmd == "stop":
                 bot_instance.reconnect = False
                 if bot_instance.bot:
                     bot_instance.bot.quit()
-                sys.exit(0)
-            elif cmd == "status":
-                if bot_instance.bot and bot_instance.bot.entity:
-                    pos = bot_instance.bot.entity.position
-                    send_ipc("status_response", {
-                        "online": True,
-                        "x": pos.x,
-                        "y": pos.y,
-                        "z": pos.z,
-                        "health": bot_instance.bot.health,
-                        "food": bot_instance.bot.food
-                    })
-                else:
-                    send_ipc("status_response", {"online": False})
-        except Exception as e:
-            bot_instance.log(f"IPC Parse error: {e}", "red")
+                break
+        except Exception:
+            pass
+
 
 if __name__ == "__main__":
-    bot_app = ShirokoPythonBot()
-    ipc_thread = threading.Thread(target=listen_node_ipc, args=(bot_app,), daemon=True)
+    bot_app = MCBot(CONFIG["username"])
+    ipc_thread = threading.Thread(target=start_ipc_listener, args=(bot_app,), daemon=True)
     ipc_thread.start()
-    bot_app.start()
