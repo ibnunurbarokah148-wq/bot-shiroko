@@ -113,16 +113,15 @@ function setupLifecycleEvents(bot, createBotFn) {
             console.log(`[PATH] Goal reached!`);
         });
 
-        // --- AUTO-STEP: Sustained multi-tick jump melewati rintangan 1 blok ---
-        // Saat bot melompat, momentum maju (forward + sprint) HARUS dipertahankan di udara selama ~8 tick (400ms)
-        // agar bot tidak jatuh kembali di blok yang sama.
+        // --- AUTO-STEP & JUMP ASSIST: Mengatasi rintangan 1 blok naik ---
         let isJumpingObstacle = false;
         let jumpObstacleTicks = 0;
+        let forwardBlockedTicks = 0;
 
         bot.on('physicsTick', () => {
             if (!bot.entity) return;
 
-            // Jika sedang dalam fase melompat rintangan, pertahankan momentum maju di udara
+            // 1. Jika sedang dalam fase eksekusi lompatan rintangan, pertahankan momentum di udara
             if (isJumpingObstacle) {
                 jumpObstacleTicks++;
                 bot.setControlState('forward', true);
@@ -134,40 +133,73 @@ function setupLifecycleEvents(bot, createBotFn) {
                     bot.setControlState('jump', false);
                 }
 
-                // Selesai jika sudah mendarat kembali di atas tebing atau melewati batas tick
+                // Selesai jika sudah mendarat di permukaan baru atau melewati batas tick (~500ms)
                 if ((jumpObstacleTicks > 4 && bot.entity.onGround) || jumpObstacleTicks > 10) {
                     isJumpingObstacle = false;
                     jumpObstacleTicks = 0;
+                    forwardBlockedTicks = 0;
                 }
                 return;
             }
 
-            // Cek saat bot sedang jalan maju dan berada di tanah
+            // 2. Deteksi kebutuhan lompat saat berada di tanah
             if (bot.entity.onGround && bot.getControlState('forward')) {
-                const yaw = bot.entity.yaw;
-                const dx = -Math.sin(yaw);
-                const dz = -Math.cos(yaw);
-                const feetPos = bot.entity.position;
+                const pos = bot.entity.position;
+                let shouldJump = false;
 
-                // Cek blok tepat di depan kaki (jarak 0.5 - 0.7 blok)
-                const checkDistances = [0.5, 0.7];
-                for (const dist of checkDistances) {
-                    const blockAtFeet = bot.blockAt(feetPos.offset(dx * dist, 0, dz * dist));
-                    const blockAboveFeet = bot.blockAt(feetPos.offset(dx * dist, 1, dz * dist));
-                    const blockHeadroom = bot.blockAt(feetPos.offset(0, 2, 0));
-
-                    // Ada blok solid di kaki, tapi atasnya kosong (bisa dipanjat) dan kepala aman
-                    if (blockAtFeet && blockAtFeet.boundingBox === 'block' &&
-                        (!blockAboveFeet || blockAboveFeet.boundingBox !== 'block') &&
-                        (!blockHeadroom || blockHeadroom.boundingBox !== 'block')) {
-                        isJumpingObstacle = true;
-                        jumpObstacleTicks = 0;
-                        bot.setControlState('jump', true);
-                        bot.setControlState('forward', true);
-                        bot.setControlState('sprint', true);
-                        break;
+                // TRIGGER A: Node pathfinder berikutnya berada lebih tinggi (Y naik >= 0.3 blok)
+                if (bot.pathfinder && bot.pathfinder.path && bot.pathfinder.path.length > 0) {
+                    const nextNode = bot.pathfinder.path[0];
+                    if (nextNode && nextNode.y > pos.y + 0.3) {
+                        const hDist = Math.hypot(nextNode.x - pos.x, nextNode.z - pos.z);
+                        if (hDist < 1.8) {
+                            shouldJump = true;
+                        }
                     }
                 }
+
+                // TRIGGER B: Bot terhalang / velocity mendekati 0 saat tombol maju aktif selama >= 2 tick (100ms)
+                const hSpeed = Math.hypot(bot.entity.velocity.x, bot.entity.velocity.z);
+                if (hSpeed < 0.04) {
+                    forwardBlockedTicks++;
+                    if (forwardBlockedTicks >= 2) {
+                        shouldJump = true;
+                    }
+                } else {
+                    forwardBlockedTicks = 0;
+                }
+
+                // TRIGGER C: Cek blok fisik di depan bot
+                if (!shouldJump) {
+                    const yaw = bot.entity.yaw;
+                    const dx = -Math.sin(yaw);
+                    const dz = -Math.cos(yaw);
+                    const checkDistances = [0.3, 0.6, 0.9];
+                    for (const dist of checkDistances) {
+                        const blockFrontFeet = bot.blockAt(pos.offset(dx * dist, 0, dz * dist));
+                        const blockFrontAbove = bot.blockAt(pos.offset(dx * dist, 1, dz * dist));
+                        const blockHeadroom = bot.blockAt(pos.offset(0, 2, 0));
+
+                        if (blockFrontFeet && blockFrontFeet.boundingBox === 'block' &&
+                            (!blockFrontAbove || blockFrontAbove.boundingBox !== 'block') &&
+                            (!blockHeadroom || blockHeadroom.boundingBox !== 'block')) {
+                            shouldJump = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Eksekusi lompatan jika salah satu trigger terpenuhi
+                if (shouldJump) {
+                    isJumpingObstacle = true;
+                    jumpObstacleTicks = 0;
+                    forwardBlockedTicks = 0;
+                    bot.setControlState('jump', true);
+                    bot.setControlState('forward', true);
+                    bot.setControlState('sprint', true);
+                }
+            } else {
+                forwardBlockedTicks = 0;
             }
         });
         if (state.unstuckInterval) clearInterval(state.unstuckInterval);
