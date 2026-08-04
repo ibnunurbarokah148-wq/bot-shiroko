@@ -69,7 +69,7 @@ function injectAlarmMemory(senderJid, role, text) {
  */
 async function generateAlarmText({ type, salatName, level = 1, isTest = false }) {
     const stats = getAlarmStats();
-    const activeMode = (state.userAiMode ? state.userAiMode[ID_OWNER[0]] : null) || 'arisu-gemini';
+    const activeMode = (state.userAIMode ? state.userAIMode[ID_OWNER[0]] : null) || 'arisu-gemini';
     const { provider, model } = AIProvider.resolveMode(activeMode, ID_OWNER[0]);
 
     let contextInstruction = "";
@@ -246,8 +246,11 @@ function stopActiveAlarm() {
  * Menangani respon Sensei terhadap alarm aktif atau quote pesan alarm
  */
 async function handleAlarmResponse(ctx) {
-    const { sock, senderId, isOwner, text, textLower, isQuoted, quotedTextLower, reply } = ctx;
+    const { sock, senderId, isOwner, textClean, text, textLower, isQuoted, quotedTextLower, reply } = ctx;
     if (!isOwner) return false;
+
+    const userText = (textClean || text || '').trim();
+    if (!userText) return false;
 
     const hasActiveAlarm = !!state.activeAlarmSession;
     const isQuotingAlarm = isQuoted && (
@@ -266,29 +269,33 @@ async function handleAlarmResponse(ctx) {
 
     // Deteksi indikasi bangun / siap ibadah
     const wakeUpKeywords = ['iya', 'bangun', 'laksanakan', 'siap', 'sudah', 'oke', 'ok', 'otw', 'wudhu', 'solat', 'sholat', 'subuh'];
-    const isIndicatingWakeUp = wakeUpKeywords.some(k => textLower.includes(k));
+    const isIndicatingWakeUp = wakeUpKeywords.some(k => (textLower || userText.toLowerCase()).includes(k));
+
+    // Masukkan respon user ke memori AI
+    injectAlarmMemory(OWNER_JID, 'user', userText);
 
     // Matikan alarm
     stopActiveAlarm();
     updateAlarmStats('woke_up');
 
     // Generate respon AI yang menyambung secara natural
-    const activeMode = (state.userAiMode ? state.userAiMode[ID_OWNER[0]] : null) || 'arisu-gemini';
+    const activeMode = (state.userAIMode ? state.userAIMode[ID_OWNER[0]] : null) || 'arisu-gemini';
     const { provider, model } = AIProvider.resolveMode(activeMode, ID_OWNER[0]);
 
-    const systemPrompt = getShirokoSystemPrompt(true) + `\n\n[KONTEKS ALARM SELESAI]: Sensei baru saja merespons alarm ${session.salatName} dengan pesan: "${text}". Balas dengan hangat, bersahabat, dan beri semangat khas Shiroko.`;
+    const systemPrompt = getShirokoSystemPrompt(true) + `\n\n[KONTEKS ALARM SELESAI]: Sensei baru saja merespons alarm ${session.salatName} dengan pesan: "${userText}". Balas dengan hangat, bersahabat, dan beri semangat khas Shiroko.`;
 
     try {
         const replyText = await AIProvider.generate({
             provider,
             model,
-            prompt: text,
+            prompt: userText,
             senderId: OWNER_JID,
             isOwner: true,
             systemPrompt
         });
 
         if (replyText) {
+            injectAlarmMemory(OWNER_JID, 'assistant', replyText);
             await reply(replyText);
             return true;
         }
@@ -297,11 +304,14 @@ async function handleAlarmResponse(ctx) {
     }
 
     // Fallback jika AI error
+    let fallbackReply = "";
     if (isIndicatingWakeUp) {
-        await reply(`Nn... *(Mengusap dada lega)*. Baguslah kalau Sensei sudah bangun. Cepat ambil wudhu dan salat ya, Shiroko tungguin dari sini. ✨`);
+        fallbackReply = `Nn... *(Mengusap dada lega)*. Baguslah kalau Sensei sudah bangun. Cepat ambil wudhu dan salat ya, Shiroko tungguin dari sini. ✨`;
     } else {
-        await reply(`Nn... Apapun perkataan Sensei, yang terpenting sekarang adalah bangun dan ambil wudhu! Jangan tidur lagi ya! 🐺✨`);
+        fallbackReply = `Nn... Apapun perkataan Sensei, yang terpenting sekarang adalah bangun dan ambil wudhu! Jangan tidur lagi ya! 🐺✨`;
     }
+    injectAlarmMemory(OWNER_JID, 'assistant', fallbackReply);
+    await reply(fallbackReply);
     return true;
 }
 

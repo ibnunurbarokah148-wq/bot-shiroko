@@ -100,7 +100,7 @@ function registerMessageHandler(sock, isJadibot = false) {
         // Objek konteks yang dikirim ke semua handler
         const ctx = {
             sock, msg, from, senderId, isOwner, isGroup,
-            textClean, textLower, msgType,
+            text: textClean, textClean, textLower, msgType,
             isQuoted, quotedMsg, quotedType, quotedText, quotedTextLower,
             reply, downloadMediaBaileys
         };
