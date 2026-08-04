@@ -12,12 +12,23 @@ if sys.platform == 'win32':
         sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
         pass
-from dotenv import load_dotenv
-from simple_chalk import chalk
-from javascript import require, On, Once, AsyncTask, off
+# Optional load_dotenv (Node.js already passes env vars)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
-# Load environment variables
-load_dotenv()
+# Optional simple_chalk fallback
+try:
+    from simple_chalk import chalk
+except ImportError:
+    class ChalkFallback:
+        def __getattr__(self, name):
+            return lambda msg: str(msg)
+    chalk = ChalkFallback()
+
+from javascript import require, On, Once, AsyncTask, off
 
 # Resolve project root
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
