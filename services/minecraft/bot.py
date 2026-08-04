@@ -82,26 +82,27 @@ class MCBot:
 
         # Login event: Triggers on bot login
         @On(self.bot, "login")
-        def login(this):
-            self.bot_socket = self.bot._client.socket
-            server_info = self.bot_socket.server if getattr(self.bot_socket, "server", None) else getattr(self.bot_socket, "_host", server_host)
+        def login(this=None, *args):
+            self.bot_socket = getattr(self.bot, "_client", None)
+            socket_obj = getattr(self.bot_socket, "socket", None) if self.bot_socket else None
+            server_info = getattr(socket_obj, "server", None) or getattr(socket_obj, "_host", server_host) if socket_obj else server_host
             self.log(chalk.green(f"Logged in to {server_info}"))
 
         # Spawn event: Triggers on bot entity spawn
         @On(self.bot, "spawn")
-        def spawn(this):
-            pos = self.bot.entity.position
+        def spawn(this=None, *args):
+            pos = getattr(self.bot.entity, "position", None)
             self.log(chalk.green(f"Spawned at {vec3_to_str(pos)}"))
             self.bot.chat("Hi! Ready.")
 
         # Kicked event: Triggers on kick from server
         @On(self.bot, "kicked")
-        def kicked(this, reason=None, loggedIn=None, *args):
+        def kicked(this=None, reason=None, loggedIn=None, *args):
             self.log(chalk.redBright(f"Kicked from server: {reason}"))
 
         # Chat event: Triggers on chat message
         @On(self.bot, "messagestr")
-        def messagestr(this, message, messagePosition=None, jsonMsg=None, sender=None, verified=None, *args):
+        def messagestr(this=None, message=None, messagePosition=None, jsonMsg=None, sender=None, verified=None, *args):
             if not message or not isinstance(message, str):
                 return
 
@@ -184,14 +185,17 @@ class MCBot:
 
         # End event: Triggers on disconnect from server
         @On(self.bot, "end")
-        def end(this, reason=None, *args):
+        def end(this=None, reason=None, *args):
             self.log(chalk.red(f"Disconnected: {reason}"))
 
             # Turn off old events
-            off(self.bot, "login", login)
-            off(self.bot, "spawn", spawn)
-            off(self.bot, "kicked", kicked)
-            off(self.bot, "messagestr", messagestr)
+            try:
+                off(self.bot, "login", login)
+                off(self.bot, "spawn", spawn)
+                off(self.bot, "kicked", kicked)
+                off(self.bot, "messagestr", messagestr)
+            except Exception:
+                pass
 
             # Reconnect
             if self.reconnect:
@@ -200,7 +204,10 @@ class MCBot:
                 self.start_bot()
 
             # Last event listener
-            off(self.bot, "end", end)
+            try:
+                off(self.bot, "end", end)
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
