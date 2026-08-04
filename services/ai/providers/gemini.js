@@ -50,8 +50,10 @@ function getGeminiComponents() {
     });
 }
 
+const PROVIDER_NAME = 'gemini';
+
 /**
- * Generate chat via Gemini Cloud (managed chat session).
+ * Generate chat via Gemini Cloud (Unified ChatMemory).
  * @param {object} options
  * @param {string} options.prompt
  * @param {string} options.senderId
@@ -63,31 +65,53 @@ function getGeminiComponents() {
  */
 async function generate({ prompt, senderId, isOwner, model = 'gemini-2.5-flash-lite', systemPrompt = null, imageBuffer = null }) {
     const { genAI } = getGeminiComponents();
-
     const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
 
-    // Gunakan chat session dari state (Gemini SDK mengelola histori sendiri)
-    if (!state.sesiObrolan[senderId]) {
-        const geminiModel = genAI.getGenerativeModel({
-            model,
-            generationConfig: getShirokoGenerationConfig(),
-            systemInstruction: instruction
+    // Inisialisasi memory jika belum ada
+    if (!memory.get(senderId, PROVIDER_NAME)) {
+        memory.init(senderId, PROVIDER_NAME);
+    }
+
+    // Push pesan user ke ChatMemory
+    memory.push(senderId, PROVIDER_NAME, 'user', prompt);
+
+    const historyMessages = memory.getMessages(senderId, PROVIDER_NAME);
+
+    // Format histori pesan untuk Gemini API (role: 'user' | 'model')
+    const contents = historyMessages.map(m => {
+        const role = (m.role === 'assistant' || m.role === 'model') ? 'model' : 'user';
+        const parts = [{ text: m.content || '' }];
+        return { role, parts };
+    });
+
+    // Lampirkan imageBuffer jika ada pada pesan user terakhir
+    if (imageBuffer && contents.length > 0) {
+        const lastMsg = contents[contents.length - 1];
+        lastMsg.parts.push({
+            inlineData: {
+                data: imageBuffer.toString('base64'),
+                mimeType: 'image/jpeg'
+            }
         });
-        state.sesiObrolan[senderId] = geminiModel.startChat({ history: [] });
     }
 
-    let messageParts;
-    if (imageBuffer) {
-        messageParts = [
-            prompt,
-            { inlineData: { data: imageBuffer.toString('base64'), mimeType: 'image/jpeg' } }
-        ];
-    } else {
-        messageParts = prompt;
-    }
+    const geminiModel = genAI.getGenerativeModel({
+        model,
+        generationConfig: getShirokoGenerationConfig(),
+        systemInstruction: instruction
+    });
 
-    const result = await state.sesiObrolan[senderId].sendMessage(messageParts);
-    return result.response.text();
+    try {
+        const result = await geminiModel.generateContent({ contents });
+        const textResult = result.response.text().trim();
+
+        // Simpan respon assistant ke ChatMemory
+        memory.push(senderId, PROVIDER_NAME, 'assistant', textResult);
+        return textResult;
+    } catch (err) {
+        memory.popLast(senderId, PROVIDER_NAME);
+        throw err;
+    }
 }
 
 module.exports = {

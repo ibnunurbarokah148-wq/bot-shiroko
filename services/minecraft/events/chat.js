@@ -107,9 +107,24 @@ async function handleChat(bot, username, message, mcData) {
         const namaSesuai = Object.keys(bot.players).find(name => isOwner(name) || name.toLowerCase().includes(username.toLowerCase()));
         const playerTarget = namaSesuai ? bot.players[namaSesuai] : null;
 
-        if (playerTarget && playerTarget.entity) {
-            bot.chat("Nn. Mengikutimu, Sensei.");
-            bot.pathfinder.setGoal(new goals.GoalFollow(playerTarget.entity, 2), true);
+        if (playerTarget) {
+            bot.chat("Nn. Mengikutimu dari dekat, Sensei.");
+            
+            // Interval pengikut cerdas tanpa infinite recalculate
+            state.loopIkutJauh = setInterval(() => {
+                if (!playerTarget.entity || !bot.entity) return;
+                const dist = bot.entity.position.distanceTo(playerTarget.entity.position);
+                
+                if (dist > 3.2) {
+                    const p = playerTarget.entity.position;
+                    bot.pathfinder.setGoal(new goals.GoalNear(p.x, p.y, p.z, 2.0));
+                } else if (dist <= 2.2) {
+                    if (bot.pathfinder.isMoving()) {
+                        bot.pathfinder.setGoal(null);
+                    }
+                    bot.lookAt(playerTarget.entity.position.offset(0, 1.6, 0), true);
+                }
+            }, 600);
         } else {
             bot.chat("Nn. Terlalu jauh. Menunggumu mendekat, Sensei.");
         }
@@ -126,7 +141,7 @@ async function handleChat(bot, username, message, mcData) {
 
         if (playerTarget && playerTarget.entity) {
             bot.chat("Nn. Mencari rute masuk.");
-            bot.pathfinder.setGoal(new goals.GoalNear(playerTarget.entity.position.x, playerTarget.entity.position.y, playerTarget.entity.position.z, 1));
+            bot.pathfinder.setGoal(new goals.GoalNear(playerTarget.entity.position.x, playerTarget.entity.position.y, playerTarget.entity.position.z, 1.5));
         } else {
             bot.chat("Nn. Aku tidak melihat posisimu dari sini, Sensei.");
         }
@@ -179,14 +194,15 @@ async function handleChat(bot, username, message, mcData) {
     }
 
     // BERHENTI
-    if (pk.includes('berhenti') || pk.includes('tunggu')) {
+    if (pk.includes('berhenti') || pk.includes('tunggu') || pk.includes('diam')) {
         state.modeMandiri = false;
         state.sedangKerja = false;
         berhentiSerang(bot);
         try { bot.stopDigging(); } catch (err) { }
         if (state.loopIkutJauh) { clearInterval(state.loopIkutJauh); state.loopIkutJauh = null; }
         bot.pathfinder.setGoal(null);
-        bot.chat("Nn. Aku berhenti.");
+        bot.clearControlStates();
+        bot.chat("Nn. Aku berhenti dan standby di sini.");
         return;
     }
 

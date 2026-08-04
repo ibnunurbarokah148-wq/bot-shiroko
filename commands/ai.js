@@ -11,6 +11,8 @@ const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
 const AIProvider = require('../services/ai/AIProvider');
 const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const { ROLE_PROMPTS, getRolePrompt } = require('../services/ai/prompts');
+const { getCoreNumber } = require('../utils/helpers');
+const db = require('../config/database');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, isGroup, textClean, textLower,
@@ -118,10 +120,23 @@ async function handle(ctx) {
         }
 
         const chosenModel = listModels[num];
-        state.ownerOllamaModel = chosenModel;
-        state.ownerAIMode = 'ollama';
+        const core = getCoreNumber(senderId);
+        state.userOllamaModel[senderId] = chosenModel;
+        if (core) state.userOllamaModel[core] = chosenModel;
+        state.userAIMode[senderId] = 'ollama';
+        if (core) state.userAIMode[core] = 'ollama';
+
+        if (isOwner) {
+            state.ownerOllamaModel = chosenModel;
+            state.ownerAIMode = 'ollama';
+            db.setSetting('ownerOllamaModel', chosenModel);
+            db.setSetting('ownerAIMode', 'ollama');
+        }
+        db.setSetting('userOllamaModel', state.userOllamaModel);
+        db.setSetting('userAIMode', state.userAIMode);
 
         AIProvider.clearMemory(senderId);
+        if (core) AIProvider.clearMemory(core);
         delete state.sesiOllamaMode[senderId];
 
         await reply(`✅ *MODE OLLAMA AKTIF*\n\nNn... Berhasil mengganti otak. Shiroko sekarang menggunakan sistem lokal: *${chosenModel}*. ✨`);
@@ -148,8 +163,20 @@ async function handle(ctx) {
         }
 
         const chosenModel = listModels[num];
+        const core = getCoreNumber(senderId);
         state.userOpenRouterModel[senderId] = chosenModel.id;
+        if (core) state.userOpenRouterModel[core] = chosenModel.id;
         state.userAIMode[senderId] = 'openrouter';
+        if (core) state.userAIMode[core] = 'openrouter';
+
+        if (isOwner) {
+            state.ownerOpenRouterModel = chosenModel.id;
+            state.ownerAIMode = 'openrouter';
+            db.setSetting('ownerOpenRouterModel', chosenModel.id);
+            db.setSetting('ownerAIMode', 'openrouter');
+        }
+        db.setSetting('userOpenRouterModel', state.userOpenRouterModel);
+        db.setSetting('userAIMode', state.userAIMode);
 
         delete state.sesiOpenRouterMode[senderId];
 
@@ -177,12 +204,24 @@ async function handle(ctx) {
         }
 
         const chosenModel = listModels[num];
+        const core = getCoreNumber(senderId);
         state.userCloudflareModel[senderId] = chosenModel.id;
+        if (core) state.userCloudflareModel[core] = chosenModel.id;
         state.userAIMode[senderId] = 'cloudflare';
+        if (core) state.userAIMode[core] = 'cloudflare';
+
+        if (isOwner) {
+            state.ownerCloudflareModel = chosenModel.id;
+            state.ownerAIMode = 'cloudflare';
+            db.setSetting('ownerCloudflareModel', chosenModel.id);
+            db.setSetting('ownerAIMode', 'cloudflare');
+        }
+        db.setSetting('userCloudflareModel', state.userCloudflareModel);
+        db.setSetting('userAIMode', state.userAIMode);
 
         delete state.sesiCloudflareMode[senderId];
 
-        await reply(`✅ *MODE CLOUDFLARE AI AKTIF*\n\nNn... Otak Cloudflare AI berhasil dikunci ke model:\n*${chosenModel.name}*. ✨`);
+        await reply(`✅ *MODE CLOUDFLARE AKTIF*\n\nNn... Otak Cloudflare berhasil dikunci ke model:\n*${chosenModel.name}* (\`${chosenModel.id}\`). ✨`);
         return true;
     }
 
@@ -294,13 +333,14 @@ async function handle(ctx) {
         const args = textClean.split(' ')[1];
         const allowedModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
         
+        const core = getCoreNumber(senderId);
+        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
+        const currentMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || defaultMode;
+        const currentOllama = state.userOllamaModel[senderId] || (core && state.userOllamaModel[core]) || state.ownerOllamaModel || 'gemma3:4b';
+        const currentOR = state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || state.ownerOpenRouterModel || 'deepseek/deepseek-r1:free';
+        const currentCF = state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || state.ownerCloudflareModel || '@cf/meta/llama-3-8b-instruct';
+
         if (!args || !allowedModes.includes(args)) {
-            const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
-            const currentMode = state.userAIMode[senderId] || defaultMode;
-            const currentOllama = state.userOllamaModel[senderId] || 'gemma3:4b';
-            const currentOR = state.userOpenRouterModel[senderId] || 'deepseek/deepseek-r1:free';
-            const currentCF = state.userCloudflareModel[senderId] || '@cf/meta/llama-3-8b-instruct';
-            
             let listModes = isOwner 
                 ? `🔹 *!aimode gemini* (Gemini Cloud)\n🔹 *!aimode ollama* (Lokal Offline)\n` 
                 : ``;
@@ -321,7 +361,8 @@ async function handle(ctx) {
                 const modelNames = models.map(m => m.name);
                 state.sesiOllamaMode[senderId] = { list: modelNames };
 
-                let teksList = `🤖 *DAFTAR MODEL OLLAMA LOKAL*\n\nNn... Sensei, pilih otak mana yang mau dipakai dengan membalas angkanya:\n\n`;
+                let roleNotice = '';
+                let teksList = `🤖 *DAFTAR MODEL OLLAMA LOKAL*${roleNotice}\n\nNn... Sensei, pilih otak mana yang mau dipakai dengan membalas angkanya:\n\n`;
                 modelNames.forEach((name, i) => { teksList += `*${i + 1}.* ${name}\n`; });
                 teksList += `\n_Ketik *batal* untuk membatalkan._`;
 
@@ -337,7 +378,7 @@ async function handle(ctx) {
 
                 if (!models || models.length === 0) { await reply('Nn... Tidak ada model OpenRouter yang tersedia.'); return true; }
 
-                const userRole = state.userRole ? state.userRole[senderId] : null;
+                const userRole = state.userRole ? (state.userRole[senderId] || (core && state.userRole[core])) : null;
                 models = filterModelsByRole(models, userRole, 'openrouter');
 
                 state.sesiOpenRouterMode[senderId] = { list: models };
@@ -359,7 +400,7 @@ async function handle(ctx) {
 
                 if (!models || models.length === 0) { await reply('Nn... Tidak ada model Cloudflare yang ditemukan.'); return true; }
 
-                const userRole = state.userRole ? state.userRole[senderId] : null;
+                const userRole = state.userRole ? (state.userRole[senderId] || (core && state.userRole[core])) : null;
                 models = filterModelsByRole(models, userRole, 'cloudflare');
 
                 state.sesiCloudflareMode[senderId] = { list: models };
@@ -375,7 +416,14 @@ async function handle(ctx) {
                 await reply(`Nn... Gagal men-scan Cloudflare AI: ${err.message}`);
             }
         } else {
+            const core = getCoreNumber(senderId);
             state.userAIMode[senderId] = args;
+            if (core) state.userAIMode[core] = args;
+            if (isOwner) {
+                state.ownerAIMode = args;
+                db.setSetting('ownerAIMode', args);
+            }
+            db.setSetting('userAIMode', state.userAIMode);
             await reply(`✅ *MODE OPERASIONAL DIUBAH*\n\nNn... Mulai sekarang, khusus untuk chat dari Sensei, Shiroko akan berpikir menggunakan otak *${args.toUpperCase()}*. ✨`);
         }
         return true;
@@ -395,28 +443,34 @@ async function handle(ctx) {
     // SHIROKO PINTAR
     // ==========================================
     if (textLower.startsWith('!shiroko_pintar ')) {
-        const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
-        const userMode = state.userAIMode[senderId] || defaultMode;
-        const cost = getAiCost(userMode);
-        if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token tidak cukup. Butuh ${cost} limit.`); return true; }
+        const core = getCoreNumber(senderId);
+        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
+        const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
+        const cost = 3;
+        if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
+
+        const pesanInstruksi = textClean.substring(16).trim();
+        if (!pesanInstruksi) {
+            kembalikanLimit(senderId, cost);
+            await reply('Nn... Perintah akademis kosong. Contoh: *!shiroko_pintar tolong carikan referensi jurnal tentang IoT*');
+            return true;
+        }
 
         try {
             await sock.sendPresenceUpdate('composing', from);
-            const pertanyaan = textClean.substring(16).trim();
             const { provider, model } = AIProvider.resolveMode(userMode, senderId);
 
-            const { incrementStat } = require('../config/database');
-            incrementStat('aiRequests');
-
-            const pesanInstruksi = `[TOLONG JAWAB PERTANYAAN INI SEBAGAI ASISTEN AKADEMIK YANG CERDAS DAN FORMAL]: ${pertanyaan}`;
-
             if (provider === 'gemini') {
-                // Gemini mode khusus: one-shot (tanpa chat session)
-                await reply('Nn... Mengakses database cloud Gemini...');
-                const bensinGemini = getGeminiComponents();
-                const modelPintarDinamis = bensinGemini.genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
-                const result = await modelPintarDinamis.generateContent(`Jawablah informatif & akurat:\n\nPertanyaan: ${pertanyaan}`);
-                await reply(`🧠 *SHIROKO PINTAR (GEMINI)*\n\n${result.response.text().trim()}`);
+                await reply('Nn... Membuka jalur perpustakaan satelit Google Scholar (Gemini)...');
+                const jawaban = await AIProvider.generate({
+                    provider: 'gemini',
+                    model: 'gemini-2.5-flash-lite',
+                    prompt: pesanInstruksi,
+                    senderId,
+                    isOwner,
+                    systemPrompt: getShirokoSystemPrompt(isOwner) + "\n\n[MODE RISET AKADEMIK]: Anda adalah asisten peneliti elit. Berikan jawaban komprehensif, berbasis data, terstruktur dengan referensi ilmiah yang relevan."
+                });
+                await reply(`🧠 *SHIROKO AKADEMIK (GOOGLE SCHOLAR ENGINE)*\n\n${jawaban}`);
             } else {
                 await reply(`Nn... Membuka jalur perpustakaan ${provider.toUpperCase()} (${model})...`);
                 const jawaban = await AIProvider.generate({
@@ -504,8 +558,9 @@ async function handle(ctx) {
     // MESIN OBROLAN AI — UNIFIED via AIProvider
     // ==========================================
     if (pemicuObrolan && (pesanUser || chatImageBuffer || extractedFileText)) {
-        const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
-        const userMode = state.userAIMode[senderId] || defaultMode;
+        const core = getCoreNumber(senderId);
+        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
+        const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
         const cost = getAiCost(userMode);
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
@@ -522,10 +577,11 @@ async function handle(ctx) {
                 finalPrompt = `${pesanUser}\n\n[ISI DOKUMEN DARI USER]:\n${extractedFileText.substring(0, 15000)}`; // limit chars
             }
             
-            let finalSystemPrompt = state.userSystemPrompt ? state.userSystemPrompt[senderId] : null;
-            if (!finalSystemPrompt && state.userRole && state.userRole[senderId]) {
+            let finalSystemPrompt = state.userSystemPrompt ? (state.userSystemPrompt[senderId] || (core && state.userSystemPrompt[core])) : null;
+            if (!finalSystemPrompt && state.userRole && (state.userRole[senderId] || (core && state.userRole[core]))) {
+                const userRoleName = state.userRole[senderId] || state.userRole[core];
                 const baseType = (provider === 'cloudflare') ? 'short' : ((provider === 'arisu') ? 'arisu' : 'system');
-                finalSystemPrompt = getRolePrompt(state.userRole[senderId], isOwner, baseType);
+                finalSystemPrompt = getRolePrompt(userRoleName, isOwner, baseType);
             }
 
             const jawaban = await AIProvider.generate({
@@ -549,24 +605,39 @@ async function handle(ctx) {
     }
 
     // ==========================================
-    // LUPA (RESET MEMORI) — UNIFIED
+    // LUPA (RESET MEMORI & RESET ALARM) — UNIFIED
     // ==========================================
     if (textLower === '!lupa') {
-        const berhasilLupa = AIProvider.clearMemory(senderId);
-        
-        // Reset userSystemPrompt if they use !lupa to revert back to normal Shiroko AI mode!
-        if (state.userSystemPrompt && state.userSystemPrompt[senderId]) {
-            delete state.userSystemPrompt[senderId];
+        const core = getCoreNumber(senderId);
+        let berhasilLupa = AIProvider.clearMemory(senderId);
+        if (core) {
+            const cLupa = AIProvider.clearMemory(core);
+            if (cLupa) berhasilLupa = true;
         }
-        if (state.userRole && state.userRole[senderId]) {
-            delete state.userRole[senderId];
+        if (isOwner) {
+            const { ID_OWNER } = require('../config/constants');
+            const ownerJid = ID_OWNER[0] + '@s.whatsapp.net';
+            AIProvider.clearMemory(ownerJid);
+            AIProvider.clearMemory(ID_OWNER[0]);
         }
 
-        if (berhasilLupa) {
-            await reply('Nn... *(Menggelengkan kepala)*. Shiroko sudah menghapus seluruh memori percakapan kita.');
-        } else {
-            await reply('Nn... Pikiran Shiroko memang masih kosong dari awal.');
+        // Reset status dan timer alarm
+        const alarmService = require('../services/alarm.service');
+        alarmService.stopActiveAlarm();
+        state.activeAlarmSession = null;
+        state.alarmSubuhState = { aktif: false, count: 0, timer: null };
+
+        // Reset custom persona
+        if (state.userSystemPrompt) {
+            delete state.userSystemPrompt[senderId];
+            if (core) delete state.userSystemPrompt[core];
         }
+        if (state.userRole) {
+            delete state.userRole[senderId];
+            if (core) delete state.userRole[core];
+        }
+
+        await reply('Nn... *(Menggelengkan kepala)*. Shiroko sudah melupakan seluruh riwayat obrolan dan mereset sistem pengingat/alarm.');
         return true;
     }
 

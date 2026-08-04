@@ -50,18 +50,44 @@ function updateAlarmStats(action, ownerCore = ID_OWNER[0]) {
 }
 
 /**
- * Menginjeksi pesan ke ChatMemory (Unified Memory) untuk semua provider aktif
+ * Menginjeksi pesan ke ChatMemory (Unified Memory) untuk semua provider aktif dan semua varian JID Owner
  */
 function injectAlarmMemory(senderJid, role, text) {
-    const providers = ['arisu', 'cloudflare', 'openrouter', 'ollama', 'gemini'];
-    for (const p of providers) {
-        try {
-            if (!memory.get(senderJid, p)) {
-                memory.init(senderJid, p);
-            }
-            memory.push(senderJid, p, role, text);
-        } catch (e) {}
+    const providers = ['gemini', 'arisu', 'cloudflare', 'openrouter', 'ollama'];
+    const ownerCore = getCoreNumber(ID_OWNER[0]);
+    const senderCore = senderJid ? getCoreNumber(senderJid) : null;
+    const jids = [senderJid, OWNER_JID, ID_OWNER[0]];
+    if (ownerCore) jids.push(ownerCore);
+    if (senderCore) jids.push(senderCore);
+
+    const uniqueJids = [...new Set(jids.filter(Boolean))];
+
+    for (const jid of uniqueJids) {
+        for (const p of providers) {
+            try {
+                if (!memory.get(jid, p)) {
+                    memory.init(jid, p);
+                }
+                memory.push(jid, p, role, text);
+            } catch (e) {}
+        }
     }
+}
+
+/**
+ * Mendapatkan mode AI aktif untuk Owner dari state
+ */
+function getActiveAIModeForOwner(targetSenderId) {
+    const ownerCore = getCoreNumber(ID_OWNER[0]);
+    const senderCore = targetSenderId ? getCoreNumber(targetSenderId) : null;
+    
+    return state.ownerAIMode ||
+           (targetSenderId && state.userAIMode[targetSenderId]) ||
+           (senderCore && state.userAIMode[senderCore]) ||
+           state.userAIMode[OWNER_JID] ||
+           state.userAIMode[ID_OWNER[0]] ||
+           (ownerCore && state.userAIMode[ownerCore]) ||
+           'gemini';
 }
 
 /**
@@ -69,8 +95,8 @@ function injectAlarmMemory(senderJid, role, text) {
  */
 async function generateAlarmText({ type, salatName, level = 1, isTest = false }) {
     const stats = getAlarmStats();
-    const activeMode = (state.userAIMode ? state.userAIMode[ID_OWNER[0]] : null) || 'arisu-gemini';
-    const { provider, model } = AIProvider.resolveMode(activeMode, ID_OWNER[0]);
+    const activeMode = getActiveAIModeForOwner();
+    const { provider, model } = AIProvider.resolveMode(activeMode, OWNER_JID);
 
     let contextInstruction = "";
     if (type === 'subuh') {
@@ -90,15 +116,19 @@ async function generateAlarmText({ type, salatName, level = 1, isTest = false })
 
     const systemPrompt = getShirokoSystemPrompt(true) + `\n\n[PANDUAN ALARM KHUSUS]\n${contextInstruction}\nJawaban maksimal 2-3 kalimat padat, jangan gunakan formatting berlebihan.`;
 
+    const tempSender = 'ALARM_SYSTEM_TEMP';
     try {
         const aiText = await AIProvider.generate({
             provider,
             model,
             prompt: `[SISTEM ALARM AKTIF]: Bangunkan/ingatkan Sensei sekarang sesuai konteks.`,
-            senderId: OWNER_JID,
+            senderId: tempSender,
             isOwner: true,
             systemPrompt
         });
+
+        // Hapus memori generator sementara agar tidak bocor
+        AIProvider.clearMemory(tempSender);
 
         if (aiText && typeof aiText === 'string') {
             return aiText.trim();
@@ -271,16 +301,14 @@ async function handleAlarmResponse(ctx) {
     const wakeUpKeywords = ['iya', 'bangun', 'laksanakan', 'siap', 'sudah', 'oke', 'ok', 'otw', 'wudhu', 'solat', 'sholat', 'subuh'];
     const isIndicatingWakeUp = wakeUpKeywords.some(k => (textLower || userText.toLowerCase()).includes(k));
 
-    // Masukkan respon user ke memori AI
-    injectAlarmMemory(OWNER_JID, 'user', userText);
-
     // Matikan alarm
     stopActiveAlarm();
     updateAlarmStats('woke_up');
 
     // Generate respon AI yang menyambung secara natural
-    const activeMode = (state.userAIMode ? state.userAIMode[ID_OWNER[0]] : null) || 'arisu-gemini';
-    const { provider, model } = AIProvider.resolveMode(activeMode, ID_OWNER[0]);
+    const activeMode = getActiveAIModeForOwner(senderId);
+    const targetSenderId = senderId || OWNER_JID;
+    const { provider, model } = AIProvider.resolveMode(activeMode, targetSenderId);
 
     const systemPrompt = getShirokoSystemPrompt(true) + `\n\n[KONTEKS ALARM SELESAI]: Sensei baru saja merespons alarm ${session.salatName} dengan pesan: "${userText}". Balas dengan hangat, bersahabat, dan beri semangat khas Shiroko.`;
 
@@ -289,13 +317,15 @@ async function handleAlarmResponse(ctx) {
             provider,
             model,
             prompt: userText,
-            senderId: OWNER_JID,
+            senderId: targetSenderId,
             isOwner: true,
             systemPrompt
         });
 
         if (replyText) {
-            injectAlarmMemory(OWNER_JID, 'assistant', replyText);
+            // Sinkronkan riwayat user & bot ke seluruh jid alias & provider
+            injectAlarmMemory(targetSenderId, 'user', userText);
+            injectAlarmMemory(targetSenderId, 'assistant', replyText);
             await reply(replyText);
             return true;
         }
@@ -310,7 +340,8 @@ async function handleAlarmResponse(ctx) {
     } else {
         fallbackReply = `Nn... Apapun perkataan Sensei, yang terpenting sekarang adalah bangun dan ambil wudhu! Jangan tidur lagi ya! 🐺✨`;
     }
-    injectAlarmMemory(OWNER_JID, 'assistant', fallbackReply);
+    injectAlarmMemory(targetSenderId, 'user', userText);
+    injectAlarmMemory(targetSenderId, 'assistant', fallbackReply);
     await reply(fallbackReply);
     return true;
 }

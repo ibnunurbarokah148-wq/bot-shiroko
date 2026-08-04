@@ -10,6 +10,8 @@ const arisuProvider = require('./providers/arisu');
 const memory = require('./memory');
 const state = require('../../config/state');
 
+const { getCoreNumber } = require('../../utils/helpers');
+
 /**
  * Mapping dari !aimode shortcut ke { provider, model }.
  * @param {string} mode - Mode AI dari !aimode (misal 'ds3', 'cloudflare')
@@ -17,13 +19,14 @@ const state = require('../../config/state');
  * @returns {{ provider: string, model: string }}
  */
 function resolveMode(mode, senderId) {
+    const core = getCoreNumber(senderId);
     const modeMap = {
         'gemini':       { provider: 'gemini',      model: 'gemini-2.5-flash-lite' },
-        'ollama':       { provider: 'ollama',      model: state.userOllamaModel[senderId] || 'gemma3:4b' },
-        'openrouter':   { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || 'deepseek/deepseek-r1:free' },
-        'or':           { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || 'deepseek/deepseek-r1:free' },
-        'cloudflare':   { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || '@cf/meta/llama-3-8b-instruct' },
-        'cf':           { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || '@cf/meta/llama-3-8b-instruct' },
+        'ollama':       { provider: 'ollama',      model: state.userOllamaModel[senderId] || (core && state.userOllamaModel[core]) || 'gemma3:4b' },
+        'openrouter':   { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || 'deepseek/deepseek-r1:free' },
+        'or':           { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || 'deepseek/deepseek-r1:free' },
+        'cloudflare':   { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
+        'cf':           { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
         'ds3':          { provider: 'arisu',       model: 'deepseek-v3' },
         'ds4':          { provider: 'arisu',       model: 'deepseek-v4' },
         'glm':          { provider: 'arisu',       model: 'glm' },
@@ -33,7 +36,7 @@ function resolveMode(mode, senderId) {
         'grok':         { provider: 'arisu',       model: 'grok' }
     };
 
-    return modeMap[mode] || { provider: 'arisu', model: 'gemini' };
+    return modeMap[mode] || { provider: 'gemini', model: 'gemini-2.5-flash-lite' };
 }
 
 /**
@@ -75,10 +78,15 @@ async function generate(options) {
  */
 function clearMemory(senderId) {
     let cleared = memory.clearAll(senderId);
+    const core = getCoreNumber(senderId);
 
-    // Hapus juga sesi Gemini Chat (dikelola oleh SDK, bukan ChatMemory)
+    // Hapus juga sesi Gemini Chat dari state jika ada
     if (state.sesiObrolan[senderId]) {
         delete state.sesiObrolan[senderId];
+        cleared = true;
+    }
+    if (core && state.sesiObrolan[core]) {
+        delete state.sesiObrolan[core];
         cleared = true;
     }
 

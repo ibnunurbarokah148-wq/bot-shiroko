@@ -96,11 +96,41 @@ async function initDatabase() {
         )
     `);
 
+    db.run(`
+        CREATE TABLE IF NOT EXISTS bot_settings (
+            id TEXT PRIMARY KEY,
+            value TEXT
+        )
+    `);
+
     // Migrasi jika tabel lama terlanjur dibuat dengan kolom 'key'
     try {
         db.run(`ALTER TABLE statistics RENAME COLUMN key TO id`);
     } catch(e) {
         // Abaikan jika error (kolom sudah id, atau tabel baru dibuat benar)
+    }
+
+    // Muat konfigurasi tersimpan ke memory state
+    try {
+        const state = require('./state');
+        const rows = getAll('bot_settings');
+        for (const row of rows) {
+            try {
+                let parsed = JSON.parse(row.value);
+                if (row.id === 'ownerAIMode') state.ownerAIMode = parsed;
+                else if (row.id === 'ownerOpenRouterModel') state.ownerOpenRouterModel = parsed;
+                else if (row.id === 'ownerCloudflareModel') state.ownerCloudflareModel = parsed;
+                else if (row.id === 'ownerOllamaModel') state.ownerOllamaModel = parsed;
+                else if (row.id === 'userAIMode' && typeof parsed === 'object') state.userAIMode = { ...state.userAIMode, ...parsed };
+                else if (row.id === 'userOpenRouterModel' && typeof parsed === 'object') state.userOpenRouterModel = { ...state.userOpenRouterModel, ...parsed };
+                else if (row.id === 'userCloudflareModel' && typeof parsed === 'object') state.userCloudflareModel = { ...state.userCloudflareModel, ...parsed };
+                else if (row.id === 'userOllamaModel' && typeof parsed === 'object') state.userOllamaModel = { ...state.userOllamaModel, ...parsed };
+            } catch (err) {
+                if (row.id === 'ownerAIMode') state.ownerAIMode = row.value;
+            }
+        }
+    } catch (e) {
+        console.warn('[DATABASE] Warning muat bot_settings ke state:', e.message);
     }
 
     // Simpan ke disk setelah init
@@ -304,6 +334,23 @@ function migrateFromJSON() {
     saveToDisk();
 }
 
+function getSetting(key, defaultValue = null) {
+    const row = getOne('bot_settings', key);
+    if (!row || row.value === undefined) return defaultValue;
+    try {
+        return JSON.parse(row.value);
+    } catch (e) {
+        return row.value;
+    }
+}
+
+function setSetting(key, value) {
+    upsert('bot_settings', {
+        id: key,
+        value: typeof value === 'object' ? JSON.stringify(value) : String(value)
+    });
+}
+
 // ==========================================
 // EXPORT
 // ==========================================
@@ -318,5 +365,7 @@ module.exports = {
     updateColumn,
     incrementStat,
     migrateFromJSON,
+    getSetting,
+    setSetting,
     getDb: () => db
 };

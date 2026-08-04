@@ -3,6 +3,8 @@
 // Menggantikan 4 objek terpisah (memoriOllama, memoriArisu, dll)
 // ==========================================
 
+const { getCoreNumber } = require('../../utils/helpers');
+
 const TTL = 24 * 60 * 60 * 1000; // 24 jam
 const MAX_MESSAGES = 20; // Maks histori per user per provider
 
@@ -17,13 +19,14 @@ class ChatMemory {
     }
 
     /**
-     * Mendapatkan key gabungan senderId + provider.
+     * Mendapatkan key gabungan senderId + provider (dinormalisasi dengan getCoreNumber).
      * @param {string} senderId
      * @param {string} provider
      * @returns {string}
      */
     _key(senderId, provider) {
-        return `${senderId}::${provider}`;
+        const core = getCoreNumber(senderId) || senderId || 'global';
+        return `${core}::${provider}`;
     }
 
     /**
@@ -132,9 +135,10 @@ class ChatMemory {
      * @returns {boolean} true jika ada yang dihapus
      */
     clearAll(senderId) {
+        const core = getCoreNumber(senderId) || senderId;
         let found = false;
         for (const key of Object.keys(this._store)) {
-            if (key.startsWith(`${senderId}::`)) {
+            if (key.startsWith(`${core}::`) || (senderId && key.startsWith(`${senderId}::`))) {
                 delete this._store[key];
                 found = true;
             }

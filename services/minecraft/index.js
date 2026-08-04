@@ -40,7 +40,7 @@ function createBot() {
         }
 
         try {
-            const mcData = require('minecraft-data')(bot.version || '1.20.1');
+            const mcData = require('minecraft-data')(bot.version || '1.21.1');
             await handleChat(bot, username, message, mcData);
         } catch (err) {
             console.error('[MC Chat Process Error]:', err.message);

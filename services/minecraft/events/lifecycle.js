@@ -81,17 +81,20 @@ function setupLifecycleEvents(bot, createBotFn) {
 
     bot.on('spawn', () => {
         bot.loadPlugin(hawkeye);
-        const mcData = require('minecraft-data')(bot.version);
+        const mcData = require('minecraft-data')(bot.version || '1.21.1');
         const movements = new Movements(bot, mcData);
 
-        movements.canDig = true;
+        movements.canDig = false; // Hindari bot mencoba menggali blok saat sekadar berjalan / mengikuti Sensei
         movements.canOpenDoors = true;
         movements.allowParkour = true;
         movements.allowSprinting = true;
+        movements.allow1by1towers = false;
         movements.allowEntityDetection = true;
-        movements.allowFreeMotion = false; // PENTING: harus false agar pathfinder tidak bypass kalkulasi rute & lompatan
+        movements.allowFreeMotion = false;
         movements.maxDropDown = 4;
-        movements.jumpCost = 0;
+        movements.jumpCost = 1.0; // Standar A* cost untuk lompatan yang realistis
+        movements.digCost = 10;
+        movements.placeCost = 5;
         movements.scafoldingBlocks = [];
 
         bot.pathfinder.setMovements(movements);
@@ -103,105 +106,15 @@ function setupLifecycleEvents(bot, createBotFn) {
 
         // --- DEBUG: Log pathfinding events ---
         bot.on('path_update', (r) => {
-            console.log(`[PATH] status=${r.status} path_length=${r.path.length} ${r.status === 'noPath' ? 'GAGAL CARI JALUR!' : ''}`);
-            if (r.path.length > 0) {
-                const next = r.path[0];
-                console.log(`[PATH] next_node: x=${next.x.toFixed(1)} y=${next.y.toFixed(1)} z=${next.z.toFixed(1)} toBreak=${next.toBreak.length} toPlace=${next.toPlace.length}`);
+            if (r.status === 'noPath') {
+                console.log(`[PATH] Tidak ditemukan jalur ke tujuan!`);
             }
         });
         bot.on('goal_reached', (goal) => {
             console.log(`[PATH] Goal reached!`);
         });
 
-        // --- AUTO-STEP & JUMP ASSIST: Mengatasi rintangan 1 blok naik ---
-        let isJumpingObstacle = false;
-        let jumpObstacleTicks = 0;
-        let forwardBlockedTicks = 0;
-
-        bot.on('physicsTick', () => {
-            if (!bot.entity) return;
-
-            // 1. Jika sedang dalam fase eksekusi lompatan rintangan, pertahankan momentum di udara
-            if (isJumpingObstacle) {
-                jumpObstacleTicks++;
-                bot.setControlState('forward', true);
-                bot.setControlState('sprint', true);
-
-                if (jumpObstacleTicks <= 4) {
-                    bot.setControlState('jump', true);
-                } else {
-                    bot.setControlState('jump', false);
-                }
-
-                // Selesai jika sudah mendarat di permukaan baru atau melewati batas tick (~500ms)
-                if ((jumpObstacleTicks > 4 && bot.entity.onGround) || jumpObstacleTicks > 10) {
-                    isJumpingObstacle = false;
-                    jumpObstacleTicks = 0;
-                    forwardBlockedTicks = 0;
-                }
-                return;
-            }
-
-            // 2. Deteksi kebutuhan lompat saat berada di tanah
-            if (bot.entity.onGround && bot.getControlState('forward')) {
-                const pos = bot.entity.position;
-                let shouldJump = false;
-
-                // TRIGGER A: Node pathfinder berikutnya berada lebih tinggi (Y naik >= 0.3 blok)
-                if (bot.pathfinder && bot.pathfinder.path && bot.pathfinder.path.length > 0) {
-                    const nextNode = bot.pathfinder.path[0];
-                    if (nextNode && nextNode.y > pos.y + 0.3) {
-                        const hDist = Math.hypot(nextNode.x - pos.x, nextNode.z - pos.z);
-                        if (hDist < 1.8) {
-                            shouldJump = true;
-                        }
-                    }
-                }
-
-                // TRIGGER B: Bot terhalang / velocity mendekati 0 saat tombol maju aktif selama >= 2 tick (100ms)
-                const hSpeed = Math.hypot(bot.entity.velocity.x, bot.entity.velocity.z);
-                if (hSpeed < 0.04) {
-                    forwardBlockedTicks++;
-                    if (forwardBlockedTicks >= 2) {
-                        shouldJump = true;
-                    }
-                } else {
-                    forwardBlockedTicks = 0;
-                }
-
-                // TRIGGER C: Cek blok fisik di depan bot
-                if (!shouldJump) {
-                    const yaw = bot.entity.yaw;
-                    const dx = -Math.sin(yaw);
-                    const dz = -Math.cos(yaw);
-                    const checkDistances = [0.3, 0.6, 0.9];
-                    for (const dist of checkDistances) {
-                        const blockFrontFeet = bot.blockAt(pos.offset(dx * dist, 0, dz * dist));
-                        const blockFrontAbove = bot.blockAt(pos.offset(dx * dist, 1, dz * dist));
-                        const blockHeadroom = bot.blockAt(pos.offset(0, 2, 0));
-
-                        if (blockFrontFeet && blockFrontFeet.boundingBox === 'block' &&
-                            (!blockFrontAbove || blockFrontAbove.boundingBox !== 'block') &&
-                            (!blockHeadroom || blockHeadroom.boundingBox !== 'block')) {
-                            shouldJump = true;
-                            break;
-                        }
-                    }
-                }
-
-                // Eksekusi lompatan jika salah satu trigger terpenuhi
-                if (shouldJump) {
-                    isJumpingObstacle = true;
-                    jumpObstacleTicks = 0;
-                    forwardBlockedTicks = 0;
-                    bot.setControlState('jump', true);
-                    bot.setControlState('forward', true);
-                    bot.setControlState('sprint', true);
-                }
-            } else {
-                forwardBlockedTicks = 0;
-            }
-        });
+        // --- SISTEM ANTI-STUCK CERDAS & NON-DESTRUKTIF ---
         if (state.unstuckInterval) clearInterval(state.unstuckInterval);
         let lastBotPos = null;
         let stuckCount = 0;
@@ -209,31 +122,27 @@ function setupLifecycleEvents(bot, createBotFn) {
         state.unstuckInterval = setInterval(() => {
             if (!bot.entity || !bot.pathfinder) return;
 
-            if (bot.pathfinder.isMoving() || bot.pathfinder.goal) {
+            if (bot.pathfinder.isMoving() && bot.pathfinder.goal) {
                 const currentPos = bot.entity.position;
                 if (lastBotPos && currentPos.distanceTo(lastBotPos) < 0.15) {
                     stuckCount++;
-                    // Nyangkut >= 3 detik: paksa lompat + maju, lalu recalculate path
-                    if (stuckCount >= 3) {
-                        console.log(`[MC] Anti-stuck: bot nyangkut di ${currentPos}, mencoba recovery...`);
-                        // Simpan goal saat ini sebelum reset
+                    // Nyangkut >= 4 detik: lakukan manuver un-stuck
+                    if (stuckCount >= 4) {
+                        console.log(`[MC] Anti-stuck: bot terhalang di ${currentPos.floored()}, melakukan micro-recovery...`);
                         const currentGoal = bot.pathfinder.goal;
-                        const isDynamic = bot.pathfinder.dynamic;
-                        // Reset path dulu agar pathfinder tidak fight dengan kita
-                        bot.pathfinder.setGoal(null);
-                        // Paksa gerak manual: lompat + maju
-                        bot.setControlState('jump', true);
-                        bot.setControlState('forward', true);
-                        bot.setControlState('sprint', true);
+                        
+                        // Mundur sejenak untuk mendapatkan ruang ancang-ancang
+                        bot.setControlState('forward', false);
+                        bot.setControlState('back', true);
                         setTimeout(() => {
-                            bot.setControlState('jump', false);
-                            bot.setControlState('forward', false);
-                            bot.setControlState('sprint', false);
-                            // Re-assign goal setelah gerak manual selesai, agar pathfinder recalculate dari posisi baru
-                            if (currentGoal) {
-                                bot.pathfinder.setGoal(currentGoal, isDynamic);
+                            bot.setControlState('back', false);
+                            // Lanjutkan goal dengan kalkulasi ulang
+                            if (currentGoal && bot.pathfinder) {
+                                try {
+                                    bot.pathfinder.setGoal(currentGoal);
+                                } catch (e) {}
                             }
-                        }, 600);
+                        }, 350);
                         stuckCount = 0;
                     }
                 } else {
