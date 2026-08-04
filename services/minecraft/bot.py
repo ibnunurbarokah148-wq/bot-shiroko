@@ -135,19 +135,20 @@ class ShirokoPythonBot:
         self.register_events()
 
     def run_and_jump(self):
-        """Manuver lompat rintangan bertenaga (preset 12-jumper-bot.py)."""
-        try:
-            @AsyncTask(start=True)
-            def async_jump(task):
+        """Manuver lompat rintangan bertenaga non-blocking (aman tanpa waitForTicks timeout)."""
+        def do_jump():
+            try:
                 self.bot.setControlState("forward", True)
-                self.bot.waitForTicks(1)
+                time.sleep(0.05)
                 self.bot.setControlState("sprint", True)
                 self.bot.setControlState("jump", True)
-                self.bot.waitForTicks(10)
-                self.bot.setControlState("jump", False)
-                self.bot.setControlState("sprint", False)
-        except Exception as e:
-            self.log(f"Error run_and_jump: {e}", "red")
+                time.sleep(0.5)
+                self.bot.clearControlStates()
+            except Exception as e:
+                self.log(f"Error run_and_jump: {e}", "red")
+
+        t = threading.Thread(target=do_jump, daemon=True)
+        t.start()
 
     def register_events(self):
         @On(self.bot, "login")
@@ -164,7 +165,7 @@ class ShirokoPythonBot:
             movements = Movements(self.bot, self.mc_data)
             movements.canDig = False
             movements.canOpenDoors = True
-            movements.allowParkour = True
+            movements.allowParkour = False  # False agar tidak loncat liar saat turun/naik 1 blok
             movements.allowSprinting = True
             movements.allow1by1towers = False
             movements.allowEntityDetection = True
@@ -342,7 +343,14 @@ class ShirokoPythonBot:
 
     def start_follow(self, player_target):
         self.stop_follow()
+        if not player_target or not player_target.entity:
+            return
+
         goals = mineflayer_pathfinder.goals
+        try:
+            self.bot.pathfinder.setGoal(goals.GoalFollow(player_target.entity, 2.5), True)
+        except Exception as e:
+            self.log(f"Error setGoal follow: {e}", "red")
 
         def follow_worker():
             while self.loop_ikut and self.bot and self.bot.entity:
@@ -354,18 +362,14 @@ class ShirokoPythonBot:
                         dy = pp.y - bp.y
                         dz = pp.z - bp.z
                         dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-                        if dist > 3.2:
-                            self.bot.pathfinder.setGoal(goals.GoalNear(pp.x, pp.y, pp.z, 2.0))
-                        elif dist <= 2.2:
-                            if self.bot.pathfinder.isMoving():
-                                self.bot.pathfinder.setGoal(None)
+                        if dist <= 3.0:
                             try:
                                 self.bot.lookAt(vec3(pp.x, pp.y + 1.6, pp.z), True)
                             except Exception:
                                 pass
                 except Exception:
                     pass
-                time.sleep(0.6)
+                time.sleep(1.0)
 
         self.loop_ikut = True
         t = threading.Thread(target=follow_worker, daemon=True)
@@ -373,6 +377,12 @@ class ShirokoPythonBot:
 
     def stop_follow(self):
         self.loop_ikut = False
+        if self.bot and self.bot.pathfinder:
+            try:
+                self.bot.pathfinder.setGoal(None)
+                self.bot.clearControlStates()
+            except Exception:
+                pass
 
     def start_radar(self):
         def radar_worker():
@@ -418,7 +428,7 @@ class ShirokoPythonBot:
             stuck_count = 0
             while self.bot:
                 try:
-                    if self.bot.entity and self.bot.pathfinder and self.bot.pathfinder.isMoving() and self.bot.pathfinder.goal:
+                    if self.bot.entity and self.bot.pathfinder and self.bot.pathfinder.isMoving():
                         cpos = self.bot.entity.position
                         if cpos:
                             if last_x is not None:
@@ -426,10 +436,11 @@ class ShirokoPythonBot:
                                 dy = cpos.y - last_y
                                 dz = cpos.z - last_z
                                 dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-                                if dist < 0.15:
+                                if dist < 0.1:
                                     stuck_count += 1
-                                    if stuck_count >= 4:
-                                        self.log(f"Anti-stuck: terhalang di ({cpos.x:.1f}, {cpos.y:.1f}, {cpos.z:.1f}), micro-recovery...", "yellow")
+                                    if stuck_count >= 5:
+                                        self.log(f"Anti-stuck: terhalang di ({cpos.x:.1f}, {cpos.y:.1f}, {cpos.z:.1f}), micro-hop...", "yellow")
+                                        self.bot.clearControlStates()
                                         self.run_and_jump()
                                         stuck_count = 0
                                 else:
