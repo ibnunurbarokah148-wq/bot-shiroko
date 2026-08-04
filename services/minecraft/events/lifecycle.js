@@ -84,17 +84,17 @@ function setupLifecycleEvents(bot, createBotFn) {
         const mcData = require('minecraft-data')(bot.version || '1.21.1');
         const movements = new Movements(bot, mcData);
 
-        movements.canDig = false; // Hindari bot mencoba menggali blok saat sekadar berjalan / mengikuti Sensei
+        movements.canDig = false; // Hindari bot menggali blok saat sekadar berjalan / mengikuti Sensei
         movements.canOpenDoors = true;
-        movements.allowParkour = false;
-        movements.allowSprinting = false;
+        movements.allowParkour = true; // Aktifkan kalkulasi lompat celah 1-2 blok & parkour lincah
+        movements.allowSprinting = true; // Aktifkan sprint untuk lompatan parkour yang bertenaga
         movements.allow1by1towers = false;
         movements.allowEntityDetection = true;
         movements.allowFreeMotion = false;
-        movements.maxDropDown = 4;
-        movements.jumpCost = 1.0; // Standar A* cost untuk lompatan yang realistis
-        movements.digCost = 10;
-        movements.placeCost = 5;
+        movements.maxDropDown = 5; // Toleransi turun ketinggian hingga 5 blok
+        movements.jumpCost = 0.5; // Jump cost ringan agar bot lincah melompat undakan tanpa ragu
+        movements.digCost = 20;
+        movements.placeCost = 10;
         movements.scafoldingBlocks = [];
 
         bot.pathfinder.setMovements(movements);
@@ -114,7 +114,7 @@ function setupLifecycleEvents(bot, createBotFn) {
             console.log(`[PATH] Goal reached!`);
         });
 
-        // --- SISTEM ANTI-STUCK CERDAS & NON-DESTRUKTIF ---
+        // --- SISTEM ANTI-STUCK CERDAS & TACTICAL OBSTACLE BYPASS ---
         if (state.unstuckInterval) clearInterval(state.unstuckInterval);
         let lastBotPos = null;
         let stuckCount = 0;
@@ -124,26 +124,35 @@ function setupLifecycleEvents(bot, createBotFn) {
 
             if (bot.pathfinder.isMoving() && bot.pathfinder.goal) {
                 const currentPos = bot.entity.position;
-                if (lastBotPos && currentPos.distanceTo(lastBotPos) < 0.15) {
+                if (lastBotPos && currentPos.distanceTo(lastBotPos) < 0.25) {
                     stuckCount++;
-                    // Nyangkut >= 4 detik: lakukan manuver un-stuck
-                    if (stuckCount >= 4) {
-                        console.log(`[MC] Anti-stuck: bot terhalang di ${currentPos.floored()}, melakukan micro-recovery...`);
+                    // Nyangkut >= 2 detik: lakukan manuver cerdas (jump + strafe / recalculate path)
+                    if (stuckCount >= 2) {
                         const currentGoal = bot.pathfinder.goal;
                         
-                        // Mundur sejenak untuk mendapatkan ruang ancang-ancang
+                        // Manuver un-stuck: Lepas forward, mundur sedikit dan melompat menyamping untuk mencari celah/undakan
                         bot.setControlState('forward', false);
                         bot.setControlState('back', true);
+                        
+                        const strafeDir = (stuckCount % 2 === 0) ? 'left' : 'right';
+                        bot.setControlState(strafeDir, true);
+                        bot.setControlState('jump', true);
+
                         setTimeout(() => {
                             bot.setControlState('back', false);
-                            // Lanjutkan goal dengan kalkulasi ulang
+                            bot.setControlState(strafeDir, false);
+                            bot.setControlState('jump', false);
+                            
+                            // Reset & paksa pathfinder menghitung ulang jalur baru memutari rintangan
                             if (currentGoal && bot.pathfinder) {
                                 try {
+                                    bot.pathfinder.setGoal(null);
                                     bot.pathfinder.setGoal(currentGoal);
                                 } catch (e) {}
                             }
                         }, 350);
-                        stuckCount = 0;
+
+                        if (stuckCount >= 4) stuckCount = 0;
                     }
                 } else {
                     stuckCount = 0;
