@@ -50,10 +50,10 @@ const hostileMobs = [
 
 function isOwner(username) {
     if (!username || typeof username !== 'string') return false;
-    const cleanUser = username.toLowerCase().replace(/^[.*_]/, '').trim();
+    const cleanUser = username.toLowerCase().replace(/[\[\]~<>\*\_]/g, '').trim();
     return CONFIG.owners.some(owner => {
-        const cleanOwner = owner.toLowerCase().replace(/^[.*_]/, '').trim();
-        return cleanUser === cleanOwner || username.toLowerCase() === owner.toLowerCase();
+        const cleanOwner = owner.toLowerCase().replace(/[\[\]~<>\*\_]/g, '').trim();
+        return cleanUser === cleanOwner || cleanUser.includes(cleanOwner) || username.toLowerCase().includes(owner.toLowerCase());
     });
 }
 

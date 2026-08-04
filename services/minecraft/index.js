@@ -40,6 +40,7 @@ function createBot() {
         }
 
         try {
+            console.log(`[MC IN-GAME] ${username}: "${message}"`);
             const mcData = require('minecraft-data')(bot.version || '1.21.1');
             await handleChat(bot, username, message, mcData);
         } catch (err) {
