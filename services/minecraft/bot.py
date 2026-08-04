@@ -99,6 +99,19 @@ class MCBot:
         def spawn(*args):
             pos = getattr(self.bot.entity, "position", None)
             self.log(chalk.green(f"Spawned at {vec3_to_str(pos)}"))
+
+            # Inisialisasi Movements agar pathfinder bisa melompati tanjakan 1 blok
+            try:
+                self.default_move = mineflayer_pathfinder.pathfinder.Movements(self.bot)
+                self.default_move.canDigits = False
+                self.default_move.allow1by1towers = False
+                self.default_move.allowParkour = True
+                self.default_move.allowSprinting = True
+                self.default_move.maxDropDown = 4
+                self.bot.pathfinder.setMovements(self.default_move)
+                self.log(chalk.cyan("Pathfinder Movements diaktifkan (Parkour & Step UP ON)."))
+            except Exception as e:
+                self.log(f"Error init movements: {e}")
             
             # AuthMe Auto-Login / Register dengan background thread (delay 1.5s agar server siap)
             def auto_auth_task():
@@ -120,6 +133,22 @@ class MCBot:
                     pass
 
             threading.Thread(target=auto_auth_task, daemon=True).start()
+
+        # Physics Tick: Auto-Jump saat menabrak tanjakan 1 blok saat berjalan
+        @On(self.bot, "physicsTick")
+        def physicsTick(*args):
+            try:
+                entity = getattr(self.bot, "entity", None)
+                if entity:
+                    is_collided = getattr(entity, "isCollidedHorizontally", False)
+                    on_ground = getattr(entity, "onGround", False)
+                    is_moving = self.bot.pathfinder.isMoving() if hasattr(self.bot.pathfinder, "isMoving") else False
+                    if is_collided and on_ground and is_moving:
+                        self.bot.setControlState("jump", True)
+                    else:
+                        self.bot.setControlState("jump", False)
+            except Exception:
+                pass
 
         # Kicked event: Triggers on kick from server
         @On(self.bot, "kicked")
