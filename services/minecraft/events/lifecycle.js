@@ -85,33 +85,51 @@ function setupLifecycleEvents(bot, createBotFn) {
         const movements = new Movements(bot, mcData);
 
         movements.canDig = false; // Hindari bot menggali blok saat sekadar berjalan / mengikuti Sensei
-        movements.canOpenDoors = true;
-        movements.allowParkour = true; // Aktifkan kalkulasi lompat celah 1-2 blok & parkour lincah
+        movements.canOpenDoors = true; // Otomatis membuka pintu & gerbang kayu saat melewati labirin/ruangan
+        movements.allowParkour = true; // Aktifkan kalkulasi lompat celah 1-2 blok & parkour dinamis
         movements.allowSprinting = true; // Aktifkan sprint untuk lompatan parkour yang bertenaga
         movements.allow1by1towers = false;
         movements.allowEntityDetection = true;
         movements.allowFreeMotion = false;
-        movements.maxDropDown = 5; // Toleransi turun ketinggian hingga 5 blok
-        movements.jumpCost = 0.5; // Jump cost ringan agar bot lincah melompat undakan tanpa ragu
+        movements.maxDropDown = 5; // Toleransi turun ketinggian hingga 5 blok tanpa ragu
+        movements.jumpCost = 0.5; // Jump cost ringan agar bot lincah melompat undakan
         movements.digCost = 20;
         movements.placeCost = 10;
+        movements.infiniteLiquidDropdownDistance = true;
         movements.scafoldingBlocks = [];
 
+        // --- KONFIGURASI SMART A* PATHFINDER (MAZE SOLVER & DEEP NAVIGATION) ---
         bot.pathfinder.setMovements(movements);
+        bot.pathfinder.thinkTimeout = 10000; // 10 detik kedalaman berpikir A* untuk memecahkan labirin rumit
+        bot.pathfinder.tickTimeout = 45; // Waktu alokasi komputasi per-tick maksimal (responsif & cepat)
+        bot.pathfinder.searchRadius = -1; // Tanpa batas radius pencarian rute
+        bot.pathfinder.enablePathShortcut = true; // Path smoothing pintar: potong sudut & jalan lurus di koridor terbuka
+        bot.pathfinder.LOSWhenPlacingBlocks = true;
+
         state.defaultMovements = movements;
         bot.waktuSpawn = Date.now();
 
         console.log(`[MC] Bot berhasil spawn di koordinat: ${bot.entity.position}`);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
 
-        // --- DEBUG: Log pathfinding events ---
+        // --- DEBUG & RECOVERY: Log & Handle pathfinding events ---
         bot.on('path_update', (r) => {
             if (r.status === 'noPath') {
-                console.log(`[PATH] Tidak ditemukan jalur ke tujuan!`);
+                console.log(`[PATH] Jalur langsung terhalang/buntu, mencoba kalkulasi titik terdekat...`);
+                // Jika jalur langsung terhalang di labirin tertutup, coba cari titik terdekat dalam radius 3.5 blok
+                if (bot.pathfinder.goal && bot.pathfinder.goal.entity) {
+                    const targetEnt = bot.pathfinder.goal.entity;
+                    const p = targetEnt.position;
+                    try {
+                        bot.pathfinder.setGoal(new goals.GoalNear(p.x, p.y, p.z, 3.5));
+                    } catch (e) {}
+                }
+            } else if (r.status === 'success') {
+                console.log(`[PATH] Rute optimal berhasil ditemukan (${r.path ? r.path.length : 0} nodes)!`);
             }
         });
         bot.on('goal_reached', (goal) => {
-            console.log(`[PATH] Goal reached!`);
+            console.log(`[PATH] Goal reached! Tiba di tujuan.`);
         });
 
         // --- SISTEM ANTI-STUCK CERDAS & TACTICAL OBSTACLE BYPASS ---

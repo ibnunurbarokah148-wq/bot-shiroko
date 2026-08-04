@@ -136,6 +136,20 @@ async function handleChat(bot, username, message, mcData) {
         return;
     }
 
+    // NAVIGASI KOORDINAT (GOTO / KE X Y Z)
+    const coordMatch = pk.match(/(?:ke|goto|jalan ke)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)/i);
+    if (coordMatch) {
+        state.modeMandiri = false;
+        state.sedangKerja = false;
+        try { bot.stopDigging(); } catch (e) { }
+        const gx = parseInt(coordMatch[1]);
+        const gy = parseInt(coordMatch[2]);
+        const gz = parseInt(coordMatch[3]);
+        bot.chat(`Nn. Menghitung rute navigasi ke koordinat [${gx}, ${gy}, ${gz}]...`);
+        bot.pathfinder.setGoal(new goals.GoalBlock(gx, gy, gz));
+        return;
+    }
+
     // TUTUP PINTU
     if (pk.includes('tutup pintu')) {
         const pintu = bot.findBlock({ matching: b => b.name.includes('door') || b.name.includes('gate'), maxDistance: 4 });
