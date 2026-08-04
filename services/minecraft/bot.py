@@ -66,6 +66,13 @@ class MCBot:
     def log(self, message):
         print(f"[{self.bot_name}] {message}", flush=True)
 
+    def follow_player(self, target_entity):
+        try:
+            goal = mineflayer_pathfinder.pathfinder.goals.GoalFollow(target_entity, 1)
+            self.bot.pathfinder.setGoal(goal, True)
+        except Exception as e:
+            self.log(f"Error while trying to follow player: {e}")
+
     def pathfind_to_goal(self, goal_location):
         try:
             gx = getattr(goal_location, "x", None) if hasattr(goal_location, "x") else goal_location.get("x", 0)
@@ -100,16 +107,16 @@ class MCBot:
             pos = getattr(self.bot.entity, "position", None)
             self.log(chalk.green(f"Spawned at {vec3_to_str(pos)}"))
 
-            # Inisialisasi Movements agar pathfinder bisa melompati tanjakan 1 blok
+            # Inisialisasi Movements resmi mineflayer-pathfinder
             try:
                 self.default_move = mineflayer_pathfinder.pathfinder.Movements(self.bot)
                 self.default_move.canDigits = False
                 self.default_move.allow1by1towers = False
-                self.default_move.allowParkour = True
+                self.default_move.allowParkour = False
                 self.default_move.allowSprinting = True
                 self.default_move.maxDropDown = 4
                 self.bot.pathfinder.setMovements(self.default_move)
-                self.log(chalk.cyan("Pathfinder Movements diaktifkan (Parkour & Step UP ON)."))
+                self.log(chalk.cyan("Pathfinder Movements diaktifkan."))
             except Exception as e:
                 self.log(f"Error init movements: {e}")
             
@@ -133,22 +140,6 @@ class MCBot:
                     pass
 
             threading.Thread(target=auto_auth_task, daemon=True).start()
-
-        # Physics Tick: Auto-Jump saat menabrak tanjakan 1 blok saat berjalan
-        @On(self.bot, "physicsTick")
-        def physicsTick(*args):
-            try:
-                entity = getattr(self.bot, "entity", None)
-                if entity:
-                    is_collided = getattr(entity, "isCollidedHorizontally", False)
-                    on_ground = getattr(entity, "onGround", False)
-                    is_moving = self.bot.pathfinder.isMoving() if hasattr(self.bot.pathfinder, "isMoving") else False
-                    if is_collided and on_ground and is_moving:
-                        self.bot.setControlState("jump", True)
-                    else:
-                        self.bot.setControlState("jump", False)
-            except Exception:
-                pass
 
         # Kicked event: Triggers on kick from server
         @On(self.bot, "kicked")
@@ -264,9 +255,9 @@ class MCBot:
                 if target_entity and getattr(target_entity, "position", None):
                     tpos = target_entity.position
                     target_vec = vec3(tpos.x, tpos.y, tpos.z)
-                    self.log(chalk.magenta(f"Pathfinding to player at {vec3_to_str(target_vec)}"))
+                    self.log(chalk.magenta(f"Following player at {vec3_to_str(target_vec)}"))
                     self.bot.chat("Going to your position!")
-                    self.pathfind_to_goal(target_vec)
+                    self.follow_player(target_entity)
                 else:
                     self.log("Player not found nearby.")
                     self.bot.chat("Sensei tidak terlihat di sekitar.")
