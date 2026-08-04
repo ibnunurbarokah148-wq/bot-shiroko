@@ -288,8 +288,12 @@ class ShirokoPythonBot:
         # 5. TEROBOS / MAJU
         if any(k in pk for k in ["terobos", "maju", "sini"]):
             player = self.find_player(username)
-            if player and player.entity:
-                self.bot.lookAt(player.entity.position.offset(0, 1.6, 0), True)
+            if player and player.entity and player.entity.position:
+                p = player.entity.position
+                try:
+                    self.bot.lookAt(vec3(p.x, p.y + 1.6, p.z), True)
+                except Exception:
+                    pass
             self.bot.chat("Nn. Menerobos maju.")
             self.bot.setControlState("forward", True)
             time.sleep(1.2)
@@ -315,8 +319,9 @@ class ShirokoPythonBot:
 
         # 7. STATUS
         if "status" in pk or "posisi" in pk:
-            pos = self.bot.entity.position
-            self.bot.chat(f"Nn. Posisi: {pos.x:.0f}, {pos.y:.0f}, {pos.z:.0f} | Darah: {self.bot.health}/20 | Makanan: {self.bot.food}/20")
+            if self.bot.entity and self.bot.entity.position:
+                pos = self.bot.entity.position
+                self.bot.chat(f"Nn. Posisi: {pos.x:.0f}, {pos.y:.0f}, {pos.z:.0f} | Darah: {self.bot.health}/20 | Makanan: {self.bot.food}/20")
             return
 
         # 8. MANDIRI
@@ -341,21 +346,25 @@ class ShirokoPythonBot:
 
         def follow_worker():
             while self.loop_ikut and self.bot and self.bot.entity:
-                if player_target and player_target.entity:
-                    dist = self.bot.entity.position.distanceTo(player_target.entity.position)
-                    if dist > 3.2:
-                        p = player_target.entity.position
-                        try:
-                            self.bot.pathfinder.setGoal(goals.GoalNear(p.x, p.y, p.z, 2.0))
-                        except Exception:
-                            pass
-                    elif dist <= 2.2:
-                        if self.bot.pathfinder.isMoving():
-                            self.bot.pathfinder.setGoal(None)
-                        try:
-                            self.bot.lookAt(player_target.entity.position.offset(0, 1.6, 0), True)
-                        except Exception:
-                            pass
+                try:
+                    if player_target and player_target.entity and player_target.entity.position and self.bot.entity.position:
+                        bp = self.bot.entity.position
+                        pp = player_target.entity.position
+                        dx = pp.x - bp.x
+                        dy = pp.y - bp.y
+                        dz = pp.z - bp.z
+                        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                        if dist > 3.2:
+                            self.bot.pathfinder.setGoal(goals.GoalNear(pp.x, pp.y, pp.z, 2.0))
+                        elif dist <= 2.2:
+                            if self.bot.pathfinder.isMoving():
+                                self.bot.pathfinder.setGoal(None)
+                            try:
+                                self.bot.lookAt(vec3(pp.x, pp.y + 1.6, pp.z), True)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
                 time.sleep(0.6)
 
         self.loop_ikut = True
@@ -370,11 +379,30 @@ class ShirokoPythonBot:
             while self.bot:
                 try:
                     if self.bot.entity and not self.target_serangan:
-                        nearest_mob = self.bot.nearestEntity(
-                            lambda e: e.name and e.name.lower() in HOSTILE_MOBS and e.position.distanceTo(self.bot.entity.position) < 8
-                        )
-                        if nearest_mob:
-                            self.mulai_serang(nearest_mob)
+                        bpos = self.bot.entity.position
+                        if bpos:
+                            best_mob = None
+                            min_dist = 8.0
+                            entities = self.bot.entities
+                            for entity_id in entities:
+                                try:
+                                    e = entities[entity_id]
+                                    if not e or not e.name:
+                                        continue
+                                    ename = str(e.name).lower()
+                                    if ename in HOSTILE_MOBS and e.position:
+                                        dx = e.position.x - bpos.x
+                                        dy = e.position.y - bpos.y
+                                        dz = e.position.z - bpos.z
+                                        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                                        if dist < min_dist:
+                                            min_dist = dist
+                                            best_mob = e
+                                except Exception:
+                                    continue
+                            
+                            if best_mob:
+                                self.mulai_serang(best_mob)
                 except Exception:
                     pass
                 time.sleep(1.0)
@@ -384,24 +412,34 @@ class ShirokoPythonBot:
 
     def start_unstuck_checker(self):
         def unstuck_worker():
-            last_pos = None
+            last_x = None
+            last_y = None
+            last_z = None
             stuck_count = 0
             while self.bot:
                 try:
                     if self.bot.entity and self.bot.pathfinder and self.bot.pathfinder.isMoving() and self.bot.pathfinder.goal:
-                        current_pos = self.bot.entity.position
-                        if last_pos and current_pos.distanceTo(last_pos) < 0.15:
-                            stuck_count += 1
-                            if stuck_count >= 4:
-                                self.log(f"Anti-stuck: terhalang di {current_pos}, micro-recovery...", "yellow")
-                                self.run_and_jump()
-                                stuck_count = 0
-                        else:
-                            stuck_count = 0
-                            last_pos = current_pos.clone()
+                        cpos = self.bot.entity.position
+                        if cpos:
+                            if last_x is not None:
+                                dx = cpos.x - last_x
+                                dy = cpos.y - last_y
+                                dz = cpos.z - last_z
+                                dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                                if dist < 0.15:
+                                    stuck_count += 1
+                                    if stuck_count >= 4:
+                                        self.log(f"Anti-stuck: terhalang di ({cpos.x:.1f}, {cpos.y:.1f}, {cpos.z:.1f}), micro-recovery...", "yellow")
+                                        self.run_and_jump()
+                                        stuck_count = 0
+                                else:
+                                    stuck_count = 0
+                            last_x = cpos.x
+                            last_y = cpos.y
+                            last_z = cpos.z
                     else:
                         stuck_count = 0
-                        last_pos = None
+                        last_x = None
                 except Exception:
                     pass
                 time.sleep(1.0)
@@ -417,16 +455,23 @@ class ShirokoPythonBot:
         def combat_worker():
             while self.target_serangan and self.bot and self.bot.entity:
                 try:
-                    if not self.target_serangan.isValid or (self.target_serangan.health and self.target_serangan.health <= 0):
+                    if not self.target_serangan.isValid or not self.target_serangan.position or (self.target_serangan.health and self.target_serangan.health <= 0):
                         self.bot.chat("Nn. Ancaman berhasil dieliminasi.")
                         self.berhenti_serang()
                         break
 
-                    jarak = self.bot.entity.position.distanceTo(self.target_serangan.position)
+                    bp = self.bot.entity.position
+                    tp = self.target_serangan.position
+                    dx = tp.x - bp.x
+                    dy = tp.y - bp.y
+                    dz = tp.z - bp.z
+                    jarak = math.sqrt(dx*dx + dy*dy + dz*dz)
+
                     self.bot.pathfinder.setGoal(goals.GoalFollow(self.target_serangan, 2.0), True)
 
                     if jarak < 3.5:
-                        self.bot.lookAt(self.target_serangan.position.offset(0, self.target_serangan.height or 1, 0), True)
+                        h = self.target_serangan.height or 1.0
+                        self.bot.lookAt(vec3(tp.x, tp.y + h, tp.z), True)
                         self.bot.attack(self.target_serangan)
 
                 except Exception as e:
