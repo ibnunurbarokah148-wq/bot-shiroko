@@ -19,3 +19,6 @@ login ke vps.txt
 data/
 *.bak
 mineflayer-4.37.1/
+MineflayerPython-main/
+__pycache__/
+*.pyc
