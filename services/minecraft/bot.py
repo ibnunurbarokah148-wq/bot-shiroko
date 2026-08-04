@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import threading
 
 # Pastikan path folder utils dapat diakses
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -99,16 +100,26 @@ class MCBot:
             pos = getattr(self.bot.entity, "position", None)
             self.log(chalk.green(f"Spawned at {vec3_to_str(pos)}"))
             
-            # AuthMe Auto-Login / Register
-            if auth_password:
-                self.log(chalk.cyan(f"Sending auto-login / auth commands..."))
+            # AuthMe Auto-Login / Register dengan background thread (delay 1.5s agar server siap)
+            def auto_auth_task():
+                time.sleep(1.5)
+                if auth_password:
+                    self.log(chalk.cyan(f"Mengirim /login {auth_password}..."))
+                    try:
+                        self.bot.chat(f"/login {auth_password}")
+                    except Exception:
+                        pass
+                    time.sleep(1.0)
+                    try:
+                        self.bot.chat(f"/register {auth_password} {auth_password}")
+                    except Exception:
+                        pass
                 try:
-                    self.bot.chat(f"/login {auth_password}")
-                    self.bot.chat(f"/register {auth_password} {auth_password}")
-                except Exception as e:
-                    self.log(f"Error sending auth commands: {e}")
+                    self.bot.chat("Hi! Ready.")
+                except Exception:
+                    pass
 
-            self.bot.chat("Hi! Ready.")
+            threading.Thread(target=auto_auth_task, daemon=True).start()
 
         # Kicked event: Triggers on kick from server
         @On(self.bot, "kicked")
