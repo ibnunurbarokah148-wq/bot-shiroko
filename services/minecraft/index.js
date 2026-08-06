@@ -8,9 +8,14 @@ const { handleChat } = require('./events/chat');
 
 function createBot() {
     state.autoReconnect = true;
+    const targetHost = state.isLocal ? CONFIG.localHost : CONFIG.host;
+    const targetPort = state.isLocal ? CONFIG.localPort : CONFIG.port;
+
+    console.log(`[MC] Mencoba terhubung ke ${targetHost}:${targetPort} (${state.isLocal ? 'LOKAL / LAN' : 'SERVER HOSTING'})...`);
+
     const bot = mineflayer.createBot({
-        host: CONFIG.host,
-        port: CONFIG.port,
+        host: targetHost,
+        port: targetPort,
         username: CONFIG.username,
         version: CONFIG.version,
         auth: CONFIG.auth
@@ -71,8 +76,9 @@ function createBot() {
     return bot;
 }
 
-function startMcBot() {
+function startMcBot(isLocal = false) {
     if (state.activeMcBot) return false; // Sudah nyala
+    state.isLocal = Boolean(isLocal);
     state.activeMcBot = createBot();
     return true;
 }
@@ -106,6 +112,9 @@ function getMinecraftStatus() {
     
     return {
         online: true,
+        isLocal: state.isLocal,
+        host: state.isLocal ? CONFIG.localHost : CONFIG.host,
+        port: state.isLocal ? CONFIG.localPort : CONFIG.port,
         username: state.activeMcBot.username,
         health: Math.round(state.activeMcBot.health),
         food: Math.round(state.activeMcBot.food),

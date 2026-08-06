@@ -5,6 +5,7 @@
 const state = {
     activeMcBot: null,
     autoReconnect: false,
+    isLocal: false,
 
     // Combat & Follow
     targetSerangan: null,

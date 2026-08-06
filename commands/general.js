@@ -151,9 +151,10 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ \`!kepo\` (Ghost Mode Messages VIP)
 *║*
 *╠═══「 KHUSUS OWNER 」*
-*║* ➸ !mc start (Nyalakan Bot MC)
+*║* ➸ !mc start (Nyalakan Bot MC Online)
+*║* ➸ !mc lokal (Nyalakan Bot MC Server Lokal)
 *║* ➸ !mc stop (Matikan Bot MC)
-*║* ➸ !mc status (Cek Status Bot MC)
+*║* ➸ !mc status (Cek Status & Mode Bot MC)
 *║* ➸ !mc chat [teks] (Kirim Chat MC)
 *║*
 *╚═══▼△▼△▼△▼△▼*`;

@@ -5,6 +5,8 @@
 const CONFIG = {
     host: process.env.MC_HOST || 'id-1.zknesia.app',
     port: parseInt(process.env.MC_PORT || '25675'),
+    localHost: process.env.MC_LOCAL_HOST || 'localhost',
+    localPort: parseInt(process.env.MC_LOCAL_PORT || '20606'),
     username: process.env.MC_USERNAME || 'Ritian223',
     version: (process.env.MC_VERSION && process.env.MC_VERSION.toLowerCase() !== 'auto' && process.env.MC_VERSION.toLowerCase() !== 'false') ? process.env.MC_VERSION : '1.21.1',
     auth: process.env.MC_AUTH || 'offline',
