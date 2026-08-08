@@ -33,20 +33,63 @@ async function createGenerationTask(prompt, options = {}) {
 
     const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
 
-    const payload = {
-        prompt: prompt,
-        modelVersionId: modelId,
-        parameters: {
-            width: width,
-            height: height,
-            steps: steps
-        }
-    };
-
     console.log(`[PIXAI] Mengirim permintaan ke PixAI API (Prompt: "${prompt}")...`);
 
+    // Attempt 1: GraphQL createGenerationTask (Menggunakan Web API PixAI, mendukung NSFW untuk akun 18+)
     try {
-        // Attempt 1: REST API v2
+        const graphqlQuery = {
+            query: `
+                mutation createGenerationTask($parameters: JSONObject!) {
+                    createGenerationTask(parameters: $parameters) {
+                        id
+                        status
+                    }
+                }
+            `,
+            variables: {
+                parameters: {
+                    prompts: prompt,
+                    modelId: modelId,
+                    steps: steps,
+                    width: width,
+                    height: height
+                }
+            }
+        };
+
+        const resGql = await axios.post('https://api.pixai.art/graphql', graphqlQuery, {
+            headers: {
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            timeout: 15000
+        });
+
+        const taskIdGql = resGql.data?.data?.createGenerationTask?.id || resGql.data?.data?.createTask?.id;
+        if (taskIdGql) {
+            console.log(`[PIXAI] Task GraphQL berhasil dibuat! Task ID: ${taskIdGql}`);
+            return taskIdGql;
+        }
+        if (resGql.data?.errors) {
+            console.warn(`[PIXAI] GraphQL warning (${resGql.data.errors[0]?.message}), mencoba REST fallback...`);
+        }
+    } catch (eGql) {
+        console.warn(`[PIXAI] GraphQL request gagal (${eGql.message}), mencoba REST fallback...`);
+    }
+
+    // Attempt 2: REST API v2 (Fallback)
+    try {
+        const payload = {
+            prompt: prompt,
+            modelVersionId: modelId,
+            parameters: {
+                width: width,
+                height: height,
+                steps: steps
+            }
+        };
+
         const res = await axios.post('https://api.pixai.art/v2/image/create', payload, {
             headers: {
                 'Authorization': authHeader,
@@ -57,58 +100,12 @@ async function createGenerationTask(prompt, options = {}) {
 
         const taskId = res.data?.id || res.data?.taskId || res.data?.data?.id;
         if (taskId) {
-            console.log(`[PIXAI] Task berhasil dibuat! Task ID: ${taskId}`);
+            console.log(`[PIXAI] Task REST berhasil dibuat! Task ID: ${taskId}`);
             return taskId;
         }
     } catch (e1) {
-        console.warn(`[PIXAI] Rest v2 gagal (${e1.message}), mencoba GraphQL fallback...`);
-        // Attempt 2: GraphQL Fallback
-        try {
-            const graphqlQuery = {
-                query: `
-                    mutation createTask($input: CreateTaskInput!) {
-                        createTask(input: $input) {
-                            id
-                            status
-                        }
-                    }
-                `,
-                variables: {
-                    input: {
-                        prompts: prompt,
-                        modelId: modelId,
-                        parameters: {
-                            steps: steps,
-                            width: width,
-                            height: height
-                        }
-                    }
-                }
-            };
-
-            const resGql = await axios.post('https://api.pixai.art/graphql', graphqlQuery, {
-                headers: {
-                    'Authorization': token,
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                },
-                timeout: 15000
-            });
-
-            if (resGql.data?.data?.createTask?.id) {
-                const taskIdGql = resGql.data.data.createTask.id;
-                console.log(`[PIXAI] Task GraphQL berhasil dibuat! Task ID: ${taskIdGql}`);
-                return taskIdGql;
-            }
-            if (resGql.data?.errors) {
-                throw new Error(resGql.data.errors[0]?.message || 'GraphQL Error');
-            }
-        } catch (e2) {
-            const errMsg1 = e1.response?.data?.message || e1.response?.data?.error || e1.message;
-            const errMsg2 = e2.response?.data?.message || e2.message;
-            console.error(`[PIXAI] Error Task Creation:`, errMsg1, errMsg2);
-            throw new Error(`PixAI Task Creation Error: ${errMsg1} | ${errMsg2}`);
-        }
+        const errMsg = e1.response?.data?.message || e1.response?.data?.error || e1.message;
+        throw new Error(`PixAI Task Creation Error: ${errMsg}`);
     }
 
     throw new Error('Gagal mendapatkan Task ID dari PixAI API');
