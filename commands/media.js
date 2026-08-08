@@ -36,10 +36,9 @@ async function handle(ctx) {
         await reply('🎨 *[ PIXAI.ART ANIME GENERATOR ]*\n\nNn... Sedang memproses prompt ke server PixAI.art, mohon tunggu sebentar...');
 
         try {
-            const { buffer, mime } = await pixaiService.generateImage(prompt);
+            const { buffer } = await pixaiService.generateImage(prompt);
             await sock.sendMessage(from, {
                 image: buffer,
-                mimetype: mime,
                 caption: `🎨 *[ PIXAI.ART GENERATED ]*\n\n*Prompt:* ${prompt}\n*Engine:* PixAI.art Anime Generator`
             }, { quoted: msg });
         } catch (error) {
@@ -165,10 +164,9 @@ async function handle(ctx) {
 
                 await reply('🎨 *[ PIXAI.ART ANIME GENERATOR ]*\n\nNn... Memproses prompt ke server PixAI.art, mohon tunggu sebentar...');
                 try {
-                    const { buffer, mime } = await pixaiService.generateImage(promptMentah);
+                    const { buffer } = await pixaiService.generateImage(promptMentah);
                     await sock.sendMessage(targetFrom, {
                         image: buffer,
-                        mimetype: mime,
                         caption: `🎨 *[ PIXAI.ART GENERATED ]*\n\n*Prompt:* ${promptMentah}\n*Engine:* PixAI.art Anime Generator`
                     }, { quoted: targetMsg });
                 } catch (error) {
