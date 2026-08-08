@@ -26,7 +26,7 @@ async function createGenerationTask(prompt, options = {}) {
         throw new Error('PIXAI_TOKEN tidak ditemukan pada file .env! Harap tambahkan PIXAI_TOKEN ke .env.');
     }
 
-    const modelId = options.modelId || '1648918127446573124'; // Default model Anime
+    const modelId = options.modelId || process.env.PIXAI_MODEL_ID || '1648918127446573124'; // Default model Anime
     const steps = options.steps || 20;
     const width = options.width || 512;
     const height = options.height || 768;
