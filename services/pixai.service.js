@@ -26,21 +26,26 @@ async function createGenerationTask(prompt, options = {}) {
         throw new Error('PIXAI_TOKEN tidak ditemukan pada file .env! Harap tambahkan PIXAI_TOKEN ke .env.');
     }
 
-    const modelId = options.modelId || '1648918127446573124'; // Default model (Anime)
+    const modelId = options.modelId || '1648918127446573124'; // Default model Anime
     const steps = options.steps || 20;
     const width = options.width || 512;
     const height = options.height || 768;
 
     const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
 
+    const payload = {
+        prompt: prompt,
+        modelVersionId: modelId,
+        parameters: {
+            width: width,
+            height: height,
+            steps: steps
+        }
+    };
+
     try {
         // Attempt 1: REST API v2
-        const res = await axios.post('https://api.pixai.art/v2/image/create', {
-            prompt: prompt,
-            modelVersionId: modelId,
-            aspectRatio: `${width}:${height}`,
-            mode: 'fast'
-        }, {
+        const res = await axios.post('https://api.pixai.art/v2/image/create', payload, {
             headers: {
                 'Authorization': authHeader,
                 'Content-Type': 'application/json'
@@ -52,7 +57,7 @@ async function createGenerationTask(prompt, options = {}) {
             return res.data.id || res.data.taskId || res.data.data?.id;
         }
     } catch (e1) {
-        // Attempt 2: GraphQL Fallback (Compatible dengan unofficial wrapper)
+        // Attempt 2: GraphQL Fallback
         try {
             const graphqlQuery = {
                 query: `
@@ -92,8 +97,9 @@ async function createGenerationTask(prompt, options = {}) {
                 throw new Error(resGql.data.errors[0]?.message || 'GraphQL Error');
             }
         } catch (e2) {
-            const errMsg = e2.response?.data?.message || e2.message;
-            throw new Error(`PixAI Task Creation Error: ${errMsg}`);
+            const errMsg1 = e1.response?.data?.message || e1.response?.data?.error || e1.message;
+            const errMsg2 = e2.response?.data?.message || e2.message;
+            throw new Error(`PixAI Task Creation Error: ${errMsg1} | ${errMsg2}`);
         }
     }
 
@@ -124,9 +130,10 @@ async function pollTaskResult(taskId, maxWaitSeconds = 60) {
             const taskData = res.data?.data || res.data;
             if (taskData) {
                 if (taskData.status === 'completed' || taskData.status === 'SUCCESS' || taskData.status === 'FINISHED') {
-                    const urls = taskData.mediaUrls || taskData.urls || taskData.outputs;
-                    if (Array.isArray(urls) && urls.length > 0) {
-                        return typeof urls[0] === 'string' ? urls[0] : (urls[0].url || urls[0].mediaUrl);
+                    // Extract mediaUrls dari outputs
+                    const mediaUrls = taskData.outputs?.mediaUrls || taskData.mediaUrls || taskData.urls;
+                    if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
+                        return typeof mediaUrls[0] === 'string' ? mediaUrls[0] : (mediaUrls[0].url || mediaUrls[0].mediaUrl);
                     }
                     if (taskData.url) return taskData.url;
                 } else if (taskData.status === 'failed' || taskData.status === 'FAILED' || taskData.status === 'ERROR') {
@@ -134,6 +141,8 @@ async function pollTaskResult(taskId, maxWaitSeconds = 60) {
                 }
             }
         } catch (errRest) {
+            if (errRest.message.includes('gagal diproses')) throw errRest;
+
             // 2. Fallback via GraphQL
             try {
                 const gqlQuery = {
