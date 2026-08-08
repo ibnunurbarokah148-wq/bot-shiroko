@@ -26,8 +26,8 @@ const { pixiv } = require('./services/pixiv.service');
 const { antrianGambar, prosesAntrianGambar } = require('./services/comfyui.service');
 const { upsert, incrementStat } = require('./config/database');
 
-// 2. KETIKA BOT ONLINE (Sudah Diperbarui ke clientReady)
-client.once('clientReady', async () => {
+// 2. KETIKA BOT ONLINE
+client.once('ready', async () => {
     console.log(`Nn... Sistem komunikasi Discord ${client.user.tag} sudah aktif, Sensei.`);
     
     const updateDiscordUsersCount = () => {

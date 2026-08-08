@@ -12,10 +12,43 @@ const { getGeminiComponents, getShirokoModel } = require('../services/ai/provide
 const { tambahMetadataStiker } = require('../utils/sticker');
 const { antrianGambar, prosesAntrianGambar, isComfyUIActive } = require('../services/comfyui.service');
 const sharp = require('sharp');
+const pixaiService = require('../services/pixai.service');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, textClean, textLower, msgType,
             isQuoted, quotedMsg, quotedType, reply, downloadMediaBaileys } = ctx;
+
+    // ==========================================
+    // HANDLER !PIXAI (PIXAI.ART ANIME GENERATOR)
+    // ==========================================
+    if (textLower.startsWith('!pixai')) {
+        const prompt = textClean.split(' ').slice(1).join(' ').trim();
+        if (!prompt) {
+            await reply('Nn... Tolong masukkan prompt setelah perintah *!pixai*.\n\nContoh:\n*!pixai 1girl, sunaookami shiroko, halo, blue archive, detailed eyes*');
+            return true;
+        }
+
+        if (!cekDanPotongLimit(senderId)) {
+            await reply('Nn... Token harian Sensei sudah habis.');
+            return true;
+        }
+
+        await reply('🎨 *[ PIXAI.ART ANIME GENERATOR ]*\n\nNn... Sedang memproses prompt ke server PixAI.art, mohon tunggu sebentar...');
+
+        try {
+            const { buffer, mime } = await pixaiService.generateImage(prompt);
+            await sock.sendMessage(from, {
+                image: buffer,
+                mimetype: mime,
+                caption: `🎨 *[ PIXAI.ART GENERATED ]*\n\n*Prompt:* ${prompt}\n*Engine:* PixAI.art Anime Generator`
+            }, { quoted: msg });
+        } catch (error) {
+            console.error('🚨 ERROR PIXAI:', error.message);
+            kembalikanLimit(senderId);
+            await reply(`❌ Nn... Gagal generate gambar via PixAI:\n_${error.message}_`);
+        }
+        return true;
+    }
 
     // ==========================================
     // HANDLER !GAMBAR (INTERAKTIF STEP 1)
@@ -32,6 +65,7 @@ async function handle(ctx) {
             '1️⃣ *ComfyUI* (Vast.ai Cloud GPU — Support NSFW 🔞, 4 limit)\n' +
             '2️⃣ *ArisuSoft Satelit AI* 🛰️\n' +
             '3️⃣ *Cloudflare Workers AI* (Super Cepat) ⚡\n' +
+            '4️⃣ *PixAI.art* (Anime Generator) ✨\n' +
             '\nKetik *batal* untuk membatalkan.');
         return true;
     }

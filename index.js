@@ -160,6 +160,9 @@ app.post('/laporan-masuk', async (req, res) => {
     try {
         const sock = getSocket(); // Selalu ambil koneksi terbaru
         if (!sock) return res.status(503).json({ status: 'error', message: 'Bot WhatsApp belum terhubung.' });
+        const targetOwner = Array.isArray(ID_OWNER) ? ID_OWNER[0] : ID_OWNER;
+        const idOwnerJid = targetOwner ? `${targetOwner}@s.whatsapp.net` : null;
+        if (!idOwnerJid) return res.status(500).json({ status: 'error', message: 'ID_OWNER belum dikonfigurasi.' });
         await sock.sendMessage(idOwnerJid, { text: `🚨 *LAPORAN MASUK DARI SERVER* 🚨\n\n${pesan}` });
         res.json({ status: 'ok', message: 'Laporan terkirim ke WhatsApp Owner.' });
     } catch (error) {
