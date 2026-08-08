@@ -33,19 +33,24 @@ async function handle(ctx) {
             return true;
         }
 
-        await reply('🎨 *[ PIXAI.ART ANIME GENERATOR ]*\n\nNn... Sedang memproses prompt ke server PixAI.art, mohon tunggu sebentar...');
+        const pos = pixaiService.tambahAntrianPixAI({
+            prompt: prompt,
+            senderId: senderId,
+            reply: reply,
+            onSuccess: async (buffer) => {
+                await sock.sendMessage(from, {
+                    image: buffer,
+                    caption: `🎨 *[ PIXAI.ART GENERATED ]*\n\n*Prompt:* ${prompt}\n*Engine:* PixAI.art Anime Generator`
+                }, { quoted: msg });
+            },
+            onError: async (error) => {
+                console.error('🚨 ERROR PIXAI:', error.message);
+                kembalikanLimit(senderId);
+                await reply(`❌ Nn... Gagal generate gambar via PixAI:\n_${error.message}_`);
+            }
+        });
 
-        try {
-            const { buffer } = await pixaiService.generateImage(prompt);
-            await sock.sendMessage(from, {
-                image: buffer,
-                caption: `🎨 *[ PIXAI.ART GENERATED ]*\n\n*Prompt:* ${prompt}\n*Engine:* PixAI.art Anime Generator`
-            }, { quoted: msg });
-        } catch (error) {
-            console.error('🚨 ERROR PIXAI:', error.message);
-            kembalikanLimit(senderId);
-            await reply(`❌ Nn... Gagal generate gambar via PixAI:\n_${error.message}_`);
-        }
+        await reply(`🎨 *[ PIXAI.ART ANIME GENERATOR ]*\n\nNn... Pesanan diterima! Posisi antreanmu saat ini: *${pos}*.\nMohon tunggu sebentar ya, Sensei... 🐺✨`);
         return true;
     }
 
@@ -162,18 +167,24 @@ async function handle(ctx) {
                 const targetMsg = sesi.msg;
                 delete state.sesiArisu[senderId];
 
-                await reply('🎨 *[ PIXAI.ART ANIME GENERATOR ]*\n\nNn... Memproses prompt ke server PixAI.art, mohon tunggu sebentar...');
-                try {
-                    const { buffer } = await pixaiService.generateImage(promptMentah);
-                    await sock.sendMessage(targetFrom, {
-                        image: buffer,
-                        caption: `🎨 *[ PIXAI.ART GENERATED ]*\n\n*Prompt:* ${promptMentah}\n*Engine:* PixAI.art Anime Generator`
-                    }, { quoted: targetMsg });
-                } catch (error) {
-                    console.error('🚨 ERROR PIXAI:', error.message);
-                    kembalikanLimit(senderId);
-                    await reply(`❌ Nn... Gagal render gambar via PixAI:\n_${error.message}_`);
-                }
+                const pos = pixaiService.tambahAntrianPixAI({
+                    prompt: promptMentah,
+                    senderId: senderId,
+                    reply: reply,
+                    onSuccess: async (buffer) => {
+                        await sock.sendMessage(targetFrom, {
+                            image: buffer,
+                            caption: `🎨 *[ PIXAI.ART GENERATED ]*\n\n*Prompt:* ${promptMentah}\n*Engine:* PixAI.art Anime Generator`
+                        }, { quoted: targetMsg });
+                    },
+                    onError: async (error) => {
+                        console.error('🚨 ERROR PIXAI:', error.message);
+                        kembalikanLimit(senderId);
+                        await reply(`❌ Nn... Gagal render gambar via PixAI:\n_${error.message}_`);
+                    }
+                });
+
+                await reply(`🎨 *[ PIXAI.ART ANIME GENERATOR ]*\n\nNn... Pesanan diterima! Posisi antreanmu saat ini: *${pos}*.\nMohon tunggu sebentar ya, Sensei... 🐺✨`);
                 return true;
 
             } else {

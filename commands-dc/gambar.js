@@ -1,5 +1,6 @@
 const { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require('discord.js');
 const { antrianGambar, prosesAntrianGambar, isComfyUIActive } = require('../services/comfyui.service');
+const { tambahAntrianPixAI, antrianPixAI } = require('../services/pixai.service');
 const axios = require('axios');
 
 module.exports = {
@@ -7,15 +8,23 @@ module.exports = {
         const promptMentah = message.content.substring(message.content.indexOf(' ') + 1).trim();
         if (!promptMentah) return message.reply('Nn... Masukkan deskripsi gambarnya.');
 
-        const row = new ActionRowBuilder().addComponents(
+        const row1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('img_pixai').setLabel('PixAI.art ✨').setStyle(ButtonStyle.Success),
             new ButtonBuilder().setCustomId('img_comfyui_sfw').setLabel('ComfyUI 🟢').setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('img_comfyui').setLabel('ComfyUI 🔞').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('img_sdxl').setLabel('Arisu SDXL').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('img_sdxl').setLabel('Arisu SDXL').setStyle(ButtonStyle.Secondary)
+        );
+
+        const row2 = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('img_agnes').setLabel('Agnes 2.0').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('img_agnes_2_1').setLabel('Agnes 2.1').setStyle(ButtonStyle.Secondary)
         );
 
-        const promptMsg = await message.reply({ content: `Nn... Pilih mesin render untuk: **${promptMentah}**\n*(Catatan: Mode Discord 100% gratis tanpa potong limit)*`, components: [row] });
+        const promptMsg = await message.reply({ 
+            content: `Nn... Pilih mesin render untuk: **${promptMentah}**\n*(Catatan: Mode Discord 100% gratis tanpa potong limit)*`, 
+            components: [row1, row2] 
+        });
+
         const collector = promptMsg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
         let isProcessing = false;
 
@@ -26,9 +35,22 @@ module.exports = {
 
             await interaction.update({ content: 'Nn... Memproses pilihanmu...', components: [] }).catch(() => { });
 
-            if (interaction.customId === 'img_comfyui' || interaction.customId === 'img_comfyui_sfw') {
+            if (interaction.customId === 'img_pixai') {
+                const pos = tambahAntrianPixAI({
+                    prompt: promptMentah,
+                    isDiscord: true,
+                    reply: async (text) => message.reply(text),
+                    sendImage: async (imgBuffer, caption) => {
+                        const attachment = new AttachmentBuilder(imgBuffer, { name: 'hasil_pixai.png' });
+                        await message.reply({ content: caption, files: [attachment] });
+                    }
+                });
+
+                message.reply(`Nn... Pesanan PixAI.art diterima! Posisi antreanmu saat ini: **${pos}**.\nMohon bersabar ya, Sensei. 🐺✨`);
+
+            } else if (interaction.customId === 'img_comfyui' || interaction.customId === 'img_comfyui_sfw') {
                 if (!isComfyUIActive()) {
-                    await message.reply('❌ Nn... Mohon maaf, mesin Render GPU ComfyUI sedang *DIMATIKAN*. (Jam Operasional otomatis: 07:00 - 23:00 WIB). Silakan pilih opsi rendering lain seperti ArisuSoft.');
+                    await message.reply('❌ Nn... Mohon maaf, mesin Render GPU ComfyUI sedang *DIMATIKAN*. (Jam Operasional otomatis: 07:00 - 23:00 WIB). Silakan pilih opsi rendering lain seperti PixAI atau ArisuSoft.');
                     return;
                 }
 
@@ -48,7 +70,7 @@ module.exports = {
                     }
                 });
                 
-                message.reply(`Nn... Pesanan diterima. Posisi antreanmu saat ini: **${antrianGambar.length}**.\nMohon bersabar, ya. 🐺☕`);
+                message.reply(`Nn... Pesanan ComfyUI diterima. Posisi antreanmu saat ini: **${antrianGambar.length}**.\nMohon bersabar, ya. 🐺☕`);
                 prosesAntrianGambar();
             } else {
                 // Proses ArisuSoft secara langsung

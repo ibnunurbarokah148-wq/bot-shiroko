@@ -7,6 +7,7 @@ const cmdMybini = require('./commands-dc/mybini');
 const cmdWaifu = require('./commands-dc/waifu');
 const cmdGambar = require('./commands-dc/gambar');
 const cmdAntrian = require('./commands-dc/antrian');
+const cmdPixai = require('./commands-dc/pixai');
 
 // 1. SETUP DISCORD CLIENT
 const client = new Client({
@@ -49,11 +50,11 @@ client.on('messageCreate', async (message) => {
     const lower = message.content.toLowerCase();
 
     // Deteksi command
-    if (lower === '!gacha' || lower === '!mybini' || lower.startsWith('!waifu') || lower.startsWith('!gambar ') || lower.startsWith('!bikin ') || lower === '!antrian') {
+    if (lower === '!gacha' || lower === '!mybini' || lower.startsWith('!waifu') || lower.startsWith('!gambar ') || lower.startsWith('!bikin ') || lower.startsWith('!pixai') || lower === '!antrian') {
         incrementStat('commands');
         
         // Command yang memanggil AI secara langsung
-        if (lower.startsWith('!gambar ') || lower.startsWith('!bikin ')) {
+        if (lower.startsWith('!gambar ') || lower.startsWith('!bikin ') || lower.startsWith('!pixai')) {
             incrementStat('aiRequests');
         }
     }
@@ -62,6 +63,7 @@ client.on('messageCreate', async (message) => {
     if (lower === '!mybini') return cmdMybini.handle(message, { client });
     if (lower.startsWith('!waifu')) return cmdWaifu.handle(message, { pixiv });
     if (lower.startsWith('!gambar ') || lower.startsWith('!bikin ')) return cmdGambar.handle(message);
+    if (lower.startsWith('!pixai')) return cmdPixai.handle(message);
     if (lower === '!antrian') return cmdAntrian.handle(message);
 });
 

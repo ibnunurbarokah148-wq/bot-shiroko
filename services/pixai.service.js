@@ -3,6 +3,12 @@
 // ==========================================
 const axios = require('axios');
 
+// ==========================================
+// SHARED QUEUE PIXAI (WhatsApp & Discord)
+// ==========================================
+const antrianPixAI = [];
+let sedangRenderPixAI = false;
+
 /**
  * Mendapatkan token PixAI dari .env
  */
@@ -180,13 +186,62 @@ async function generateImage(prompt, options = {}) {
 
     const buffer = Buffer.from(imgRes.data);
     const contentType = imgRes.headers['content-type'] || 'image/png';
-    console.log(`[PIXAI] Buffer gambar siap (${buffer.length} bytes), mengirim ke WhatsApp...`);
+    console.log(`[PIXAI] Buffer gambar siap (${buffer.length} bytes)...`);
 
     return { buffer, mime: contentType, imageUrl };
+}
+
+/**
+ * Memproses antrean PixAI satu per satu secara berurutan
+ */
+async function prosesAntrianPixAI() {
+    if (sedangRenderPixAI || antrianPixAI.length === 0) return;
+
+    sedangRenderPixAI = true;
+    const item = antrianPixAI[0];
+    const { prompt, options, isDiscord, reply, sendImage, onSuccess, onError } = item;
+
+    try {
+        console.log(`[PIXAI QUEUE] Memproses pesanan (Sisa antrean: ${antrianPixAI.length}). Prompt: "${prompt}"...`);
+        const { buffer, mime, imageUrl } = await generateImage(prompt, options);
+
+        if (isDiscord && sendImage) {
+            await sendImage(buffer, `🎨 **[ PIXAI.ART GENERATED ]**\n\n*Prompt:* ${prompt}\n*Engine:* PixAI.art Anime Generator`);
+        } else if (onSuccess) {
+            await onSuccess(buffer, mime, imageUrl);
+        }
+
+        antrianPixAI.shift(); // Hapus item yang selesai
+    } catch (err) {
+        console.error(`[PIXAI QUEUE ERROR]:`, err.message);
+        antrianPixAI.shift(); // Hapus item jika error agar antrean tidak macet
+        if (onError) {
+            await onError(err);
+        } else if (reply) {
+            await reply(`❌ Nn... Gagal generate gambar via PixAI:\n_${err.message}_`);
+        }
+    } finally {
+        sedangRenderPixAI = false;
+        if (antrianPixAI.length > 0) {
+            setTimeout(() => prosesAntrianPixAI(), 1000);
+        }
+    }
+}
+
+/**
+ * Menambahkan pesanan baru ke dalam antrean PixAI
+ */
+function tambahAntrianPixAI(pesanan) {
+    antrianPixAI.push(pesanan);
+    prosesAntrianPixAI();
+    return antrianPixAI.length;
 }
 
 module.exports = {
     createGenerationTask,
     pollTaskResult,
-    generateImage
+    generateImage,
+    antrianPixAI,
+    prosesAntrianPixAI,
+    tambahAntrianPixAI
 };
