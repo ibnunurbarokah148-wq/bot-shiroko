@@ -146,8 +146,40 @@ async function handle(ctx) {
                 await reply(textMenu);
                 return true;
 
+            } else if (pilihan === '4') {
+                const cost = 2;
+                const { dbLimit, simpanDB } = require('../config/db');
+                if (dbLimit[senderId] !== undefined && !isOwner) {
+                    if (dbLimit[senderId] < cost) {
+                        await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih server lain atau ketik *batal*.`);
+                        return true;
+                    }
+                    dbLimit[senderId] -= cost;
+                    simpanDB();
+                }
+
+                const promptMentah = sesi.promptMentah;
+                const targetFrom = sesi.from;
+                const targetMsg = sesi.msg;
+                delete state.sesiArisu[senderId];
+
+                await reply('🎨 *[ PIXAI.ART ANIME GENERATOR ]*\n\nNn... Memproses prompt ke server PixAI.art, mohon tunggu sebentar...');
+                try {
+                    const { buffer, mime } = await pixaiService.generateImage(promptMentah);
+                    await sock.sendMessage(targetFrom, {
+                        image: buffer,
+                        mimetype: mime,
+                        caption: `🎨 *[ PIXAI.ART GENERATED ]*\n\n*Prompt:* ${promptMentah}\n*Engine:* PixAI.art Anime Generator`
+                    }, { quoted: targetMsg });
+                } catch (error) {
+                    console.error('🚨 ERROR PIXAI:', error.message);
+                    kembalikanLimit(senderId);
+                    await reply(`❌ Nn... Gagal render gambar via PixAI:\n_${error.message}_`);
+                }
+                return true;
+
             } else {
-                await reply('Nn... Pilihan tidak valid. Balas dengan angka 1, 2, atau 3. Atau ketik *batal*.');
+                await reply('Nn... Pilihan tidak valid. Balas dengan angka 1, 2, 3, atau 4. Atau ketik *batal*.');
                 return true;
             }
         }
