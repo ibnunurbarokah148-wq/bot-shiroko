@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+const { Client, Events, GatewayIntentBits, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const { getGeminiComponents } = require('./services/ai/providers/gemini');
 const axios = require('axios');
 const cmdGacha = require('./commands-dc/gacha');
@@ -27,7 +27,7 @@ const { antrianGambar, prosesAntrianGambar } = require('./services/comfyui.servi
 const { upsert, incrementStat } = require('./config/database');
 
 // 2. KETIKA BOT ONLINE
-client.once('ready', async () => {
+client.once(Events.ClientReady, async () => {
     console.log(`Nn... Sistem komunikasi Discord ${client.user.tag} sudah aktif, Sensei.`);
     
     const updateDiscordUsersCount = () => {
