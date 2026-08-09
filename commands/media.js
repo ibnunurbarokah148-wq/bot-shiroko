@@ -28,8 +28,9 @@ async function handle(ctx) {
             return true;
         }
 
-        if (!cekDanPotongLimit(senderId)) {
-            await reply('Nn... Token harian Sensei sudah habis.');
+        const cost = 2;
+        if (!cekDanPotongLimit(senderId, cost)) {
+            await reply(`Nn... Token harian Sensei tidak cukup. Perintah *!pixai* membutuhkan *${cost} limit token*.`);
             return true;
         }
 
@@ -45,7 +46,7 @@ async function handle(ctx) {
             },
             onError: async (error) => {
                 console.error('🚨 ERROR PIXAI:', error.message);
-                kembalikanLimit(senderId);
+                kembalikanLimit(senderId, cost);
                 await reply(`❌ Nn... Gagal generate gambar via PixAI:\n_${error.message}_`);
             }
         });
@@ -179,7 +180,7 @@ async function handle(ctx) {
                     },
                     onError: async (error) => {
                         console.error('🚨 ERROR PIXAI:', error.message);
-                        kembalikanLimit(senderId);
+                        kembalikanLimit(senderId, cost);
                         await reply(`❌ Nn... Gagal render gambar via PixAI:\n_${error.message}_`);
                     }
                 });
