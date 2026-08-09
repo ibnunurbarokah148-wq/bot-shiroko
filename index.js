@@ -331,14 +331,30 @@ app.post('/api/save-pixai-token', async (req, res) => {
     }
 });
 
-app.get('/pixai-auth-helper', (req, res) => {
+app.post('/api/generate-bookmarklet', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    const { otp } = req.body;
+    if (!otp) {
+        return res.status(400).json({ status: 'error', message: 'Kode OTP tidak boleh kosong.' });
+    }
+
+    if (!global.webAuthSessions || !global.webAuthSessions.has(otp)) {
+        return res.status(403).json({ status: 'error', message: '❌ Kode OTP tidak valid atau sudah kedaluwarsa (Max 5 Menit).' });
+    }
+
+    // OTP Valid! Hapus dari memori agar hanya bisa dipakai sekali generate (jika perlu)
+    // Atau biarkan sampai expired. Mari kita hapus agar aman (Single Use Generate).
+    global.webAuthSessions.delete(otp);
+
     // ==========================================
     // POLYMORPHIC OBFUSCATION + SINGLE-USE NONCE
     // ==========================================
     const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     global.authNonces.add(nonce);
     
-    // Hapus nonce otomatis jika tidak terpakai dalam 5 menit (mencegah memory leak)
+    // Hapus nonce otomatis jika tidak terpakai dalam 5 menit
     setTimeout(() => { global.authNonces.delete(nonce); }, 5 * 60 * 1000);
 
     const botUrl = process.env.PUBLIC_URL || (process.env.VPS_IP ? `http://${process.env.VPS_IP}:3000` : `http://${req.get('host')}`);
@@ -352,93 +368,7 @@ app.get('/pixai-auth-helper', (req, res) => {
 
     const bookmarkletPayload = `javascript:(function(){let ${v1}=Object['${_entries}'](window['${_localStorage}'])['${_find}'](([${v2},${v3}])=>${v3}['${_includes}']('${_eyJ}'))?.[1]?.['${_replace}'](/^"|"$/g,'')||window['${_localStorage}']['${_getItem}']('${_token}')||document['${_cookie}'];if(${v1}){window['${_fetch}']('${botUrl}/api/save-pixai-token',{method:'${_POST}',headers:{'${_contentType}':'${_appJson}'},body:JSON['${_stringify}']({token:${v1},nonce:'${nonce}'})})['${_then}'](r=>r['${_json}']())['${_then}'](d=>{window['${_alert}'](d['${_message}']);})['${_catch}'](e=>{window['${_prompt}']('${toHex('Koneksi otomatis gagal. Salin Token lalu paste di Opsi B Web Auth:')}',${v1});});}else{window['${_alert}']('${toHex('Token tidak ditemukan. Pastikan Anda sudah login di pixai.art')}');}})()`;
 
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-    const html = `<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PixAI Web Auth Helper — Bot Shiroko</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; }
-        body { background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-        .card { background: #1e293b; border: 1px solid #334155; border-radius: 20px; padding: 35px; width: 100%; max-width: 550px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); text-align: center; }
-        .logo { font-size: 50px; margin-bottom: 10px; }
-        h1 { font-size: 24px; color: #38bdf8; font-weight: 700; margin-bottom: 8px; }
-        p { font-size: 14px; color: #94a3b8; line-height: 1.6; margin-bottom: 25px; }
-        .step-box { background: #0f172a; border-radius: 12px; padding: 20px; text-align: left; margin-bottom: 20px; border: 1px solid #1e293b; }
-        .step-title { font-weight: 600; color: #f1f5f9; font-size: 15px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
-        .btn-bookmark { display: inline-block; background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; text-decoration: none; padding: 14px 24px; border-radius: 12px; font-weight: 600; font-size: 15px; box-shadow: 0 4px 15px rgba(37,99,235,0.4); margin: 10px 0; cursor: move; }
-        input[type="text"] { width: 100%; background: #0f172a; border: 1px solid #334155; color: #f8fafc; padding: 14px; border-radius: 10px; font-size: 14px; margin-bottom: 12px; outline: none; }
-        input[type="text"]:focus { border-color: #38bdf8; }
-        button.btn-send { width: 100%; background: #10b981; color: #fff; border: none; padding: 14px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: 0.2s; }
-        button.btn-send:hover { background: #059669; }
-        .alert { display: none; padding: 14px; border-radius: 10px; margin-top: 15px; font-size: 14px; text-align: left; }
-        .alert-success { background: #064e3b; color: #6ee7b7; border: 1px solid #047857; }
-        .alert-error { background: #7f1d1d; color: #fca5a5; border: 1px solid #b91c1c; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="logo">🎨 🐺</div>
-        <h1>PixAI Web Auth Helper</h1>
-        <p>Hubungkan Akun PixAI.art ke Server Bot Shiroko secara otomatis tanpa periksa DevTools manual.</p>
-
-        <div class="step-box">
-            <div class="step-title">✨ Opsi A: 1-Click Auto Copy Token (Tanpa DevTools)</div>
-            <p style="font-size:13px; margin-bottom:10px;">Salin kode unik di bawah ini, buka tab <b style="color:#38bdf8">pixai.art</b>, ketik <b style="color:#10b981">javascript:</b> di address bar lalu paste kode di belakangnya:</p>
-            <textarea readonly onclick="this.select()" style="width:100%; height:85px; background:#1e293b; color:#38bdf8; border:1px solid #334155; border-radius:8px; padding:8px; font-size:11px; resize:none;">${bookmarkletPayload}</textarea>
-        </div>
-
-        <div class="step-box">
-            <div class="step-title">📝 Opsi B: Tempel String Token Manual</div>
-            <input type="text" id="tokenInput" placeholder="Tempelkan JWT Token (eyJhbG...) di sini">
-            <button class="btn-send" onclick="sendToken()">Hubungkan ke Bot Shiroko</button>
-            <div id="alertBox" class="alert"></div>
-        </div>
-    </div>
-
-    <script>
-        async function sendToken() {
-            const token = document.getElementById('tokenInput').value.trim();
-            const alertBox = document.getElementById('alertBox');
-            alertBox.style.display = 'none';
-
-            if (!token) {
-                alertBox.className = 'alert alert-error';
-                alertBox.innerText = '❌ Harap tempelkan string token terlebih dahulu.';
-                alertBox.style.display = 'block';
-                return;
-            }
-
-            try {
-                const res = await fetch('/api/save-pixai-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token })
-                });
-                const data = await res.json();
-
-                if (res.ok && data.status === 'ok') {
-                    alertBox.className = 'alert alert-success';
-                    alertBox.innerText = data.message;
-                    document.getElementById('tokenInput').value = '';
-                } else {
-                    alertBox.className = 'alert alert-error';
-                    alertBox.innerText = '❌ Gagal: ' + (data.message || 'Error tidak diketahui');
-                }
-            } catch (err) {
-                alertBox.className = 'alert alert-error';
-                alertBox.innerText = '❌ Error koneksi ke server bot: ' + err.message;
-            }
-            alertBox.style.display = 'block';
-        }
-    </script>
-</body>
-</html>`;
-    res.send(html);
+    res.json({ status: 'ok', payload: bookmarkletPayload });
 });
 
 const http = require('http');

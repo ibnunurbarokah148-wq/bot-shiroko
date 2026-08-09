@@ -56,14 +56,33 @@ async function handle(ctx) {
     }
 
     // ==========================================
-    // HANDLER !AUTHLINK / !PIXAILINK (WEB AUTH HELPER LINK)
+    // HANDLER !API-PIXAI (WEB AUTH OTP GENERATOR)
     // ==========================================
-    if (textLower === '!authlink' || textLower === '!pixailink') {
-        const baseUrl = process.env.PUBLIC_URL || (process.env.VPS_IP ? `http://${process.env.VPS_IP}:3000` : 'http://103.253.213.252:3000');
-        let linkMsg = `🌐 *[ PIXAI WEB AUTH HELPER ]*\n\n`;
-        linkMsg += `Nn... Buka halaman Web Auth berikut di browser Anda untuk mengizinkan atau mengirimkan Token PixAI secara otomatis ke bot (1-Click tanpa DevTools):\n\n`;
-        linkMsg += `🔗 *Link Auth Web:*\n${baseUrl}/pixai-auth-helper\n\n`;
-        linkMsg += `_Setelah terhubung, bot akan mengirimkan notifikasi otomatis dan menyimpan token ke server!_ 🎨✨`;
+    if (textLower === '!api-pixai' || textLower === '!pixailink') {
+        const crypto = require('crypto');
+        const otp = 'SRO-' + crypto.randomBytes(2).toString('hex').toUpperCase();
+        
+        if (!global.webAuthSessions) global.webAuthSessions = new Map();
+        
+        // Simpan OTP (5 Menit kedaluwarsa)
+        global.webAuthSessions.set(otp, {
+            expires: Date.now() + 5 * 60 * 1000,
+            jid: msg.key.remoteJid
+        });
+
+        // Bersihkan OTP yang sudah kedaluwarsa
+        for (const [key, session] of global.webAuthSessions.entries()) {
+            if (Date.now() > session.expires) {
+                global.webAuthSessions.delete(key);
+            }
+        }
+
+        const webUrl = process.env.WEB_SHIROKO_URL || 'http://localhost:8080';
+        let linkMsg = `🌐 *[ PIXAI WEB AUTH OTP ]*\n\n`;
+        linkMsg += `Nn... Akses generator Web Auth untuk akun Anda.\n\n`;
+        linkMsg += `🔗 *Website:* ${webUrl}/pixai-api\n`;
+        linkMsg += `🔑 *Kode OTP:* *${otp}*\n\n`;
+        linkMsg += `_Kode ini hanya berlaku selama 5 menit. Masukkan kode di Web Shiroko untuk mendapatkan akses Generator otomatis._ 🎨✨`;
 
         await reply(linkMsg);
         return true;
