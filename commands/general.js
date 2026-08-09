@@ -128,6 +128,9 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║*
 *╠═══「 EKSEKUSI MEDIA 」*
 *║* ➸ \`!gambar [prompt]\` (AI Image Generator)
+*║* ➸ \`!pixai [prompt]\` (PixAI Anime Generator)
+*║* ➸ !cekpixai (Cek Status Token Pool PixAI)
+*║* ➸ !buatpixai [email] [pass] (Generate API Token PixAI)
 *║* ➸ \`!tts [teks]\` (Ubah Teks ke Suara/VN)
 *║* ➸ \`!pdf2jpg\` (Reply PDF)
 *║* ➸ \`!stiker\` (Kirim Gambar)
@@ -151,6 +154,8 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ \`!kepo\` (Ghost Mode Messages VIP)
 *║*
 *╠═══「 KHUSUS OWNER 」*
+*║* ➸ !loginpixai [email] [pass] (Auto Login PixAI)
+*║* ➸ !setpixai [token] (Set Token PixAI Manual)
 *║* ➸ !mc start (Nyalakan Bot MC Online)
 *║* ➸ !mc lokal (Nyalakan Bot MC Server Lokal)
 *║* ➸ !mc stop (Matikan Bot MC)
