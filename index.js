@@ -291,11 +291,17 @@ app.post('/api/save-pixai-token', async (req, res) => {
         return res.status(400).json({ status: 'error', message: 'Token tidak boleh kosong.' });
     }
 
-    if (nonce) {
+    // Validasi Nonce (Wajib ada untuk mencegah sharing bookmarklet)
+    if (!nonce) {
+        return res.status(400).json({ status: 'error', message: '❌ Kode keamanan (Nonce) tidak ditemukan. Harap generate ulang Bookmarklet.' });
+    }
+
+    if (global.authNonces) {
         if (!global.authNonces.has(nonce)) {
-            return res.status(403).json({ status: 'error', message: '❌ Sesi Token Kadaluarsa atau Sudah Terpakai! Harap muat ulang halaman Web Auth Helper.' });
+            return res.status(403).json({ status: 'error', message: '❌ Sesi Kode Kadaluarsa atau Sudah Terpakai! Harap generate ulang Bookmarklet di Web Shiroko.' });
         }
-        global.authNonces.delete(nonce); // Hapus nonce agar cuma bisa dipakai 1x
+        // Hapus nonce agar hanya bisa 1x pakai
+        global.authNonces.delete(nonce);
     }
 
     try {
@@ -366,7 +372,7 @@ app.post('/api/generate-bookmarklet', (req, res) => {
     const v2 = '_0x' + Math.random().toString(16).substring(2, 8);
     const v3 = '_0x' + Math.random().toString(16).substring(2, 8);
 
-    const bookmarkletPayload = `javascript:(function(){let ${v1}=Object['${_entries}'](window['${_localStorage}'])['${_find}'](([${v2},${v3}])=>${v3}['${_includes}']('${_eyJ}'))?.[1]?.['${_replace}'](/^"|"$/g,'')||window['${_localStorage}']['${_getItem}']('${_token}')||document['${_cookie}'];if(${v1}){window['${_fetch}']('${botUrl}/api/save-pixai-token',{method:'${_POST}',headers:{'${_contentType}':'${_appJson}'},body:JSON['${_stringify}']({token:${v1},nonce:'${nonce}'})})['${_then}'](r=>r['${_json}']())['${_then}'](d=>{window['${_alert}'](d['${_message}']);})['${_catch}'](e=>{window['${_prompt}']('${toHex('Koneksi otomatis gagal. Salin Token lalu paste di Opsi B Web Auth:')}',${v1});});}else{window['${_alert}']('${toHex('Token tidak ditemukan. Pastikan Anda sudah login di pixai.art')}');}})()`;
+    const bookmarkletPayload = `javascript:(function(){let ${v1}=Object['${_entries}'](window['${_localStorage}'])['${_find}'](([${v2},${v3}])=>${v3}['${_includes}']('${_eyJ}'))?.[1]?.['${_replace}'](/^"|"$/g,'')||window['${_localStorage}']['${_getItem}']('${_token}')||document['${_cookie}'];if(${v1}){window['${_fetch}']('${botUrl}/api/save-pixai-token',{method:'${_POST}',headers:{'${_contentType}':'${_appJson}'},body:JSON['${_stringify}']({token:${v1},nonce:'${nonce}'})})['${_then}'](r=>r['${_json}']())['${_then}'](d=>{window['${_alert}'](d['${_message}']);})['${_catch}'](e=>{window['${_prompt}']('${toHex('Koneksi otomatis gagal. Salin Kode ini lalu paste di Opsi B Web Auth:')}',${v1}+'|${nonce}');});}else{window['${_alert}']('${toHex('Token tidak ditemukan. Pastikan Anda sudah login di pixai.art')}');}})()`;
 
     res.json({ status: 'ok', payload: bookmarkletPayload });
 });
