@@ -56,6 +56,19 @@ async function handle(ctx) {
     }
 
     // ==========================================
+    // HANDLER !AUTHLINK / !PIXAILINK (WEB AUTH HELPER LINK)
+    // ==========================================
+    if (textLower === '!authlink' || textLower === '!pixailink') {
+        let linkMsg = `🌐 *[ PIXAI WEB AUTH HELPER ]*\n\n`;
+        linkMsg += `Nn... Buka halaman Web Auth berikut di browser Anda untuk mengizinkan atau mengirimkan Token PixAI secara otomatis ke bot (1-Click tanpa DevTools):\n\n`;
+        linkMsg += `🔗 *Link Auth Web:*\nhttp://localhost:3000/pixai-auth-helper\n*(Ganti localhost dengan IP VPS Anda)*\n\n`;
+        linkMsg += `_Setelah terhubung, bot akan mengirimkan notifikasi otomatis dan menyimpan token ke server!_ 🎨✨`;
+
+        await reply(linkMsg);
+        return true;
+    }
+
+    // ==========================================
     // HANDLER !CEKPIXAI (CEK STATUS PIXAI TOKEN)
     // ==========================================
     if (textLower === '!cekpixai' || textLower === '!pixaitoken') {
