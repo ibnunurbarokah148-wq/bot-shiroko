@@ -326,11 +326,11 @@ app.get('/pixai-auth-helper', (req, res) => {
     // ==========================================
     // POLYMORPHIC OBFUSCATION (DYNAMIC PAYLOAD)
     // ==========================================
-    const rawCode = `let t=Object.entries(localStorage).find(([k,v])=>v.includes('eyJ'))?.[1]?.replace(/^"|"$/g,'')||localStorage.getItem('token')||document.cookie;if(t){prompt('Salin Token PixAI Anda (Ctrl+C), lalu paste ke Opsi B:',t);}else{alert('Token tidak ditemukan, pastikan Anda sudah login pada pixai.art');}`;
-    const salt = Math.floor(Math.random() * 100) + 10; // Random salt setiap request
-    const arrayStr = Array.from(rawCode).map(c => c.charCodeAt(0) + salt).join(',');
-    const randVar = 'v_' + Math.random().toString(36).substring(2, 8);
-    const bookmarkletPayload = `javascript:(function(){var ${randVar}=[${arrayStr}];eval(String.fromCharCode.apply(null,${randVar}.map(function(c){return c-${salt}})));})()`;
+    function toHex(str) { return str.split('').map(c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0')).join(''); }
+    const v1 = '_0x' + Math.random().toString(16).substring(2, 8);
+    const v2 = '_0x' + Math.random().toString(16).substring(2, 8);
+    const v3 = '_0x' + Math.random().toString(16).substring(2, 8);
+    const bookmarkletPayload = `javascript:(function(){let ${v1}=Object['${toHex('entries')}'](window['${toHex('localStorage')}'])['${toHex('find')}'](([${v2},${v3}])=>${v3}['${toHex('includes')}']('${toHex('eyJ')}'))?.[1]?.['${toHex('replace')}'](/^"|"$/g,'')||window['${toHex('localStorage')}']['${toHex('getItem')}']('${toHex('token')}')||document['${toHex('cookie')}'];if(${v1}){window['${toHex('prompt')}']('${toHex('Salin Token PixAI Anda (Ctrl+C), lalu paste ke Opsi B:')}',${v1});}else{window['${toHex('alert')}']('${toHex('Token tidak ditemukan, pastikan Anda sudah login pada pixai.art')}');}})()`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
