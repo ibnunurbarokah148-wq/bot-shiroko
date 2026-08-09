@@ -52,6 +52,23 @@ function pruneExpiredTokens() {
 }
 
 /**
+ * Menghapus token spesifik dari .env pool jika terdeteksi 401 / Invalid dari API
+ * @param {string} badToken
+ */
+function removeTokenFromEnv(badToken) {
+    if (!badToken) return;
+    const cleanBad = badToken.trim().replace(/^Bearer\s+/i, '');
+    const raw = process.env.PIXAI_TOKEN || process.env.PIXAI_API_KEY || '';
+    const currentTokens = raw.split(',').map(t => t.trim()).filter(Boolean);
+    const filtered = currentTokens.filter(t => t.trim().replace(/^Bearer\s+/i, '') !== cleanBad);
+
+    if (filtered.length !== currentTokens.length) {
+        console.log(`🗑️ [TOKEN PRUNED] Token (401 Unauthorized) berhasil dihapus dari .env pool.`);
+        saveTokenPoolToEnv(filtered);
+    }
+}
+
+/**
  * Mendapatkan seluruh daftar token PixAI dari .env (Multi-Token Pool)
  * @returns {string[]} Array token
  */
@@ -316,9 +333,15 @@ module.exports = {
     decodeJwt,
     getAllTokens,
     pruneExpiredTokens,
+    removeTokenFromEnv,
     saveTokenPoolToEnv,
     addTokenToEnv,
     checkTokenStatus,
     loginWithCredentials,
     refreshAllCredentials
 };
+
+// Prune token kedaluwarsa secara otomatis saat module di-load
+try {
+    pruneExpiredTokens();
+} catch (e) {}

@@ -129,6 +129,9 @@ async function createGenerationTask(prompt, options = {}) {
         } catch (e1) {
             const errMsg = e1.response?.data?.message || e1.response?.data?.error || e1.message;
             console.warn(`[PIXAI] Token #${tokenIdx + 1} REST gagal (${errMsg}). Menguji token berikutnya...`);
+            if (e1.response?.status === 401 || errMsg.includes('Authentication') || errMsg.includes('401')) {
+                pixaiAuth.removeTokenFromEnv(token);
+            }
             lastError = e1;
         }
     }
