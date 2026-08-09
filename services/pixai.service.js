@@ -96,7 +96,11 @@ async function createGenerationTask(prompt, options = {}) {
                 return { taskId: taskIdGql, usedToken: token };
             }
         } catch (eGql) {
-            console.warn(`[PIXAI] Token #${tokenIdx + 1} GraphQL gagal (${eGql.message}), mencoba REST fallback...`);
+            const errMsgGql = eGql.response?.data?.errors?.[0]?.message || eGql.message;
+            if (errMsgGql.toLowerCase().includes('credit') || errMsgGql.toLowerCase().includes('insufficient') || errMsgGql.toLowerCase().includes('point')) {
+                console.error(`🚨 [PIXAI OUT OF CREDIT] Token #${tokenIdx + 1} kehabisan Credit/Poin PixAI: ${errMsgGql}`);
+            }
+            console.warn(`[PIXAI] Token #${tokenIdx + 1} GraphQL gagal (${errMsgGql}), mencoba REST fallback...`);
             lastError = eGql;
         }
 
@@ -129,6 +133,9 @@ async function createGenerationTask(prompt, options = {}) {
         } catch (e1) {
             const errMsg = e1.response?.data?.message || e1.response?.data?.error || e1.message;
             console.warn(`[PIXAI] Token #${tokenIdx + 1} REST gagal (${errMsg}). Menguji token berikutnya...`);
+            if (errMsg.toLowerCase().includes('credit') || errMsg.toLowerCase().includes('insufficient') || errMsg.toLowerCase().includes('point')) {
+                console.error(`🚨 [PIXAI OUT OF CREDIT] Token #${tokenIdx + 1} kehabisan Credit/Poin PixAI: ${errMsg}`);
+            }
             if (e1.response?.status === 401 || errMsg.includes('Authentication') || errMsg.includes('401')) {
                 pixaiAuth.removeTokenFromEnv(token);
             }
@@ -184,9 +191,12 @@ async function createGenerationTask(prompt, options = {}) {
         }
     }
 
-    const finalErrMsg = lastError?.response?.data?.message || lastError?.message || 'Seluruh Token PixAI Gagal / Kedaluwarsa';
+    const finalErrMsg = lastError?.response?.data?.message || lastError?.response?.data?.errors?.[0]?.message || lastError?.message || 'Seluruh Token PixAI Gagal / Kedaluwarsa';
     if (finalErrMsg.includes('Authentication required') || finalErrMsg.includes('401')) {
         throw new Error('Token PixAI pada server bot telah kedaluwarsa / 401 Unauthorized. Harap hubungkan token baru via !authlink atau !setpixai [token].');
+    }
+    if (finalErrMsg.toLowerCase().includes('credit') || finalErrMsg.toLowerCase().includes('insufficient') || finalErrMsg.toLowerCase().includes('point')) {
+        throw new Error('🚨 Credit / Poin PixAI pada akun ini telah habis! Harap klaim bonus harian / isi ulang credit di pixai.art atau pasang token baru via !authlink / !setpixai.');
     }
     throw new Error(`PixAI Task Creation Error: ${finalErrMsg}`);
 }

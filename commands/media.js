@@ -92,16 +92,16 @@ async function handle(ctx) {
                     const now = new Date();
                     const diffDays = ((expDate - now) / (1000 * 60 * 60 * 24)).toFixed(1);
                     const isExpired = diffDays <= 0;
-                    textInfo += `• *Sisa Masa Aktif:* ${isExpired ? 'KEDALUWARSA 🔴' : `*${diffDays} Hari* 🟢`}\n`;
+                    textInfo += `• *Masa Aktif:* ${isExpired ? 'KEDALUWARSA 🔴' : `*${diffDays} Hari Tersisa* 🟢`}\n`;
                 }
             } else {
                 textInfo += `• *Format:* Custom Token\n`;
             }
-            textInfo += `\n`;
+            textInfo += `• *Status Server:* Siap Digunakan ✨\n\n`;
         });
         
         textInfo += `📊 *Antrean Aktif:* ${pixaiService.antrianPixAI.length} pesanan\n`;
-        textInfo += '_Sistem rotasi & failover otomatis aktif untuk seluruh token pool._ 🎨✨';
+        textInfo += '_Sistem pemantauan kredit & failover otomatis aktif untuk seluruh token pool._ 🎨✨';
         
         await reply(textInfo);
         return true;
