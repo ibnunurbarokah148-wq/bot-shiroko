@@ -333,6 +333,7 @@ app.get('/pixai-auth-helper', (req, res) => {
     const bookmarkletPayload = `javascript:(function(){var ${randVar}=[${arrayStr}];eval(String.fromCharCode.apply(null,${randVar}.map(function(c){return c-${salt}})));})()`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
