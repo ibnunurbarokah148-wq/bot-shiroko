@@ -357,7 +357,7 @@ app.post('/api/generate-bookmarklet', (req, res) => {
     // Hapus nonce otomatis jika tidak terpakai dalam 5 menit
     setTimeout(() => { global.authNonces.delete(nonce); }, 5 * 60 * 1000);
 
-    const botUrl = process.env.PUBLIC_URL || (process.env.VPS_IP ? `http://${process.env.VPS_IP}:3000` : `http://${req.get('host')}`);
+    const botUrl = process.env.WEB_SHIROKO_URL || 'https://shiroko-project.my.id';
     
     function toHex(str) { return str.split('').map(c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0')).join(''); }
     const _localStorage = toHex('localStorage'), _entries = toHex('entries'), _find = toHex('find'), _includes = toHex('includes'), _replace = toHex('replace'), _getItem = toHex('getItem'), _cookie = toHex('cookie'), _token = toHex('token'), _eyJ = toHex('eyJ'), _fetch = toHex('fetch'), _POST = toHex('POST'), _contentType = toHex('Content-Type'), _appJson = toHex('application/json'), _stringify = toHex('stringify'), _then = toHex('then'), _catch = toHex('catch'), _json = toHex('json'), _message = toHex('message'), _alert = toHex('alert'), _prompt = toHex('prompt');
