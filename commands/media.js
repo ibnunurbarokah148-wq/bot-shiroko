@@ -82,11 +82,15 @@ async function handle(ctx) {
 
         let textInfo = `🔑 *[ STATUS PIXAI TOKEN POOL ]*\nTotal Token: *${tokens.length} Key(s)*\n\n`;
 
-        tokens.forEach((t, idx) => {
+        for (let idx = 0; idx < tokens.length; idx++) {
+            const t = tokens[idx];
             const payload = pixaiAuth.decodeJwt(t);
+            const credits = await pixaiAuth.getUserCredits(t);
+
             textInfo += `*🔑 Token #${idx + 1}:*\n`;
             if (payload) {
                 textInfo += `• *User ID:* \`${payload.sub || 'N/A'}\`\n`;
+                textInfo += `• *Sisa Credit:* *${credits}* 💎\n`;
                 if (payload.exp) {
                     const expDate = new Date(payload.exp * 1000);
                     const now = new Date();
@@ -96,9 +100,10 @@ async function handle(ctx) {
                 }
             } else {
                 textInfo += `• *Format:* Custom Token\n`;
+                textInfo += `• *Sisa Credit:* *${credits}* 💎\n`;
             }
             textInfo += `• *Status Server:* Siap Digunakan ✨\n\n`;
-        });
+        }
         
         textInfo += `📊 *Antrean Aktif:* ${pixaiService.antrianPixAI.length} pesanan\n`;
         textInfo += '_Sistem pemantauan kredit & failover otomatis aktif untuk seluruh token pool._ 🎨✨';

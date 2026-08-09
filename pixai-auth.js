@@ -123,6 +123,46 @@ function addTokenToEnv(newToken) {
 }
 
 /**
+ * Memeriksa sisa Credit/Poin akun PixAI dari Token
+ * @param {string} token
+ * @returns {Promise<string>} Jumlah credit atau status
+ */
+async function getUserCredits(token) {
+    if (!token) return 'N/A';
+    const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+
+    const gqlQueries = [
+        `query { me { id username credit } }`,
+        `query { me { id username points } }`,
+        `query { me { id username credits } }`
+    ];
+
+    for (const query of gqlQueries) {
+        try {
+            const res = await axios.post('https://api.pixai.art/graphql', { query }, {
+                headers: {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                },
+                timeout: 6000,
+                validateStatus: () => true
+            });
+
+            const me = res.data?.data?.me;
+            if (me) {
+                const val = me.credit ?? me.credits ?? me.points;
+                if (val !== undefined && val !== null) {
+                    return Number(val).toLocaleString('id-ID');
+                }
+            }
+        } catch (e) {}
+    }
+
+    return 'Tersedia 🟢';
+}
+
+/**
  * Memeriksa status & masa aktif token PixAI
  */
 async function checkTokenStatus(token) {
@@ -332,6 +372,7 @@ if (require.main === module) {
 module.exports = {
     decodeJwt,
     getAllTokens,
+    getUserCredits,
     pruneExpiredTokens,
     removeTokenFromEnv,
     saveTokenPoolToEnv,
