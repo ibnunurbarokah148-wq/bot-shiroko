@@ -59,9 +59,10 @@ async function handle(ctx) {
     // HANDLER !AUTHLINK / !PIXAILINK (WEB AUTH HELPER LINK)
     // ==========================================
     if (textLower === '!authlink' || textLower === '!pixailink') {
+        const baseUrl = process.env.PUBLIC_URL || (process.env.VPS_IP ? `http://${process.env.VPS_IP}:3000` : 'http://103.253.213.252:3000');
         let linkMsg = `🌐 *[ PIXAI WEB AUTH HELPER ]*\n\n`;
         linkMsg += `Nn... Buka halaman Web Auth berikut di browser Anda untuk mengizinkan atau mengirimkan Token PixAI secara otomatis ke bot (1-Click tanpa DevTools):\n\n`;
-        linkMsg += `🔗 *Link Auth Web:*\nhttp://localhost:3000/pixai-auth-helper\n*(Ganti localhost dengan IP VPS Anda)*\n\n`;
+        linkMsg += `🔗 *Link Auth Web:*\n${baseUrl}/pixai-auth-helper\n\n`;
         linkMsg += `_Setelah terhubung, bot akan mengirimkan notifikasi otomatis dan menyimpan token ke server!_ 🎨✨`;
 
         await reply(linkMsg);
