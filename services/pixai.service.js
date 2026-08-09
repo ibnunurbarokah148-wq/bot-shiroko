@@ -191,7 +191,7 @@ async function createGenerationTask(prompt, options = {}) {
  * @param {number} [maxWaitSeconds=90]
  * @returns {Promise<string>} imageUrl
  */
-async function pollTaskResult(taskId, maxWaitSeconds = 90) {
+async function pollTaskResult(taskId, maxWaitSeconds = 180) {
     const tokens = getPixaiTokens();
     const token = tokens[0] || process.env.PIXAI_TOKEN || '';
     const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
@@ -211,7 +211,7 @@ async function pollTaskResult(taskId, maxWaitSeconds = 90) {
 
             const taskData = res.data?.data || res.data;
             if (taskData) {
-                console.log(`[PIXAI] Status Task ${taskId}: ${taskData.status}`);
+                console.log(`[PIXAI REST] Status Task ${taskId}: ${taskData.status}`);
                 if (taskData.status === 'completed' || taskData.status === 'SUCCESS' || taskData.status === 'FINISHED') {
                     const mediaUrls = taskData.outputs?.mediaUrls || taskData.mediaUrls || taskData.urls;
                     if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
@@ -230,9 +230,47 @@ async function pollTaskResult(taskId, maxWaitSeconds = 90) {
         } catch (errRest) {
             if (errRest.message.includes('gagal diproses')) throw errRest;
         }
+
+        // 2. Fallback via GraphQL
+        try {
+            const gqlQuery = {
+                query: `
+                    query getTask($id: String!) {
+                        getTaskById(id: $id) {
+                            id
+                            status
+                            outputs {
+                                mediaUrl
+                            }
+                        }
+                    }
+                `,
+                variables: { id: taskId }
+            };
+
+            const resGql = await axios.post('https://api.pixai.art/graphql', gqlQuery, {
+                headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+                timeout: 10000
+            });
+
+            const taskGql = resGql.data?.data?.getTaskById;
+            if (taskGql) {
+                console.log(`[PIXAI GQL] Status Task ${taskId}: ${taskGql.status}`);
+                if (taskGql.status === 'completed' || taskGql.status === 'SUCCESS' || taskGql.status === 'FINISHED') {
+                    if (taskGql.outputs && taskGql.outputs.length > 0 && taskGql.outputs[0].mediaUrl) {
+                        console.log(`[PIXAI] Render GraphQL selesai! URL Gambar: ${taskGql.outputs[0].mediaUrl}`);
+                        return taskGql.outputs[0].mediaUrl;
+                    }
+                } else if (taskGql.status === 'failed' || taskGql.status === 'FAILED') {
+                    throw new Error('Task PixAI gagal diproses oleh server.');
+                }
+            }
+        } catch (eGql) {
+            if (eGql.message.includes('gagal diproses')) throw eGql;
+        }
     }
 
-    throw new Error('Timeout: PixAI membutuhkan waktu terlalu lama untuk generate gambar (melebihi 90 detik).');
+    throw new Error(`Timeout: PixAI membutuhkan waktu terlalu lama untuk generate gambar (melebihi ${maxWaitSeconds} detik).`);
 }
 
 /**
