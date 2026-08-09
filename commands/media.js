@@ -77,7 +77,7 @@ async function handle(ctx) {
             }
         }
 
-        const webUrl = process.env.WEB_SHIROKO_URL || 'http://localhost:8080';
+        const webUrl = process.env.WEB_SHIROKO_URL || 'https://shiroko-project.my.id';
         let linkMsg = `🌐 *[ PIXAI WEB AUTH OTP ]*\n\n`;
         linkMsg += `Nn... Akses generator Web Auth untuk akun Anda.\n\n`;
         linkMsg += `🔗 *Website:* ${webUrl}/pixai-api\n`;
