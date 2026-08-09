@@ -30,12 +30,33 @@ function decodeJwt(token) {
 }
 
 /**
+ * Pangkas token yang kedaluwarsa dari pool secara otomatis
+ * @returns {string[]} Array token aktif yang valid
+ */
+function pruneExpiredTokens() {
+    const raw = process.env.PIXAI_TOKEN || process.env.PIXAI_API_KEY || '';
+    const currentTokens = raw.split(',').map(t => t.trim()).filter(Boolean);
+    const now = Math.floor(Date.now() / 1000);
+
+    const validTokens = currentTokens.filter(token => {
+        const payload = decodeJwt(token);
+        if (!payload || !payload.exp) return true; // Pertahankan token tanpa JWT standard
+        return payload.exp > (now + 60); // Hapus token yang sudah / akan kedaluwarsa dalam 1 menit
+    });
+
+    if (validTokens.length !== currentTokens.length) {
+        console.log(`🧹 [TOKEN CLEANUP] Menghapus ${currentTokens.length - validTokens.length} token PixAI yang kedaluwarsa dari pool.`);
+        saveTokenPoolToEnv(validTokens);
+    }
+    return validTokens;
+}
+
+/**
  * Mendapatkan seluruh daftar token PixAI dari .env (Multi-Token Pool)
  * @returns {string[]} Array token
  */
 function getAllTokens() {
-    const raw = process.env.PIXAI_TOKEN || process.env.PIXAI_API_KEY || '';
-    return raw.split(',').map(t => t.trim()).filter(Boolean);
+    return pruneExpiredTokens();
 }
 
 /**
@@ -294,6 +315,7 @@ if (require.main === module) {
 module.exports = {
     decodeJwt,
     getAllTokens,
+    pruneExpiredTokens,
     saveTokenPoolToEnv,
     addTokenToEnv,
     checkTokenStatus,
