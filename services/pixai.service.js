@@ -182,6 +182,9 @@ async function createGenerationTask(prompt, options = {}) {
     }
 
     const finalErrMsg = lastError?.response?.data?.message || lastError?.message || 'Seluruh Token PixAI Gagal / Kedaluwarsa';
+    if (finalErrMsg.includes('Authentication required') || finalErrMsg.includes('401')) {
+        throw new Error('Token PixAI pada server bot telah kedaluwarsa / 401 Unauthorized. Harap hubungkan token baru via !authlink atau !setpixai [token].');
+    }
     throw new Error(`PixAI Task Creation Error: ${finalErrMsg}`);
 }
 
