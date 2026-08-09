@@ -85,12 +85,10 @@ async function handle(ctx) {
         for (let idx = 0; idx < tokens.length; idx++) {
             const t = tokens[idx];
             const payload = pixaiAuth.decodeJwt(t);
-            const credits = await pixaiAuth.getUserCredits(t);
 
             textInfo += `*🔑 Token #${idx + 1}:*\n`;
             if (payload) {
                 textInfo += `• *User ID:* \`${payload.sub || 'N/A'}\`\n`;
-                textInfo += `• *Sisa Credit:* *${credits}* 💎\n`;
                 if (payload.exp) {
                     const expDate = new Date(payload.exp * 1000);
                     const now = new Date();
@@ -100,8 +98,8 @@ async function handle(ctx) {
                 }
             } else {
                 textInfo += `• *Format:* Custom Token\n`;
-                textInfo += `• *Sisa Credit:* *${credits}* 💎\n`;
             }
+            textInfo += `• *Status Kredit:* *Aktif / Siap Render* 💎\n`;
             textInfo += `• *Status Server:* Siap Digunakan ✨\n\n`;
         }
         
