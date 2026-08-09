@@ -1,23 +1,26 @@
 // ==========================================
 // PIXAI SERVICE — Generator Gambar Anime PixAI.art
+// Multi-Token Pool & Auto-Refresh Integration
 // ==========================================
 const axios = require('axios');
+const pixaiAuth = require('../pixai-auth');
 
 // ==========================================
 // SHARED QUEUE PIXAI (WhatsApp & Discord)
 // ==========================================
 const antrianPixAI = [];
 let sedangRenderPixAI = false;
+let currentTokenIndex = 0;
 
 /**
- * Mendapatkan token PixAI dari .env
+ * Mendapatkan seluruh token PixAI aktif dari pool
  */
-function getPixaiToken() {
-    return process.env.PIXAI_TOKEN || process.env.PIXAI_API_KEY || '';
+function getPixaiTokens() {
+    return pixaiAuth.getAllTokens();
 }
 
 /**
- * Membuat tugas generate gambar di PixAI.art
+ * Membuat tugas generate gambar di PixAI.art dengan rotasi & failover Multi-Token
  * @param {string} prompt - Prompt teks (misal: "1girl, white hair, blue eyes")
  * @param {object} [options]
  * @param {string} [options.modelId] - Default model ID Anime/Realism
@@ -27,8 +30,16 @@ function getPixaiToken() {
  * @returns {Promise<string>} taskId
  */
 async function createGenerationTask(prompt, options = {}) {
-    const token = getPixaiToken();
-    if (!token) {
+    let tokens = getPixaiTokens();
+    
+    // Jika token pool kosong tapi ada PIXAI_CREDENTIALS, jalankan auto-refresh dulu
+    if (tokens.length === 0 && process.env.PIXAI_CREDENTIALS) {
+        console.log('[PIXAI] Memulai auto-refresh kredensial pertama kali...');
+        await pixaiAuth.refreshAllCredentials();
+        tokens = getPixaiTokens();
+    }
+
+    if (tokens.length === 0) {
         throw new Error('PIXAI_TOKEN tidak ditemukan pada file .env! Harap tambahkan PIXAI_TOKEN ke .env.');
     }
 
@@ -37,84 +48,141 @@ async function createGenerationTask(prompt, options = {}) {
     const width = options.width || 512;
     const height = options.height || 768;
 
-    const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+    let lastError = null;
 
-    console.log(`[PIXAI] Mengirim permintaan ke PixAI API (Prompt: "${prompt}")...`);
+    // Rotasi & Failover Multi-Token Pool
+    for (let attempt = 0; attempt < tokens.length; attempt++) {
+        const tokenIdx = (currentTokenIndex + attempt) % tokens.length;
+        const token = tokens[tokenIdx];
+        const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
 
-    // Attempt 1: GraphQL createGenerationTask (Menggunakan Web API PixAI, mendukung NSFW untuk akun 18+)
-    try {
-        const graphqlQuery = {
-            query: `
-                mutation createGenerationTask($parameters: JSONObject!) {
-                    createGenerationTask(parameters: $parameters) {
-                        id
-                        status
+        console.log(`[PIXAI] Mengirim permintaan ke PixAI API menggunakan Token #${tokenIdx + 1}/${tokens.length} (Prompt: "${prompt}")...`);
+
+        // Attempt 1: GraphQL createGenerationTask (Sama dengan Web API PixAI)
+        try {
+            const graphqlQuery = {
+                query: `
+                    mutation createGenerationTask($parameters: JSONObject!) {
+                        createGenerationTask(parameters: $parameters) {
+                            id
+                            status
+                        }
+                    }
+                `,
+                variables: {
+                    parameters: {
+                        prompts: prompt,
+                        modelId: modelId,
+                        steps: steps,
+                        width: width,
+                        height: height
                     }
                 }
-            `,
-            variables: {
+            };
+
+            const resGql = await axios.post('https://api.pixai.art/graphql', graphqlQuery, {
+                headers: {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                },
+                timeout: 15000
+            });
+
+            const taskIdGql = resGql.data?.data?.createGenerationTask?.id || resGql.data?.data?.createTask?.id;
+            if (taskIdGql) {
+                console.log(`[PIXAI] Task GraphQL berhasil dibuat (Token #${tokenIdx + 1})! Task ID: ${taskIdGql}`);
+                currentTokenIndex = (tokenIdx + 1) % tokens.length; // Rotasi untuk request selanjutnya
+                return taskIdGql;
+            }
+        } catch (eGql) {
+            console.warn(`[PIXAI] Token #${tokenIdx + 1} GraphQL gagal (${eGql.message}), mencoba REST fallback...`);
+            lastError = eGql;
+        }
+
+        // Attempt 2: REST API v2 Fallback
+        try {
+            const payload = {
+                prompt: prompt,
+                modelVersionId: modelId,
                 parameters: {
-                    prompts: prompt,
-                    modelId: modelId,
-                    steps: steps,
                     width: width,
-                    height: height
+                    height: height,
+                    steps: steps
+                }
+            };
+
+            const res = await axios.post('https://api.pixai.art/v2/image/create', payload, {
+                headers: {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 15000
+            });
+
+            const taskId = res.data?.id || res.data?.taskId || res.data?.data?.id;
+            if (taskId) {
+                console.log(`[PIXAI] Task REST berhasil dibuat (Token #${tokenIdx + 1})! Task ID: ${taskId}`);
+                currentTokenIndex = (tokenIdx + 1) % tokens.length;
+                return taskId;
+            }
+        } catch (e1) {
+            const errMsg = e1.response?.data?.message || e1.response?.data?.error || e1.message;
+            console.warn(`[PIXAI] Token #${tokenIdx + 1} REST gagal (${errMsg}). Menguji token berikutnya...`);
+            lastError = e1;
+        }
+    }
+
+    // Emergency Auto-Refresh jika seluruh token pool gagal
+    if (process.env.PIXAI_CREDENTIALS) {
+        console.log('[PIXAI EMERGENCY] Seluruh token pool gagal/kedaluwarsa. Mencoba Emergency Auto-Refresh...');
+        const refreshed = await pixaiAuth.refreshAllCredentials();
+        if (refreshed) {
+            const freshTokens = getPixaiTokens();
+            if (freshTokens.length > 0) {
+                const freshToken = freshTokens[0];
+                const authHeader = freshToken.startsWith('Bearer ') ? freshToken : `Bearer ${freshToken}`;
+
+                const graphqlQuery = {
+                    query: `
+                        mutation createGenerationTask($parameters: JSONObject!) {
+                            createGenerationTask(parameters: $parameters) {
+                                id
+                                status
+                            }
+                        }
+                    `,
+                    variables: {
+                        parameters: {
+                            prompts: prompt,
+                            modelId: modelId,
+                            steps: steps,
+                            width: width,
+                            height: height
+                        }
+                    }
+                };
+
+                const resGql = await axios.post('https://api.pixai.art/graphql', graphqlQuery, {
+                    headers: {
+                        'Authorization': authHeader,
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    },
+                    timeout: 15000
+                });
+
+                const taskIdRefreshed = resGql.data?.data?.createGenerationTask?.id || resGql.data?.data?.createTask?.id;
+                if (taskIdRefreshed) {
+                    console.log(`[PIXAI EMERGENCY] Task berhasil dibuat setelah Auto-Refresh! Task ID: ${taskIdRefreshed}`);
+                    return taskIdRefreshed;
                 }
             }
-        };
-
-        const resGql = await axios.post('https://api.pixai.art/graphql', graphqlQuery, {
-            headers: {
-                'Authorization': authHeader,
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            },
-            timeout: 15000
-        });
-
-        const taskIdGql = resGql.data?.data?.createGenerationTask?.id || resGql.data?.data?.createTask?.id;
-        if (taskIdGql) {
-            console.log(`[PIXAI] Task GraphQL berhasil dibuat! Task ID: ${taskIdGql}`);
-            return taskIdGql;
         }
-        if (resGql.data?.errors) {
-            console.warn(`[PIXAI] GraphQL warning (${resGql.data.errors[0]?.message}), mencoba REST fallback...`);
-        }
-    } catch (eGql) {
-        console.warn(`[PIXAI] GraphQL request gagal (${eGql.message}), mencoba REST fallback...`);
     }
 
-    // Attempt 2: REST API v2 (Fallback)
-    try {
-        const payload = {
-            prompt: prompt,
-            modelVersionId: modelId,
-            parameters: {
-                width: width,
-                height: height,
-                steps: steps
-            }
-        };
-
-        const res = await axios.post('https://api.pixai.art/v2/image/create', payload, {
-            headers: {
-                'Authorization': authHeader,
-                'Content-Type': 'application/json'
-            },
-            timeout: 15000
-        });
-
-        const taskId = res.data?.id || res.data?.taskId || res.data?.data?.id;
-        if (taskId) {
-            console.log(`[PIXAI] Task REST berhasil dibuat! Task ID: ${taskId}`);
-            return taskId;
-        }
-    } catch (e1) {
-        const errMsg = e1.response?.data?.message || e1.response?.data?.error || e1.message;
-        throw new Error(`PixAI Task Creation Error: ${errMsg}`);
-    }
-
-    throw new Error('Gagal mendapatkan Task ID dari PixAI API');
+    const finalErrMsg = lastError?.response?.data?.message || lastError?.message || 'Seluruh Token PixAI Gagal / Kedaluwarsa';
+    throw new Error(`PixAI Task Creation Error: ${finalErrMsg}`);
 }
 
 /**
@@ -124,7 +192,8 @@ async function createGenerationTask(prompt, options = {}) {
  * @returns {Promise<string>} imageUrl
  */
 async function pollTaskResult(taskId, maxWaitSeconds = 90) {
-    const token = getPixaiToken();
+    const tokens = getPixaiTokens();
+    const token = tokens[0] || process.env.PIXAI_TOKEN || '';
     const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
     const startTime = Date.now();
 
@@ -144,7 +213,6 @@ async function pollTaskResult(taskId, maxWaitSeconds = 90) {
             if (taskData) {
                 console.log(`[PIXAI] Status Task ${taskId}: ${taskData.status}`);
                 if (taskData.status === 'completed' || taskData.status === 'SUCCESS' || taskData.status === 'FINISHED') {
-                    // Extract mediaUrls dari outputs
                     const mediaUrls = taskData.outputs?.mediaUrls || taskData.mediaUrls || taskData.urls;
                     if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
                         const urlResult = typeof mediaUrls[0] === 'string' ? mediaUrls[0] : (mediaUrls[0].url || mediaUrls[0].mediaUrl);
@@ -178,7 +246,6 @@ async function generateImage(prompt, options = {}) {
     const imageUrl = await pollTaskResult(taskId);
 
     console.log(`[PIXAI] Mengunduh buffer gambar dari URL...`);
-    // Download gambar sebagai Buffer
     const imgRes = await axios.get(imageUrl, {
         responseType: 'arraybuffer',
         timeout: 30000

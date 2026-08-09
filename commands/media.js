@@ -60,28 +60,34 @@ async function handle(ctx) {
     // ==========================================
     if (textLower === '!cekpixai' || textLower === '!pixaitoken') {
         const pixaiAuth = require('../pixai-auth');
-        const token = process.env.PIXAI_TOKEN || '';
-        if (!token) {
-            await reply('❌ *[ PIXAI TOKEN ]*\n\nNn... Belum ada PIXAI_TOKEN yang terpasang pada .env server.');
+        const tokens = pixaiAuth.getAllTokens();
+        if (tokens.length === 0) {
+            await reply('❌ *[ PIXAI TOKEN POOL ]*\n\nNn... Belum ada PIXAI_TOKEN yang terpasang pada .env server.');
             return true;
         }
 
-        const payload = pixaiAuth.decodeJwt(token);
-        let textInfo = '🔑 *[ STATUS PIXAI TOKEN ]*\n\n';
-        if (payload) {
-            textInfo += `📌 *User ID:* ${payload.sub || 'N/A'}\n`;
-            textInfo += `📅 *Dibuat:* ${payload.iat ? new Date(payload.iat * 1000).toLocaleString('id-ID') : 'N/A'}\n`;
-            if (payload.exp) {
-                const expDate = new Date(payload.exp * 1000);
-                const now = new Date();
-                const diffDays = ((expDate - now) / (1000 * 60 * 60 * 24)).toFixed(1);
-                const isExpired = diffDays <= 0;
-                textInfo += `⏳ *Kedaluwarsa:* ${expDate.toLocaleString('id-ID')} (${isExpired ? 'KEDALUWARSA 🔴' : `*${diffDays} Hari Tersisa* 🟢`})\n`;
+        let textInfo = `🔑 *[ STATUS PIXAI TOKEN POOL ]*\nTotal Token: *${tokens.length} Key(s)*\n\n`;
+
+        tokens.forEach((t, idx) => {
+            const payload = pixaiAuth.decodeJwt(t);
+            textInfo += `*🔑 Token #${idx + 1}:*\n`;
+            if (payload) {
+                textInfo += `• *User ID:* \`${payload.sub || 'N/A'}\`\n`;
+                if (payload.exp) {
+                    const expDate = new Date(payload.exp * 1000);
+                    const now = new Date();
+                    const diffDays = ((expDate - now) / (1000 * 60 * 60 * 24)).toFixed(1);
+                    const isExpired = diffDays <= 0;
+                    textInfo += `• *Sisa Masa Aktif:* ${isExpired ? 'KEDALUWARSA 🔴' : `*${diffDays} Hari* 🟢`}\n`;
+                }
+            } else {
+                textInfo += `• *Format:* Custom Token\n`;
             }
-        }
+            textInfo += `\n`;
+        });
         
-        textInfo += `📊 *Antrean Aktif:* ${pixaiService.antrianPixAI.length} pesanan\n\n`;
-        textInfo += '_Token di .env siap digunakan untuk mendatangkan karya gambar anime PixAI._ 🎨✨';
+        textInfo += `📊 *Antrean Aktif:* ${pixaiService.antrianPixAI.length} pesanan\n`;
+        textInfo += '_Sistem rotasi & failover otomatis aktif untuk seluruh token pool._ 🎨✨';
         
         await reply(textInfo);
         return true;

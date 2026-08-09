@@ -1,6 +1,6 @@
 // ==========================================
-// PIXAI AUTH & TOKEN GENERATOR TOOL
-// Tool pembantu untuk memvalidasi, mendekode, dan mendatangkan Token API PixAI.art
+// PIXAI AUTH & MULTI-TOKEN POOL MANAGER
+// Tool pembantu untuk memvalidasi, auto-refresh, dan mengelola Multi-Token API PixAI.art
 // ==========================================
 require('dotenv').config();
 const fs = require('fs');
@@ -17,7 +17,6 @@ function decodeJwt(token) {
         const parts = cleanToken.split('.');
         if (parts.length !== 3) return null;
 
-        // Base64Url decode
         let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
         while (base64.length % 4) {
             base64 += '=';
@@ -31,18 +30,71 @@ function decodeJwt(token) {
 }
 
 /**
- * Memeriksa status & masa aktif token PixAI saat ini
+ * Mendapatkan seluruh daftar token PixAI dari .env (Multi-Token Pool)
+ * @returns {string[]} Array token
+ */
+function getAllTokens() {
+    const raw = process.env.PIXAI_TOKEN || process.env.PIXAI_API_KEY || '';
+    return raw.split(',').map(t => t.trim()).filter(Boolean);
+}
+
+/**
+ * Menyimpan array token ke file .env dan memori runtime
+ * @param {string[]} tokens
+ */
+function saveTokenPoolToEnv(tokens) {
+    const envPath = path.join(__dirname, '.env');
+    const uniqueTokens = [...new Set(tokens.map(t => t.trim()).filter(Boolean))];
+    const joinedStr = uniqueTokens.join(',');
+
+    process.env.PIXAI_TOKEN = joinedStr; // Update runtime memory!
+
+    if (!fs.existsSync(envPath)) {
+        fs.writeFileSync(envPath, `PIXAI_TOKEN=${joinedStr}\n`);
+        console.log('✅ File .env baru berhasil dibuat dengan PIXAI_TOKEN pool!');
+        return;
+    }
+
+    let envContent = fs.readFileSync(envPath, 'utf8');
+
+    if (envContent.includes('PIXAI_TOKEN=')) {
+        envContent = envContent.replace(/PIXAI_TOKEN=.*/g, `PIXAI_TOKEN=${joinedStr}`);
+    } else {
+        envContent += `\nPIXAI_TOKEN=${joinedStr}\n`;
+    }
+
+    fs.writeFileSync(envPath, envContent);
+    console.log(`✅ PIXAI_TOKEN pool (${uniqueTokens.length} token) berhasil disimpan ke .env!`);
+}
+
+/**
+ * Menambahkan token baru ke pool di .env
+ * @param {string} newToken
+ */
+function addTokenToEnv(newToken) {
+    const currentTokens = getAllTokens();
+    const cleanToken = newToken.trim();
+    if (!cleanToken) return;
+
+    if (!currentTokens.includes(cleanToken)) {
+        currentTokens.push(cleanToken);
+        saveTokenPoolToEnv(currentTokens);
+    } else {
+        console.log('ℹ️ Token ini sudah ada di dalam pool.');
+    }
+}
+
+/**
+ * Memeriksa status & masa aktif token PixAI
  */
 async function checkTokenStatus(token) {
     if (!token) {
-        console.log('❌ [ERROR] PIXAI_TOKEN kosong / tidak ditemukan pada .env!');
+        console.log('❌ [ERROR] Token kosong / tidak valid!');
         return false;
     }
 
     const payload = decodeJwt(token);
-    if (!payload) {
-        console.log('⚠️ [WARNING] Token PixAI bukan dalam format JWT valid.');
-    } else {
+    if (payload) {
         console.log('----------------------------------------------------');
         console.log('📌 PIXAI TOKEN DETAILS:');
         console.log(`   • User ID  : ${payload.sub || 'N/A'}`);
@@ -51,67 +103,37 @@ async function checkTokenStatus(token) {
             const expDate = new Date(payload.exp * 1000);
             const now = new Date();
             const diffDays = ((expDate - now) / (1000 * 60 * 60 * 24)).toFixed(1);
-            console.log(`   • Expires  : ${expDate.toLocaleString('id-ID')} (${diffDays > 0 ? `${diffDays} Hari Tersisa` : 'KEDALUWARSA 🔴'})`);
+            console.log(`   • Expires  : ${expDate.toLocaleString('id-ID')} (${diffDays > 0 ? `${diffDays} Hari Tersisa 🟢` : 'KEDALUWARSA 🔴'})`);
         }
         console.log('----------------------------------------------------');
     }
 
-    // Validasi langsung ke Server PixAI
     try {
         const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-        console.log('🔍 Memverifikasi token ke Server PixAI.art API...');
-        
         const res = await axios.get('https://api.pixai.art/v1/task/2042881824479252719', {
             headers: { 'Authorization': authHeader },
             timeout: 8000
         });
 
         if (res.status === 200 || res.data) {
-            console.log('✅ [SUCCESS] Token PixAI VALID & Aktif! Siap digunakan untuk bot.');
+            console.log('✅ [SUCCESS] Token PixAI VALID & Aktif!');
             return true;
         }
     } catch (err) {
         if (err.response?.status === 401 || err.response?.status === 403) {
-            console.log('❌ [FAIL] Token PixAI KEDALUWARSA atau DITOLAK oleh server PixAI (401/403).');
+            console.log('❌ [FAIL] Token PixAI KEDALUWARSA atau DITOLAK (401/403).');
         } else {
-            console.log(`⚠️ [NOTICE] Verifikasi server: ${err.message}`);
+            console.log(`⚠️ [NOTICE] Status server: ${err.message}`);
         }
     }
     return false;
 }
 
 /**
- * Menyimpan token baru ke file .env
- */
-function saveTokenToEnv(newToken) {
-    const envPath = path.join(__dirname, '.env');
-    const cleanToken = newToken.trim();
-
-    process.env.PIXAI_TOKEN = cleanToken; // Update runtime memory!
-
-    if (!fs.existsSync(envPath)) {
-        fs.writeFileSync(envPath, `PIXAI_TOKEN=${cleanToken}\n`);
-        console.log('✅ File .env baru berhasil dibuat dengan PIXAI_TOKEN!');
-        return;
-    }
-
-    let envContent = fs.readFileSync(envPath, 'utf8');
-
-    if (envContent.includes('PIXAI_TOKEN=')) {
-        envContent = envContent.replace(/PIXAI_TOKEN=.*/g, `PIXAI_TOKEN=${cleanToken}`);
-    } else {
-        envContent += `\nPIXAI_TOKEN=${cleanToken}\n`;
-    }
-
-    fs.writeFileSync(envPath, envContent);
-    console.log('✅ PIXAI_TOKEN berhasil diperbarui pada file .env!');
-}
-
-/**
  * Login via Email & Password ke API PixAI
  */
 async function loginWithCredentials(email, password) {
-    console.log(`\n🔑 Mencoba login ke PixAI API sebagai: ${email}...`);
+    console.log(`🔑 Login ke PixAI API sebagai: ${email}...`);
     try {
         const res = await axios.post('https://api.pixai.art/v1/auth/login', {
             email: email,
@@ -126,16 +148,50 @@ async function loginWithCredentials(email, password) {
 
         const token = res.data?.token || res.data?.accessToken || res.data?.data?.token;
         if (token) {
-            console.log('🎉 [LOGIN SUKSES] Token berhasil didapatkan!');
+            console.log(`🎉 [LOGIN SUKSES] Token didapatkan untuk ${email}!`);
             return token;
         } else {
-            console.log('⚠️ Response server:', JSON.stringify(res.data));
             throw new Error('Server tidak mengembalikan token JWT.');
         }
     } catch (err) {
         const msg = err.response?.data?.message || err.response?.data?.error || err.message;
-        throw new Error(`Login Gagal: ${msg}`);
+        throw new Error(`Login ${email} Gagal: ${msg}`);
     }
+}
+
+/**
+ * Auto-Refresh seluruh akun dari PIXAI_CREDENTIALS di .env
+ * Format PIXAI_CREDENTIALS: "email1:pass1,email2:pass2"
+ */
+async function refreshAllCredentials() {
+    const rawCreds = process.env.PIXAI_CREDENTIALS || '';
+    if (!rawCreds.trim()) {
+        console.log('ℹ️ PIXAI_CREDENTIALS tidak diatur pada file .env (Format: "email1:pass1,email2:pass2")');
+        return false;
+    }
+
+    const credList = rawCreds.split(',').map(c => c.trim()).filter(Boolean);
+    console.log(`🔄 Memulai Auto-Refresh untuk ${credList.length} akun PixAI...`);
+
+    const newTokens = [];
+    for (const cred of credList) {
+        const [email, password] = cred.split(':');
+        if (email && password) {
+            try {
+                const token = await loginWithCredentials(email.trim(), password.trim());
+                newTokens.push(token);
+            } catch (err) {
+                console.error(`❌ Gagal refresh akun ${email}:`, err.message);
+            }
+        }
+    }
+
+    if (newTokens.length > 0) {
+        saveTokenPoolToEnv(newTokens);
+        console.log(`🎉 [AUTO-REFRESH SUKSES] ${newTokens.length} Token PixAI berhasil diperbarui ke .env!`);
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -144,15 +200,16 @@ async function loginWithCredentials(email, password) {
 async function main() {
     console.log(`
 ==================================================
-  🎨 PIXAI.ART AUTH & TOKEN GENERATOR TOOL 🐺
+  🎨 PIXAI.ART MULTI-TOKEN MANAGER & AUTO-REFRESH 🐺
 ==================================================
 `);
 
-    const currentToken = process.env.PIXAI_TOKEN || '';
-    if (currentToken) {
-        await checkTokenStatus(currentToken);
-    } else {
-        console.log('ℹ️ Belum ada PIXAI_TOKEN yang terpasang pada .env');
+    const tokens = getAllTokens();
+    console.log(`📊 Terdeteksi ${tokens.length} Token pada PIXAI_TOKEN Pool.`);
+    
+    for (let i = 0; i < tokens.length; i++) {
+        console.log(`\n🔍 Checking Token #${i + 1}/${tokens.length}:`);
+        await checkTokenStatus(tokens[i]);
     }
 
     const rl = readline.createInterface({
@@ -164,17 +221,24 @@ async function main() {
 
     console.log(`
 Pilihan Menu:
-1. 🔍 Cek Status Token Saat Ini
-2. 🔑 Login & Generate Token Baru (Email & Password)
-3. 📝 Tempel Token JWT Manual (Paste Token)
-4. 🚪 Keluar
+1. 🔍 Cek Status Seluruh Token Pool
+2. 🔄 Jalankan Auto-Refresh Akun (via PIXAI_CREDENTIALS)
+3. 🔑 Tambah Akun Baru (Login Email & Password)
+4. 📝 Tambah Token Manual ke Pool (Paste Token)
+5. 🚪 Keluar
 `);
 
-    const choice = await ask('Pilih menu (1-4): ');
+    const choice = await ask('Pilih menu (1-5): ');
 
     if (choice === '1') {
-        await checkTokenStatus(currentToken);
+        const currentTokens = getAllTokens();
+        for (let i = 0; i < currentTokens.length; i++) {
+            console.log(`\n🔍 Checking Token #${i + 1}/${currentTokens.length}:`);
+            await checkTokenStatus(currentTokens[i]);
+        }
     } else if (choice === '2') {
+        await refreshAllCredentials();
+    } else if (choice === '3') {
         const email = await ask('Masukkan Email PixAI: ');
         const password = await ask('Masukkan Password PixAI: ');
 
@@ -183,19 +247,19 @@ Pilihan Menu:
         } else {
             try {
                 const token = await loginWithCredentials(email.trim(), password.trim());
-                saveTokenToEnv(token);
+                addTokenToEnv(token);
                 await checkTokenStatus(token);
             } catch (err) {
                 console.log(`❌ ${err.message}`);
-                console.log('\n💡 Tips: Jika login API terhadang Captcha, buka browser DevTools di pixai.art lalu salin JWT token dari LocalStorage / Authorization Header.');
+                console.log('💡 Jika login terhadang Captcha, gunakan menu 4 untuk menempelkan token dari browser.');
             }
         }
-    } else if (choice === '3') {
-        const inputToken = await ask('\nTempelkan JWT Token PixAI Anda di sini:\n> ');
+    } else if (choice === '4') {
+        const inputToken = await ask('\nTempelkan Token PixAI Baru di sini:\n> ');
         if (!inputToken.trim()) {
             console.log('❌ Token tidak boleh kosong!');
         } else {
-            saveTokenToEnv(inputToken.trim());
+            addTokenToEnv(inputToken.trim());
             await checkTokenStatus(inputToken.trim());
         }
     } else {
@@ -211,7 +275,10 @@ if (require.main === module) {
 
 module.exports = {
     decodeJwt,
+    getAllTokens,
+    saveTokenPoolToEnv,
+    addTokenToEnv,
     checkTokenStatus,
-    saveTokenToEnv,
-    loginWithCredentials
+    loginWithCredentials,
+    refreshAllCredentials
 };
