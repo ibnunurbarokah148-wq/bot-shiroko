@@ -87,6 +87,8 @@ function saveTokenToEnv(newToken) {
     const envPath = path.join(__dirname, '.env');
     const cleanToken = newToken.trim();
 
+    process.env.PIXAI_TOKEN = cleanToken; // Update runtime memory!
+
     if (!fs.existsSync(envPath)) {
         fs.writeFileSync(envPath, `PIXAI_TOKEN=${cleanToken}\n`);
         console.log('✅ File .env baru berhasil dibuat dengan PIXAI_TOKEN!');

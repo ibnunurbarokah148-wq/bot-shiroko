@@ -56,6 +56,104 @@ async function handle(ctx) {
     }
 
     // ==========================================
+    // HANDLER !CEKPIXAI (CEK STATUS PIXAI TOKEN)
+    // ==========================================
+    if (textLower === '!cekpixai' || textLower === '!pixaitoken') {
+        const pixaiAuth = require('../pixai-auth');
+        const token = process.env.PIXAI_TOKEN || '';
+        if (!token) {
+            await reply('❌ *[ PIXAI TOKEN ]*\n\nNn... Belum ada PIXAI_TOKEN yang terpasang pada .env server.');
+            return true;
+        }
+
+        const payload = pixaiAuth.decodeJwt(token);
+        let textInfo = '🔑 *[ STATUS PIXAI TOKEN ]*\n\n';
+        if (payload) {
+            textInfo += `📌 *User ID:* ${payload.sub || 'N/A'}\n`;
+            textInfo += `📅 *Dibuat:* ${payload.iat ? new Date(payload.iat * 1000).toLocaleString('id-ID') : 'N/A'}\n`;
+            if (payload.exp) {
+                const expDate = new Date(payload.exp * 1000);
+                const now = new Date();
+                const diffDays = ((expDate - now) / (1000 * 60 * 60 * 24)).toFixed(1);
+                const isExpired = diffDays <= 0;
+                textInfo += `⏳ *Kedaluwarsa:* ${expDate.toLocaleString('id-ID')} (${isExpired ? 'KEDALUWARSA 🔴' : `*${diffDays} Hari Tersisa* 🟢`})\n`;
+            }
+        }
+        
+        textInfo += `📊 *Antrean Aktif:* ${pixaiService.antrianPixAI.length} pesanan\n\n`;
+        textInfo += '_Token di .env siap digunakan untuk mendatangkan karya gambar anime PixAI._ 🎨✨';
+        
+        await reply(textInfo);
+        return true;
+    }
+
+    // ==========================================
+    // HANDLER !LOGINPIXAI (KHUSUS OWNER)
+    // ==========================================
+    if (textLower.startsWith('!loginpixai')) {
+        if (!isOwner) {
+            await reply('❌ Perintah ini khusus Komandan (Owner).');
+            return true;
+        }
+
+        const args = textClean.split(' ').slice(1);
+        if (args.length < 2) {
+            await reply('⚠️ *[ LOGIN PIXAI API ]*\n\nFormat:\n*!loginpixai [email] [password]*\n\n*Catatan:* Jalankan perintah ini di Private Chat (Japri) untuk menjaga kerahasiaan password Anda.');
+            return true;
+        }
+
+        const email = args[0].trim();
+        const password = args.slice(1).join(' ').trim();
+
+        await reply(`🔑 Nn... Mencoba login ke PixAI API sebagai *${email}*...`);
+
+        try {
+            const pixaiAuth = require('../pixai-auth');
+            const newToken = await pixaiAuth.loginWithCredentials(email, password);
+            pixaiAuth.saveTokenToEnv(newToken);
+
+            const payload = pixaiAuth.decodeJwt(newToken);
+            let diffDays = 'N/A';
+            if (payload?.exp) {
+                diffDays = ((new Date(payload.exp * 1000) - new Date()) / (1000 * 60 * 60 * 24)).toFixed(1);
+            }
+
+            await reply(`🎉 *[ LOGIN PIXAI SUKSES ]*\n\nNn... Berhasil mendapatkan token baru!\n\n📌 *User ID:* ${payload?.sub || 'N/A'}\n⏳ *Masa Aktif:* ${diffDays} Hari\n✅ *Status:* PIXAI_TOKEN di .env dan memori bot telah otomatis diperbarui! ✨`);
+        } catch (err) {
+            await reply(`❌ *[ LOGIN PIXAI GAGAL ]*\n\n_${err.message}_\n\n💡 *Tips:* Jika login API terhadang Captcha Cloudflare, gunakan perintah *!setpixai [token_jwt]* untuk memasang token dari DevTools.`);
+        }
+        return true;
+    }
+
+    // ==========================================
+    // HANDLER !SETPIXAI (SET PIXAI TOKEN MANUAL - KHUSUS OWNER)
+    // ==========================================
+    if (textLower.startsWith('!setpixai')) {
+        if (!isOwner) {
+            await reply('❌ Perintah ini khusus Komandan (Owner).');
+            return true;
+        }
+
+        const newToken = textClean.split(' ').slice(1).join(' ').trim();
+        if (!newToken) {
+            await reply('⚠️ *[ SET PIXAI TOKEN ]*\n\nFormat:\n*!setpixai [JWT_TOKEN_BARU]*');
+            return true;
+        }
+
+        const pixaiAuth = require('../pixai-auth');
+        pixaiAuth.saveTokenToEnv(newToken);
+
+        const payload = pixaiAuth.decodeJwt(newToken);
+        let diffDays = 'N/A';
+        if (payload?.exp) {
+            diffDays = ((new Date(payload.exp * 1000) - new Date()) / (1000 * 60 * 60 * 24)).toFixed(1);
+        }
+
+        await reply(`✅ *[ SET PIXAI TOKEN SUKSES ]*\n\nNn... PIXAI_TOKEN berhasil diperbarui pada file .env dan memori bot!\n\n📌 *User ID:* ${payload?.sub || 'N/A'}\n⏳ *Masa Aktif:* ${diffDays} Hari Tersisa 🟢`);
+        return true;
+    }
+
+    // ==========================================
     // HANDLER !GAMBAR (INTERAKTIF STEP 1)
     // ==========================================
     if (textLower.startsWith('!gambar')) {
