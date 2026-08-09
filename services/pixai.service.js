@@ -24,8 +24,8 @@ function getPixaiTokens() {
  * @param {string} prompt - Prompt teks (misal: "1girl, white hair, blue eyes")
  * @param {object} [options]
  * @param {string} [options.modelId] - Default model ID Anime/Realism
- * @param {number} [options.width=512]
- * @param {number} [options.height=768]
+ * @param {number} [options.width=720]
+ * @param {number} [options.height=1280]
  * @param {number} [options.steps=20]
  * @returns {Promise<string>} taskId
  */
@@ -45,8 +45,8 @@ async function createGenerationTask(prompt, options = {}) {
 
     const modelId = options.modelId || process.env.PIXAI_MODEL_ID || '1648918127446573124'; // Default model Anime
     const steps = options.steps || 20;
-    const width = options.width || 512;
-    const height = options.height || 768;
+    const width = options.width || 720;
+    const height = options.height || 1280;
 
     let lastError = null;
 
