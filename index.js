@@ -280,13 +280,22 @@ app.post('/api/control', express.json(), (req, res) => {
 // ==========================================
 // PIXAI WEB AUTH HELPER (PIXIV-AUTH STYLE)
 // ==========================================
+global.authNonces = new Set(); // Simpan nonce aktif
+
 app.post('/api/save-pixai-token', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-    const { token } = req.body;
+    const { token, nonce } = req.body;
     if (!token || !token.trim()) {
         return res.status(400).json({ status: 'error', message: 'Token tidak boleh kosong.' });
+    }
+
+    if (nonce) {
+        if (!global.authNonces.has(nonce)) {
+            return res.status(403).json({ status: 'error', message: '❌ Sesi Token Kadaluarsa atau Sudah Terpakai! Harap muat ulang halaman Web Auth Helper.' });
+        }
+        global.authNonces.delete(nonce); // Hapus nonce agar cuma bisa dipakai 1x
     }
 
     try {
@@ -324,13 +333,24 @@ app.post('/api/save-pixai-token', async (req, res) => {
 
 app.get('/pixai-auth-helper', (req, res) => {
     // ==========================================
-    // POLYMORPHIC OBFUSCATION (DYNAMIC PAYLOAD)
+    // POLYMORPHIC OBFUSCATION + SINGLE-USE NONCE
     // ==========================================
+    const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    global.authNonces.add(nonce);
+    
+    // Hapus nonce otomatis jika tidak terpakai dalam 5 menit (mencegah memory leak)
+    setTimeout(() => { global.authNonces.delete(nonce); }, 5 * 60 * 1000);
+
+    const botUrl = process.env.PUBLIC_URL || (process.env.VPS_IP ? `http://${process.env.VPS_IP}:3000` : `http://${req.get('host')}`);
+    
     function toHex(str) { return str.split('').map(c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0')).join(''); }
+    const _localStorage = toHex('localStorage'), _entries = toHex('entries'), _find = toHex('find'), _includes = toHex('includes'), _replace = toHex('replace'), _getItem = toHex('getItem'), _cookie = toHex('cookie'), _token = toHex('token'), _eyJ = toHex('eyJ'), _fetch = toHex('fetch'), _POST = toHex('POST'), _contentType = toHex('Content-Type'), _appJson = toHex('application/json'), _stringify = toHex('stringify'), _then = toHex('then'), _catch = toHex('catch'), _json = toHex('json'), _message = toHex('message'), _alert = toHex('alert'), _prompt = toHex('prompt');
+
     const v1 = '_0x' + Math.random().toString(16).substring(2, 8);
     const v2 = '_0x' + Math.random().toString(16).substring(2, 8);
     const v3 = '_0x' + Math.random().toString(16).substring(2, 8);
-    const bookmarkletPayload = `javascript:(function(){let ${v1}=Object['${toHex('entries')}'](window['${toHex('localStorage')}'])['${toHex('find')}'](([${v2},${v3}])=>${v3}['${toHex('includes')}']('${toHex('eyJ')}'))?.[1]?.['${toHex('replace')}'](/^"|"$/g,'')||window['${toHex('localStorage')}']['${toHex('getItem')}']('${toHex('token')}')||document['${toHex('cookie')}'];if(${v1}){window['${toHex('prompt')}']('${toHex('Salin Token PixAI Anda (Ctrl+C), lalu paste ke Opsi B:')}',${v1});}else{window['${toHex('alert')}']('${toHex('Token tidak ditemukan, pastikan Anda sudah login pada pixai.art')}');}})()`;
+
+    const bookmarkletPayload = `javascript:(function(){let ${v1}=Object['${_entries}'](window['${_localStorage}'])['${_find}'](([${v2},${v3}])=>${v3}['${_includes}']('${_eyJ}'))?.[1]?.['${_replace}'](/^"|"$/g,'')||window['${_localStorage}']['${_getItem}']('${_token}')||document['${_cookie}'];if(${v1}){window['${_fetch}']('${botUrl}/api/save-pixai-token',{method:'${_POST}',headers:{'${_contentType}':'${_appJson}'},body:JSON['${_stringify}']({token:${v1},nonce:'${nonce}'})})['${_then}'](r=>r['${_json}']())['${_then}'](d=>{window['${_alert}'](d['${_message}']);})['${_catch}'](e=>{window['${_prompt}']('${toHex('Koneksi otomatis gagal. Salin Token lalu paste di Opsi B Web Auth:')}',${v1});});}else{window['${_alert}']('${toHex('Token tidak ditemukan. Pastikan Anda sudah login di pixai.art')}');}})()`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
