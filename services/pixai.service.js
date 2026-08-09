@@ -93,7 +93,7 @@ async function createGenerationTask(prompt, options = {}) {
             if (taskIdGql) {
                 console.log(`[PIXAI] Task GraphQL berhasil dibuat (Token #${tokenIdx + 1})! Task ID: ${taskIdGql}`);
                 currentTokenIndex = (tokenIdx + 1) % tokens.length; // Rotasi untuk request selanjutnya
-                return taskIdGql;
+                return { taskId: taskIdGql, usedToken: token };
             }
         } catch (eGql) {
             console.warn(`[PIXAI] Token #${tokenIdx + 1} GraphQL gagal (${eGql.message}), mencoba REST fallback...`);
@@ -124,7 +124,7 @@ async function createGenerationTask(prompt, options = {}) {
             if (taskId) {
                 console.log(`[PIXAI] Task REST berhasil dibuat (Token #${tokenIdx + 1})! Task ID: ${taskId}`);
                 currentTokenIndex = (tokenIdx + 1) % tokens.length;
-                return taskId;
+                return { taskId: taskId, usedToken: token };
             }
         } catch (e1) {
             const errMsg = e1.response?.data?.message || e1.response?.data?.error || e1.message;
@@ -175,7 +175,7 @@ async function createGenerationTask(prompt, options = {}) {
                 const taskIdRefreshed = resGql.data?.data?.createGenerationTask?.id || resGql.data?.data?.createTask?.id;
                 if (taskIdRefreshed) {
                     console.log(`[PIXAI EMERGENCY] Task berhasil dibuat setelah Auto-Refresh! Task ID: ${taskIdRefreshed}`);
-                    return taskIdRefreshed;
+                    return { taskId: taskIdRefreshed, usedToken: freshToken };
                 }
             }
         }
@@ -191,13 +191,11 @@ async function createGenerationTask(prompt, options = {}) {
 /**
  * Polling status task hingga selesai dan mengambil URL gambar
  * @param {string} taskId
- * @param {number} [maxWaitSeconds=90]
+ * @param {string} [usedToken]
+ * @param {number} [maxWaitSeconds=180]
  * @returns {Promise<string>} imageUrl
  */
-async function pollTaskResult(taskId, maxWaitSeconds = 180) {
-    const tokens = getPixaiTokens();
-    const token = tokens[0] || process.env.PIXAI_TOKEN || '';
-    const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+async function pollTaskResult(taskId, usedToken = null, maxWaitSeconds = 180) {
     const startTime = Date.now();
 
     console.log(`[PIXAI] Memulai polling status untuk Task ID: ${taskId}...`);
@@ -205,71 +203,82 @@ async function pollTaskResult(taskId, maxWaitSeconds = 180) {
     while ((Date.now() - startTime) < maxWaitSeconds * 1000) {
         await new Promise(resolve => setTimeout(resolve, 3000)); // Polling tiap 3 detik
 
-        // 1. Cek via REST v1/v2
-        try {
-            const res = await axios.get(`https://api.pixai.art/v1/task/${taskId}`, {
-                headers: { 'Authorization': authHeader },
-                timeout: 10000
-            });
+        const allTokens = getPixaiTokens();
+        const tokensToTry = [];
+        if (usedToken) tokensToTry.push(usedToken);
+        allTokens.forEach(t => {
+            if (!tokensToTry.includes(t)) tokensToTry.push(t);
+        });
 
-            const taskData = res.data?.data || res.data;
-            if (taskData) {
-                console.log(`[PIXAI REST] Status Task ${taskId}: ${taskData.status}`);
-                if (taskData.status === 'completed' || taskData.status === 'SUCCESS' || taskData.status === 'FINISHED') {
-                    const mediaUrls = taskData.outputs?.mediaUrls || taskData.mediaUrls || taskData.urls;
-                    if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
-                        const urlResult = typeof mediaUrls[0] === 'string' ? mediaUrls[0] : (mediaUrls[0].url || mediaUrls[0].mediaUrl);
-                        console.log(`[PIXAI] Render selesai! URL Gambar: ${urlResult}`);
-                        return urlResult;
+        for (const token of tokensToTry) {
+            const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+
+            // 1. Cek via REST v1/v2
+            try {
+                const res = await axios.get(`https://api.pixai.art/v1/task/${taskId}`, {
+                    headers: { 'Authorization': authHeader },
+                    timeout: 10000
+                });
+
+                const taskData = res.data?.data || res.data;
+                if (taskData) {
+                    console.log(`[PIXAI REST] Status Task ${taskId}: ${taskData.status}`);
+                    if (taskData.status === 'completed' || taskData.status === 'SUCCESS' || taskData.status === 'FINISHED') {
+                        const mediaUrls = taskData.outputs?.mediaUrls || taskData.mediaUrls || taskData.urls;
+                        if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
+                            const urlResult = typeof mediaUrls[0] === 'string' ? mediaUrls[0] : (mediaUrls[0].url || mediaUrls[0].mediaUrl);
+                            console.log(`[PIXAI] Render selesai! URL Gambar: ${urlResult}`);
+                            return urlResult;
+                        }
+                        if (taskData.url) {
+                            console.log(`[PIXAI] Render selesai! URL Gambar: ${taskData.url}`);
+                            return taskData.url;
+                        }
+                    } else if (taskData.status === 'failed' || taskData.status === 'FAILED' || taskData.status === 'ERROR') {
+                        throw new Error(`Task PixAI gagal diproses oleh server (${taskData.errorMessage || 'Error'}).`);
                     }
-                    if (taskData.url) {
-                        console.log(`[PIXAI] Render selesai! URL Gambar: ${taskData.url}`);
-                        return taskData.url;
-                    }
-                } else if (taskData.status === 'failed' || taskData.status === 'FAILED' || taskData.status === 'ERROR') {
-                    throw new Error(`Task PixAI gagal diproses oleh server (${taskData.errorMessage || 'Error'}).`);
                 }
+            } catch (errRest) {
+                if (errRest.message.includes('gagal diproses')) throw errRest;
             }
-        } catch (errRest) {
-            if (errRest.message.includes('gagal diproses')) throw errRest;
-        }
 
-        // 2. Fallback via GraphQL
-        try {
-            const gqlQuery = {
-                query: `
-                    query getTask($id: String!) {
-                        getTaskById(id: $id) {
-                            id
-                            status
-                            outputs {
-                                mediaUrl
+            // 2. Fallback via GraphQL
+            try {
+                const gqlQuery = {
+                    query: `
+                        query getTask($id: String!) {
+                            getTaskById(id: $id) {
+                                id
+                                status
+                                outputs {
+                                    mediaUrl
+                                }
                             }
                         }
-                    }
-                `,
-                variables: { id: taskId }
-            };
+                    `,
+                    variables: { id: taskId }
+                };
 
-            const resGql = await axios.post('https://api.pixai.art/graphql', gqlQuery, {
-                headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
-                timeout: 10000
-            });
+                const resGql = await axios.post('https://api.pixai.art/graphql', gqlQuery, {
+                    headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+                    timeout: 10000
+                });
 
-            const taskGql = resGql.data?.data?.getTaskById;
-            if (taskGql) {
-                console.log(`[PIXAI GQL] Status Task ${taskId}: ${taskGql.status}`);
-                if (taskGql.status === 'completed' || taskGql.status === 'SUCCESS' || taskGql.status === 'FINISHED') {
-                    if (taskGql.outputs && taskGql.outputs.length > 0 && taskGql.outputs[0].mediaUrl) {
-                        console.log(`[PIXAI] Render GraphQL selesai! URL Gambar: ${taskGql.outputs[0].mediaUrl}`);
-                        return taskGql.outputs[0].mediaUrl;
+                const taskGql = resGql.data?.data?.getTaskById;
+                if (taskGql) {
+                    console.log(`[PIXAI GQL] Status Task ${taskId}: ${taskGql.status}`);
+                    if (taskGql.status === 'completed' || taskGql.status === 'SUCCESS' || taskGql.status === 'FINISHED') {
+                        if (taskGql.outputs && taskGql.outputs.length > 0 && taskGql.outputs[0].mediaUrl) {
+                            console.log(`[PIXAI] Render GraphQL selesai! URL Gambar: ${taskGql.outputs[0].mediaUrl}`);
+                            return taskGql.outputs[0].mediaUrl;
+                        }
+                    } else if (taskGql.status === 'failed' || taskGql.status === 'FAILED') {
+                        throw new Error('Task PixAI gagal diproses oleh server.');
                     }
-                } else if (taskGql.status === 'failed' || taskGql.status === 'FAILED') {
-                    throw new Error('Task PixAI gagal diproses oleh server.');
                 }
+            } catch (eGql) {
+                if (eGql.message.includes('gagal diproses')) throw eGql;
             }
-        } catch (eGql) {
-            if (eGql.message.includes('gagal diproses')) throw eGql;
         }
     }
 
@@ -283,8 +292,11 @@ async function pollTaskResult(taskId, maxWaitSeconds = 180) {
  * @returns {Promise<{buffer: Buffer, mime: string, imageUrl: string}>}
  */
 async function generateImage(prompt, options = {}) {
-    const taskId = await createGenerationTask(prompt, options);
-    const imageUrl = await pollTaskResult(taskId);
+    const resTask = await createGenerationTask(prompt, options);
+    const taskId = typeof resTask === 'string' ? resTask : resTask.taskId;
+    const usedToken = typeof resTask === 'object' ? resTask.usedToken : null;
+
+    const imageUrl = await pollTaskResult(taskId, usedToken);
 
     console.log(`[PIXAI] Mengunduh buffer gambar dari URL...`);
     const imgRes = await axios.get(imageUrl, {
