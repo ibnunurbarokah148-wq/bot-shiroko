@@ -323,6 +323,15 @@ app.post('/api/save-pixai-token', async (req, res) => {
 });
 
 app.get('/pixai-auth-helper', (req, res) => {
+    // ==========================================
+    // POLYMORPHIC OBFUSCATION (DYNAMIC PAYLOAD)
+    // ==========================================
+    const rawCode = `let t=Object.entries(localStorage).find(([k,v])=>v.includes('eyJ'))?.[1]?.replace(/^"|"$/g,'')||localStorage.getItem('token')||document.cookie;if(t){prompt('Salin Token PixAI Anda (Ctrl+C), lalu paste ke Opsi B:',t);}else{alert('Token tidak ditemukan, pastikan Anda sudah login pada pixai.art');}`;
+    const salt = Math.floor(Math.random() * 100) + 10; // Random salt setiap request
+    const arrayStr = Array.from(rawCode).map(c => c.charCodeAt(0) + salt).join(',');
+    const randVar = 'v_' + Math.random().toString(36).substring(2, 8);
+    const bookmarkletPayload = `javascript:(function(){var ${randVar}=[${arrayStr}];eval(String.fromCharCode.apply(null,${randVar}.map(function(c){return c-${salt}})));})()`;
+
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     const html = `<!DOCTYPE html>
 <html lang="id">
@@ -358,8 +367,8 @@ app.get('/pixai-auth-helper', (req, res) => {
 
         <div class="step-box">
             <div class="step-title">✨ Opsi A: 1-Click Auto Copy Token (Tanpa DevTools)</div>
-            <p style="font-size:13px; margin-bottom:10px;">Salin kode di bawah ini, buka tab <b style="color:#38bdf8">pixai.art</b>, ketik <b style="color:#10b981">javascript:</b> di address bar lalu paste kode di belakangnya:</p>
-            <textarea readonly onclick="this.select()" style="width:100%; height:75px; background:#1e293b; color:#38bdf8; border:1px solid #334155; border-radius:8px; padding:8px; font-size:12px; resize:none;">javascript:(function(){eval(atob("bGV0IHQ9T2JqZWN0LmVudHJpZXMobG9jYWxTdG9yYWdlKS5maW5kKChbayx2XSk9PnYuaW5jbHVkZXMoJ2V5SicpKT8uWzFdPy5yZXBsYWNlKC9eInwiJC9nLCcnKXx8bG9jYWxTdG9yYWdlLmdldEl0ZW0oJ3Rva2VuJyl8fGRvY3VtZW50LmNvb2tpZTtpZih0KXtwcm9tcHQoJ1NhbGluIFRva2VuIFBpeEFJIEFuZGEgKEN0cmwrQyksIGxhbHUgcGFzdGUga2UgT3BzaSBCOicsdCk7fWVsc2V7YWxlcnQoJ1Rva2VuIHRpZGFrIGRpdGVtdWthbiwgcGFzdGlrYW4gQW5kYSBzdWRhaCBsb2dpbiBwYWRhIHBpeGFpLmFydCcpO30="));})()</textarea>
+            <p style="font-size:13px; margin-bottom:10px;">Salin kode unik di bawah ini, buka tab <b style="color:#38bdf8">pixai.art</b>, ketik <b style="color:#10b981">javascript:</b> di address bar lalu paste kode di belakangnya:</p>
+            <textarea readonly onclick="this.select()" style="width:100%; height:85px; background:#1e293b; color:#38bdf8; border:1px solid #334155; border-radius:8px; padding:8px; font-size:11px; resize:none;">${bookmarkletPayload}</textarea>
         </div>
 
         <div class="step-box">
