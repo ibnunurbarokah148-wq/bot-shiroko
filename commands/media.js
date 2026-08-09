@@ -94,6 +94,51 @@ async function handle(ctx) {
     }
 
     // ==========================================
+    // HANDLER !BUATPIXAI / !GENPIXAI (PIXAI API TOKEN GENERATOR)
+    // ==========================================
+    if (textLower.startsWith('!buatpixai') || textLower.startsWith('!genpixai')) {
+        const args = textClean.split(' ').slice(1);
+        if (args.length < 2) {
+            await reply('🔑 *[ PIXAI API TOKEN GENERATOR ]*\n\nNn... Fitur ini digunakan untuk membuat/mengambil Token API PixAI baru dari akun PixAI.\n\n*Format:* \n*!buatpixai [email_pixai] [password_pixai]*\n\n⚠️ *Perhatian:* Jalankan perintah ini di Private Chat (Japri) demi keamanan password Anda!');
+            return true;
+        }
+
+        const email = args[0].trim();
+        const password = args.slice(1).join(' ').trim();
+
+        await reply(`🔑 Nn... Sedang memproses pembuatan API Token PixAI untuk *${email}*...`);
+
+        try {
+            const pixaiAuth = require('../pixai-auth');
+            const newToken = await pixaiAuth.loginWithCredentials(email, password);
+
+            const payload = pixaiAuth.decodeJwt(newToken);
+            let diffDays = 'N/A';
+            if (payload?.exp) {
+                diffDays = ((new Date(payload.exp * 1000) - new Date()) / (1000 * 60 * 60 * 24)).toFixed(1);
+            }
+
+            let msgSuccess = `🎉 *[ PIXAI API TOKEN SUCCESS ]*\n\n`;
+            msgSuccess += `Nn... Token API PixAI berhasil dibuat! ✨\n\n`;
+            msgSuccess += `📌 *User ID:* \`${payload?.sub || 'N/A'}\`\n`;
+            msgSuccess += `⏳ *Masa Aktif:* *${diffDays} Hari* 🟢\n\n`;
+            msgSuccess += `🔑 *API TOKEN:* \`${newToken}\`\n\n`;
+
+            if (isOwner) {
+                pixaiAuth.addTokenToEnv(newToken);
+                msgSuccess += `✅ *Info Owner:* Token ini telah otomatis ditambahkan ke \`PIXAI_TOKEN\` pool di server bot.`;
+            } else {
+                msgSuccess += `💡 *Petunjuk Dev:* Salin kode token di atas ke file \`.env\` (variabel \`PIXAI_TOKEN\`) atau gunakan pada header HTTP: \`Authorization: Bearer <TOKEN>\`.`;
+            }
+
+            await reply(msgSuccess);
+        } catch (err) {
+            await reply(`❌ *[ GENERATE TOKEN GAGAL ]*\n\n_${err.message}_\n\n💡 *Catatan:* Pastikan Email & Password akun PixAI sudah benar.`);
+        }
+        return true;
+    }
+
+    // ==========================================
     // HANDLER !LOGINPIXAI (KHUSUS OWNER)
     // ==========================================
     if (textLower.startsWith('!loginpixai')) {
