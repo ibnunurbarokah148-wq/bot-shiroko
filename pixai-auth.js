@@ -135,9 +135,19 @@ async function checkTokenStatus(token) {
 async function loginWithCredentials(email, password) {
     console.log(`🔑 Login ke PixAI API sebagai: ${email}...`);
     try {
-        const res = await axios.post('https://api.pixai.art/v1/auth/login', {
-            email: email,
-            password: password
+        const query = `
+            mutation login($input: RegisterOrLoginInput!) {
+                login(input: $input) {
+                    id
+                    email
+                }
+            }
+        `;
+        const res = await axios.post('https://api.pixai.art/graphql', {
+            query,
+            variables: {
+                input: { email, password }
+            }
         }, {
             headers: {
                 'Content-Type': 'application/json',
@@ -146,15 +156,23 @@ async function loginWithCredentials(email, password) {
             timeout: 12000
         });
 
-        const token = res.data?.token || res.data?.accessToken || res.data?.data?.token;
+        if (res.data?.errors) {
+            const errCode = res.data.errors[0]?.message;
+            if (errCode && errCode.includes('recaptcha')) {
+                throw new Error('PixAI memerlukan verifikasi reCAPTCHA. Gunakan !setpixai [JWT_TOKEN] dari DevTools browser.');
+            }
+            throw new Error(errCode || 'Login Gagal');
+        }
+
+        const token = res.headers['authorization'] || res.data?.data?.login?.token;
         if (token) {
             console.log(`🎉 [LOGIN SUKSES] Token didapatkan untuk ${email}!`);
             return token;
         } else {
-            throw new Error('Server tidak mengembalikan token JWT.');
+            throw new Error('Server PixAI membutuhkan token reCAPTCHA.');
         }
     } catch (err) {
-        const msg = err.response?.data?.message || err.response?.data?.error || err.message;
+        const msg = err.response?.data?.errors?.[0]?.message || err.message;
         throw new Error(`Login ${email} Gagal: ${msg}`);
     }
 }
