@@ -154,7 +154,6 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ \`!kepo\` (Ghost Mode Messages VIP)
 *║*
 *╠═══「 KHUSUS OWNER 」*
-*║* ➸ !loginpixai [email] [pass] (Auto Login PixAI)
 *║* ➸ !setpixai [token] (Set Token PixAI Manual)
 *║* ➸ !mc start (Nyalakan Bot MC Online)
 *║* ➸ !mc lokal (Nyalakan Bot MC Server Lokal)

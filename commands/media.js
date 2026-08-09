@@ -158,42 +158,6 @@ async function handle(ctx) {
     // ==========================================
     // HANDLER !LOGINPIXAI (KHUSUS OWNER)
     // ==========================================
-    if (textLower.startsWith('!loginpixai')) {
-        if (!isOwner) {
-            await reply('❌ Perintah ini khusus Komandan (Owner).');
-            return true;
-        }
-
-        const args = textClean.split(' ').slice(1);
-        if (args.length < 2) {
-            await reply('⚠️ *[ LOGIN PIXAI API ]*\n\nFormat:\n*!loginpixai [email] [password]*\n\n*Catatan:* Jalankan perintah ini di Private Chat (Japri) untuk menjaga kerahasiaan password Anda.');
-            return true;
-        }
-
-        const email = args[0].trim();
-        const password = args.slice(1).join(' ').trim();
-
-        await reply(`🔑 Nn... Mencoba login ke PixAI API sebagai *${email}*...`);
-
-        try {
-            const pixaiAuth = require('../pixai-auth');
-            const newToken = await pixaiAuth.loginWithCredentials(email, password);
-            pixaiAuth.saveTokenToEnv(newToken);
-
-            const payload = pixaiAuth.decodeJwt(newToken);
-            let diffDays = 'N/A';
-            if (payload?.exp) {
-                diffDays = ((new Date(payload.exp * 1000) - new Date()) / (1000 * 60 * 60 * 24)).toFixed(1);
-            }
-
-            await reply(`🎉 *[ LOGIN PIXAI SUKSES ]*\n\nNn... Berhasil mendapatkan token baru!\n\n📌 *User ID:* ${payload?.sub || 'N/A'}\n⏳ *Masa Aktif:* ${diffDays} Hari\n✅ *Status:* PIXAI_TOKEN di .env dan memori bot telah otomatis diperbarui! ✨`);
-        } catch (err) {
-            await reply(`❌ *[ LOGIN PIXAI GAGAL ]*\n\n_${err.message}_\n\n💡 *Tips:* Jika login API terhadang Captcha Cloudflare, gunakan perintah *!setpixai [token_jwt]* untuk memasang token dari DevTools.`);
-        }
-        return true;
-    }
-
-    // ==========================================
     // HANDLER !SETPIXAI (SET PIXAI TOKEN MANUAL - KHUSUS OWNER)
     // ==========================================
     if (textLower.startsWith('!setpixai')) {
