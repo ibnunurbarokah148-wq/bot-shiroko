@@ -357,9 +357,9 @@ app.get('/pixai-auth-helper', (req, res) => {
         <p>Hubungkan Akun PixAI.art ke Server Bot Shiroko secara otomatis tanpa periksa DevTools manual.</p>
 
         <div class="step-box">
-            <div class="step-title">✨ Opsi A: 1-Click Auto Auth (Kirim Otomatis)</div>
-            <p style="font-size:13px; margin-bottom:10px;">Salin/buka kode bookmark ini saat membuka tab web <b style="color:#38bdf8">pixai.art</b> untuk mengirim token secara otomatis:</p>
-            <textarea readonly onclick="this.select()" style="width:100%; height:75px; background:#1e293b; color:#38bdf8; border:1px solid #334155; border-radius:8px; padding:8px; font-size:12px; resize:none;">javascript:(function(){let t=localStorage.getItem('token')||document.cookie;fetch('${req.protocol}://${req.get('host')}/api/save-pixai-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})}).then(r=>r.json()).then(d=>alert(d.message||'Token PixAI Terkirim!')).catch(e=>alert('Gagal: '+e.message))})()</textarea>
+            <div class="step-title">✨ Opsi A: 1-Click Auto Copy Token (Tanpa DevTools)</div>
+            <p style="font-size:13px; margin-bottom:10px;">Salin kode di bawah ini, buka tab <b style="color:#38bdf8">pixai.art</b>, ketik <b style="color:#10b981">javascript:</b> di address bar lalu paste kode di belakangnya:</p>
+            <textarea readonly onclick="this.select()" style="width:100%; height:75px; background:#1e293b; color:#38bdf8; border:1px solid #334155; border-radius:8px; padding:8px; font-size:12px; resize:none;">javascript:(function(){let t=Object.entries(localStorage).find(([k,v])=>v.includes('eyJ'))?.[1]?.replace(/^"|"$/g,'')||localStorage.getItem('token')||document.cookie;if(t){prompt('Salin Token PixAI Anda (Ctrl+C), lalu paste ke Opsi B:',t);}else{alert('Token tidak ditemukan, pastikan Anda sudah login pada pixai.art');}})()</textarea>
         </div>
 
         <div class="step-box">
