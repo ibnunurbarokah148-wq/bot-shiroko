@@ -365,14 +365,7 @@ app.post('/api/generate-bookmarklet', (req, res) => {
 
     const botUrl = process.env.WEB_SHIROKO_URL || 'https://shiroko-project.my.id';
     
-    function toHex(str) { return str.split('').map(c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0')).join(''); }
-    const _localStorage = toHex('localStorage'), _entries = toHex('entries'), _find = toHex('find'), _includes = toHex('includes'), _replace = toHex('replace'), _getItem = toHex('getItem'), _cookie = toHex('cookie'), _token = toHex('token'), _eyJ = toHex('eyJ'), _fetch = toHex('fetch'), _POST = toHex('POST'), _contentType = toHex('Content-Type'), _appJson = toHex('application/json'), _stringify = toHex('stringify'), _then = toHex('then'), _catch = toHex('catch'), _json = toHex('json'), _message = toHex('message'), _alert = toHex('alert'), _prompt = toHex('prompt');
-
-    const v1 = '_0x' + Math.random().toString(16).substring(2, 8);
-    const v2 = '_0x' + Math.random().toString(16).substring(2, 8);
-    const v3 = '_0x' + Math.random().toString(16).substring(2, 8);
-
-    const bookmarkletPayload = `javascript:(function(){let ${v1}=Object['${_entries}'](window['${_localStorage}'])['${_find}'](([${v2},${v3}])=>${v3}['${_includes}']('${_eyJ}'))?.[1]?.['${_replace}'](/^"|"$/g,'')||window['${_localStorage}']['${_getItem}']('${_token}')||document['${_cookie}'];if(${v1}){window['${_fetch}']('${botUrl}/api/save-pixai-token',{method:'${_POST}',headers:{'${_contentType}':'${_appJson}'},body:JSON['${_stringify}']({token:${v1},nonce:'${nonce}'})})['${_then}'](r=>r['${_json}']())['${_then}'](d=>{window['${_alert}'](d['${_message}']);})['${_catch}'](e=>{window['${_prompt}']('${toHex('Koneksi otomatis gagal. Salin Kode ini lalu paste di Opsi B Web Auth:')}',${v1}+'|${nonce}');});}else{window['${_alert}']('${toHex('Token tidak ditemukan. Pastikan Anda sudah login di pixai.art')}');}})()`;
+    const bookmarkletPayload = `javascript:(function(){let _t=null;try{for(let _v of Object.values(localStorage)){if(typeof _v==='string'&&_v.includes('eyJ')){let _c=_v.replace(/^"|"$/g,'');try{let _p=JSON.parse(atob(_c.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));if(_p.sub||_p.user_id){_t=_c;break;}}catch(e){}}}}if(!_t){let _m=document.cookie.match(/token=([^;]+)/);if(_m)_t=_m[1];}if(!_t)_t=localStorage.getItem('token');if(_t){window['fetch']('${botUrl}/api/save-pixai-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:_t,nonce:'${nonce}'})}).then(r=>r.json()).then(d=>{window.alert(d.message);}).catch(e=>{window.prompt('Koneksi otomatis gagal. Salin Kode ini lalu paste di Opsi B Web Auth:',_t+'|${nonce}');});}else{window.alert('Token tidak ditemukan. Pastikan Anda sudah login di pixai.art');}})()`;
 
     res.json({ status: 'ok', payload: bookmarkletPayload });
 });
