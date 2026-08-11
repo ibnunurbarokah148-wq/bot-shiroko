@@ -20,6 +20,39 @@ function getPixaiTokens() {
 }
 
 /**
+ * Ekstraksi LoRA dari prompt atau environment
+ */
+function parseLoras(prompt, options = {}) {
+    let cleanPrompt = prompt;
+    let loras = [];
+
+    if (Array.isArray(options.loras)) {
+        loras = [...options.loras];
+    }
+
+    // Ekstraksi flag --lora id:weight atau --lora id dari prompt
+    const loraRegex = /--lora\s+([0-9a-zA-Z_-]+)(?::([0-9.]+))?/gi;
+    let match;
+    while ((match = loraRegex.exec(prompt)) !== null) {
+        const loraId = match[1];
+        const weight = match[2] ? parseFloat(match[2]) : 0.8;
+        loras.push({ loraId, weight });
+    }
+    cleanPrompt = cleanPrompt.replace(/--lora\s+([0-9a-zA-Z_-]+)(?::([0-9.]+))?/gi, '').trim();
+
+    // Fallback dari .env jika belum ada LoRA yang ditentukan
+    if (loras.length === 0 && process.env.PIXAI_LORA_ID) {
+        const envLoraIds = process.env.PIXAI_LORA_ID.split(',').map(s => s.trim()).filter(Boolean);
+        const envWeight = process.env.PIXAI_LORA_WEIGHT ? parseFloat(process.env.PIXAI_LORA_WEIGHT) : 0.8;
+        envLoraIds.forEach(id => {
+            loras.push({ loraId: id, weight: envWeight });
+        });
+    }
+
+    return { cleanPrompt, loras };
+}
+
+/**
  * Membuat tugas generate gambar di PixAI.art dengan rotasi & failover Multi-Token
  * @param {string} prompt - Prompt teks (misal: "1girl, white hair, blue eyes")
  * @param {object} [options]
@@ -43,6 +76,7 @@ async function createGenerationTask(prompt, options = {}) {
         throw new Error('PIXAI_TOKEN tidak ditemukan pada file .env! Harap tambahkan PIXAI_TOKEN ke .env.');
     }
 
+    const { cleanPrompt, loras } = parseLoras(prompt, options);
     const modelId = options.modelId || process.env.PIXAI_MODEL_ID || '1648918127446573124'; // Default model Anime
     const steps = options.steps || 20;
     const width = options.width || 720;
@@ -56,10 +90,25 @@ async function createGenerationTask(prompt, options = {}) {
         const token = tokens[tokenIdx];
         const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
 
-        console.log(`[PIXAI] Mengirim permintaan ke PixAI API menggunakan Token #${tokenIdx + 1}/${tokens.length} (Prompt: "${prompt}")...`);
+        console.log(`[PIXAI] Mengirim permintaan ke PixAI API menggunakan Token #${tokenIdx + 1}/${tokens.length} (Prompt: "${cleanPrompt}")...`);
+        if (loras.length > 0) {
+            console.log(`[PIXAI] Menyertakan ${loras.length} LoRA:`, JSON.stringify(loras));
+        }
 
         // Attempt 1: GraphQL createGenerationTask (Sama dengan Web API PixAI)
         try {
+            const gqlParameters = {
+                prompts: cleanPrompt,
+                modelId: modelId,
+                steps: steps,
+                width: width,
+                height: height
+            };
+
+            if (loras.length > 0) {
+                gqlParameters.loras = loras;
+            }
+
             const graphqlQuery = {
                 query: `
                     mutation createGenerationTask($parameters: JSONObject!) {
@@ -70,13 +119,7 @@ async function createGenerationTask(prompt, options = {}) {
                     }
                 `,
                 variables: {
-                    parameters: {
-                        prompts: prompt,
-                        modelId: modelId,
-                        steps: steps,
-                        width: width,
-                        height: height
-                    }
+                    parameters: gqlParameters
                 }
             };
 
