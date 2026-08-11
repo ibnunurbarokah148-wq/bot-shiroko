@@ -148,6 +148,10 @@ async function createGenerationTask(prompt, options = {}) {
             if (errMsgGql.toLowerCase().includes('credit') || errMsgGql.toLowerCase().includes('insufficient') || errMsgGql.toLowerCase().includes('point')) {
                 console.error(`🚨 [PIXAI OUT OF CREDIT] Token #${tokenIdx + 1} kehabisan Credit/Poin PixAI: ${errMsgGql}`);
             }
+            if (errMsgGql.toLowerCase().includes('policy') || errMsgGql.toLowerCase().includes('against pixai')) {
+                console.error(`🚨 [PIXAI POLICY ERROR]: ${errMsgGql}`);
+                throw new Error(errMsgGql);
+            }
             console.warn(`[PIXAI] Token #${tokenIdx + 1} GraphQL gagal (${errMsgGql}), mencoba REST fallback...`);
             lastError = eGql;
         }
