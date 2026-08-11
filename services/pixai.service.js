@@ -89,6 +89,11 @@ async function createGenerationTask(prompt, options = {}) {
                 timeout: 15000
             });
 
+            if (resGql.data?.errors && resGql.data.errors.length > 0) {
+                const errGqlMsg = resGql.data.errors[0]?.message || 'GraphQL Mutation Error';
+                throw new Error(errGqlMsg);
+            }
+
             const taskIdGql = resGql.data?.data?.createGenerationTask?.id || resGql.data?.data?.createTask?.id;
             if (taskIdGql) {
                 console.log(`[PIXAI] Task GraphQL berhasil dibuat (Token #${tokenIdx + 1})! Task ID: ${taskIdGql}`);
