@@ -24,13 +24,20 @@ function detectHeuristicIntent(textLower, hasImage) {
             return { intent: 'OUTFIT_APPLY', renderRequested: true };
         }
     } else {
-        if (/reset\s+(baju|pakaian|penampilan|rambut)|penampilan\s+semula|seragam\s+biasa|kembali\s+ke\s+seragam/i.test(textLower)) {
+        if (/biasanya\s+kamu\s+(pakai|pake)|kamu\s+biasanya\s+(pakai|pake)|(pakai|pake)\s+baju\s+apa/i.test(textLower) && !/nah\s+pakai|coba\s+pakai|ganti/i.test(textLower)) {
+            return { intent: 'OUTFIT_DISCUSSION', renderRequested: false };
+        }
+        if (/reset\s+(baju|pakaian|penampilan|rambut)|penampilan\s+semula|kembali\s+ke\s+default|reset\s+penampilan/i.test(textLower)) {
             return { intent: 'APPEARANCE_RESET', renderRequested: false };
+        }
+        if (/pakai\s+(baju\s+biasanya|pakaian\s+biasanya|seragam\s+abydos|seragam\s+sekolah|baju\s+itu|seragam\s+itu|baju\s+yang\s+biasa)|nah\s+pakai|pakai\s+yang\s+biasa|kembali\s+ke\s+seragam/i.test(textLower)) {
+            const wantsRender = /kirim\s+foto|lihat|tunjukkan|mana|pap/i.test(textLower);
+            return { intent: 'OUTFIT_CANONICAL_PRESET', renderRequested: wantsRender };
         }
         if (/sekarang\s+kamu\s+(pakai|pake)|lagi\s+(pakai|pake)\s+apa|kamu\s+(pakai|pake)\s+baju\s+apa|kirim\s+foto|mana\s+foto|pap\s+dong|lihat\s+foto|foto\s+kamu|lihat\s+kamu/i.test(textLower)) {
             return { intent: 'CHARACTER_VISUAL_REQUEST', renderRequested: true };
         }
-        if (/ganti\s+(baju|pakaian|rambut)|pakai\s+(hoodie|gaun|kaos|jaket|kemeja|rok|seragam|celana|jepit)|rambut.*(kuncir|potong|gerai|ponytail|twintail)|(senyum|cemberut|blush|melambai|duduk|berdiri)|coba\s+di\s+(taman|pantai|kamar|sekolah)/i.test(textLower)) {
+        if (/ganti\s+(baju|pakaian|rambut)|pakai\s+(hoodie|gaun|kaos|jaket|kemeja|rok|seragam|celana|jepit)|rambut.*(kuncir|potong|gerai|ponytail|twintail)|(senyum|cemberut|blush|melambai|duduk|berdiri)|coba\s+di\s+(taman|pantai|kamar|sekolah)|baju\s+itu|seragam\s+itu/i.test(textLower)) {
             const wantsRender = /kirim\s+foto|lihat|tunjukkan|mana|pap/i.test(textLower);
             return { intent: 'APPEARANCE_CHANGE', renderRequested: wantsRender };
         }
@@ -286,8 +293,37 @@ async function handleCompanionFlow(ctx) {
             }
 
             // FULL OUTFIT REPLACEMENT (OUTFIT_REPLACE): Mengganti outfit penuh tetapi MEMPERTAHANKAN hair, expression, pose, scene
-            const updatedAppearance = appearanceState.setAppearance(senderId, { outfit: extractedOutfit }, { mode: 'outfit_replace' });
-            await renderAndSendCharacter(ctx, updatedAppearance, textClean);
+            appearanceState.setAppearance(senderId, { outfit: extractedOutfit }, { mode: 'outfit_replace' });
+            const verifiedState = appearanceState.getAppearance(senderId);
+            if (!appearanceState.verifyStateMutation(verifiedState, extractedOutfit, 'outfit_replace')) {
+                console.error(`🚨 [COMPANION] Verification failed for OUTFIT_APPLY for User: ${senderId}`);
+                await reply('Nn... Maaf Sensei, Shiroko gagal merapikan pakaian. Cobalah sebentar lagi.');
+                return true;
+            }
+
+            await renderAndSendCharacter(ctx, verifiedState, textClean);
+            return true;
+        }
+
+        case 'OUTFIT_CANONICAL_PRESET': {
+            console.log(`[COMPANION] Menerapkan PRESET CANONICAL ABYDOS OUTFIT untuk User: ${senderId}...`);
+            appearanceState.applyCanonicalOutfit(senderId);
+            const verifiedState = appearanceState.getAppearance(senderId);
+            if (!appearanceState.verifyStateMutation(verifiedState, null, 'canonical')) {
+                console.error(`🚨 [COMPANION] Verification failed for OUTFIT_CANONICAL_PRESET for User: ${senderId}`);
+                await reply('Nn... Maaf Sensei, Shiroko gagal mengganti seragam Abydos. Cobalah sebentar lagi.');
+                return true;
+            }
+
+            if (intentInfo.renderRequested) {
+                await renderAndSendCharacter(ctx, verifiedState, textClean);
+            } else {
+                const roleplayText = await generateShirokoRoleplayReply(
+                    'Shiroko berganti mengenakan seragam sekolah Abydos bawaannya. Sampaikan ke Sensei dengan gaya Shiroko.',
+                    senderId, isOwner
+                );
+                await reply(roleplayText);
+            }
             return true;
         }
 
@@ -296,14 +332,27 @@ async function handleCompanionFlow(ctx) {
             console.log(`[COMPANION] Memproses perubahan appearance dari teks untuk User: ${senderId}...`);
             const extractedAppearance = await extractAppearanceFromText(textClean, senderId, isOwner);
 
-            // PARTIAL UPDATE (MERGE): Hanya perbarui atribut yang diminta (hair/expression/pose/scene/outfit)
-            const updatedAppearance = appearanceState.setAppearance(senderId, extractedAppearance, { mode: 'merge' });
+            const isCanonicalReference = /baju\s+biasanya|pakaian\s+biasanya|seragam\s+abydos|seragam\s+sekolah|baju\s+itu|seragam\s+itu|pakai\s+yang\s+biasa/i.test(textClean);
+
+            if (isCanonicalReference) {
+                appearanceState.applyCanonicalOutfit(senderId);
+            } else {
+                appearanceState.setAppearance(senderId, extractedAppearance, { mode: 'merge' });
+            }
+
+            const verifiedState = appearanceState.getAppearance(senderId);
+            const verifiedMode = isCanonicalReference ? 'canonical' : 'merge';
+            if (!appearanceState.verifyStateMutation(verifiedState, extractedAppearance, verifiedMode)) {
+                console.error(`🚨 [COMPANION] Verification failed for APPEARANCE_CHANGE for User: ${senderId}`);
+                await reply('Nn... Maaf Sensei, Shiroko gagal menyesuaikan penampilan. Cobalah sebentar lagi.');
+                return true;
+            }
 
             if (intentInfo.renderRequested) {
-                await renderAndSendCharacter(ctx, updatedAppearance, textClean);
+                await renderAndSendCharacter(ctx, verifiedState, textClean);
             } else {
                 const roleplayText = await generateShirokoRoleplayReply(
-                    `Sensei meminta Shiroko mengubah penampilan ke: "${extractedAppearance.description || textClean}". Katakan bahwa kamu sudah menyesuaikan penampilanmu sesuai keinginannya dengan gaya Shiroko.`,
+                    `Sensei meminta Shiroko mengubah penampilan: "${extractedAppearance.description || textClean}". Katakan bahwa kamu sudah menyesuaikan penampilanmu sesuai keinginannya dengan gaya Shiroko berdasarkan penampilanmu sekarang (${verifiedState.outfit.description || textClean}).`,
                     senderId, isOwner
                 );
                 await reply(roleplayText);
@@ -319,7 +368,14 @@ async function handleCompanionFlow(ctx) {
 
         case 'APPEARANCE_RESET':
         case 'OUTFIT_RESET': {
-            const defaultAppearance = appearanceState.resetAppearance(senderId);
+            appearanceState.resetAppearance(senderId);
+            const verifiedState = appearanceState.getAppearance(senderId);
+            if (!appearanceState.verifyStateMutation(verifiedState, null, 'appearance_replace')) {
+                console.error(`🚨 [COMPANION] Verification failed for APPEARANCE_RESET for User: ${senderId}`);
+                await reply('Nn... Maaf Sensei, Shiroko gagal mereset penampilan. Cobalah sebentar lagi.');
+                return true;
+            }
+
             const roleplayText = await generateShirokoRoleplayReply(
                 'Shiroko mengembalikan penampilannya ke seragam Abydos dan gaya rambut semula. Sampaikan ke Sensei dengan gaya Shiroko.',
                 senderId, isOwner

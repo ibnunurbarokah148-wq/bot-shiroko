@@ -327,12 +327,62 @@ function buildAppearanceContext(appearanceState) {
     return parts.join('\n');
 }
 
+// Single Canonical Source of Truth untuk Seragam Abydos Bawaan Shiroko
+const CANONICAL_ABYDOS_OUTFIT = DEFAULT_SHIROKO_APPEARANCE.outfit;
+
+/**
+ * Memperbarui outfit user ke seragam Abydos kanonikal (SINGLE CANONICAL SOURCE),
+ * tetapi MEMPERTAHANKAN hair, expression, pose, scene saat ini.
+ * @param {string} senderId
+ * @returns {object} appearance terbaru
+ */
+function applyCanonicalOutfit(senderId) {
+    return setAppearance(senderId, { outfit: CANONICAL_ABYDOS_OUTFIT }, { mode: 'outfit_replace' });
+}
+
+/**
+ * Memverifikasi apakah mutasi state di SQLite berhasil tersimpan secara valid.
+ * @param {object} verifiedState - State terverifikasi yang dibaca dari SQLite
+ * @param {object} targetInput - Data yang diminta untuk diubah
+ * @param {'outfit_replace'|'appearance_replace'|'merge'|'canonical'} mode
+ * @returns {boolean}
+ */
+function verifyStateMutation(verifiedState, targetInput, mode) {
+    if (!verifiedState || typeof verifiedState !== 'object') return false;
+
+    if (mode === 'canonical') {
+        return verifiedState.outfit && verifiedState.outfit.outer === CANONICAL_ABYDOS_OUTFIT.outer;
+    }
+
+    if (mode === 'outfit_replace') {
+        const targetOuter = targetInput?.outfit?.outer || targetInput?.outer || CANONICAL_ABYDOS_OUTFIT.outer;
+        return verifiedState.outfit && verifiedState.outfit.outer === targetOuter;
+    }
+
+    if (mode === 'appearance_replace') {
+        return !!(verifiedState.outfit && verifiedState.hair && verifiedState.expression !== undefined);
+    }
+
+    // mode merge
+    if (targetInput?.hair?.style && verifiedState.hair?.style !== targetInput.hair.style) {
+        return false;
+    }
+    if (targetInput?.outfit?.outer && verifiedState.outfit?.outer !== targetInput.outfit.outer) {
+        return false;
+    }
+
+    return true;
+}
+
 module.exports = {
     DEFAULT_SHIROKO_APPEARANCE,
+    CANONICAL_ABYDOS_OUTFIT,
     normalizeAppearance,
     getAppearance,
     setAppearance,
     resetAppearance,
+    applyCanonicalOutfit,
+    verifyStateMutation,
     toPixaiPromptTags,
     buildAppearanceContext
 };
