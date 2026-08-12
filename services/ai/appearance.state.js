@@ -119,10 +119,20 @@ function setAppearance(senderId, inputData, options = {}) {
     let updated;
 
     if (mode === 'appearance_replace') {
-        // FULL APPEARANCE REPLACEMENT: Reset total penampilan ke bawaan + ganti outfit/atribut baru
+        // FULL APPEARANCE REPLACEMENT: Reset total penampilan ke bawaan + ganti outfit/atribut baru yang diberikan
         const inputOutfit = inputData.outfit || inputData;
         updated = {
             ...DEFAULT_SHIROKO_APPEARANCE,
+            hair: {
+                ...DEFAULT_SHIROKO_APPEARANCE.hair,
+                ...(inputData.hair || {})
+            },
+            expression: inputData.expression || DEFAULT_SHIROKO_APPEARANCE.expression,
+            pose: inputData.pose || DEFAULT_SHIROKO_APPEARANCE.pose,
+            scene: {
+                ...DEFAULT_SHIROKO_APPEARANCE.scene,
+                ...(inputData.scene || {})
+            },
             outfit: {
                 outer: inputOutfit.outer || '',
                 inner: inputOutfit.inner || '',
@@ -267,11 +277,62 @@ function toPixaiPromptTags(appearanceState) {
     return parts.filter(Boolean).join(', ');
 }
 
+/**
+ * Membuat ringkasan konteks appearance yang hemat token untuk disisipkan ke AI System Prompt.
+ * @param {object} appearanceState
+ * @returns {string}
+ */
+function buildAppearanceContext(appearanceState) {
+    const app = normalizeAppearance(appearanceState);
+    const parts = [];
+
+    parts.push(`[PENAMPILAN SHIROKO SAAT INI (CURRENT APPEARANCE)]`);
+    parts.push(`Karakter: Sunaookami Shiroko`);
+
+    if (app.hair && app.hair.style) {
+        parts.push(`Rambut: ${app.hair.style}`);
+    }
+
+    if (app.outfit) {
+        const o = app.outfit;
+        const oParts = [];
+        if (o.style) oParts.push(`gaya ${o.style}`);
+        if (o.outer) oParts.push(o.outer);
+        if (o.inner) oParts.push(o.inner);
+        if (o.bottom) oParts.push(o.bottom);
+        if (o.shoes) oParts.push(o.shoes);
+        if (oParts.length > 0) {
+            parts.push(`Pakaian: ${oParts.join(', ')}`);
+        }
+        if (Array.isArray(o.accessories) && o.accessories.length > 0) {
+            parts.push(`Aksesori: ${o.accessories.join(', ')}`);
+        }
+    }
+
+    if (app.expression && app.expression !== 'neutral') {
+        parts.push(`Ekspresi Wajah: ${app.expression}`);
+    }
+
+    if (app.pose && app.pose !== 'standing') {
+        parts.push(`Pose/Postur: ${app.pose}`);
+    }
+
+    if (app.scene && app.scene.location) {
+        parts.push(`Lokasi/Latar: ${app.scene.location}`);
+    }
+
+    parts.push(`Catatan: Ini adalah penampilan fisik Shiroko TERKINI yang sedang ia gunakan. Jika user bertanya tentang pakaian/rambut/penampilan sekarang atau memuji penampilan saat ini, jawablah sesuai konteks penampilan terkini ini (BUKAN seragam Abydos biasa). Jika user bertanya tentang pakaian "biasanya", kamu boleh menjelaskan seragam sekolah Abydos bawaanmu.`);
+    parts.push(`[/CURRENT APPEARANCE]`);
+
+    return parts.join('\n');
+}
+
 module.exports = {
     DEFAULT_SHIROKO_APPEARANCE,
     normalizeAppearance,
     getAppearance,
     setAppearance,
     resetAppearance,
-    toPixaiPromptTags
+    toPixaiPromptTags,
+    buildAppearanceContext
 };

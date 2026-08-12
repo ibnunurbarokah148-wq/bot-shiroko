@@ -11,9 +11,9 @@ const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
 const AIProvider = require('../services/ai/AIProvider');
 const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const { ROLE_PROMPTS, getRolePrompt } = require('../services/ai/prompts');
-const { getCoreNumber } = require('../utils/helpers');
 const db = require('../config/database');
 const companionService = require('../services/ai/companion.service');
+const appearanceState = require('../services/ai/appearance.state');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, isGroup, textClean, textLower,
@@ -654,13 +654,18 @@ async function handle(ctx) {
                 finalSystemPrompt = getRolePrompt(userRoleName, isOwner, baseType);
             }
 
+            // Sisipkan konteks penampilan fisik terkini Shiroko (tanpa masuk ChatMemory)
+            const currentApp = appearanceState.getAppearance(senderId);
+            const appearanceContext = appearanceState.buildAppearanceContext(currentApp);
+            const effectiveSystemPrompt = finalSystemPrompt ? `${finalSystemPrompt}\n\n${appearanceContext}` : `${getRolePrompt(null, isOwner, (provider === 'arisu' ? 'arisu' : 'system'))}\n\n${appearanceContext}`;
+
             const jawaban = await AIProvider.generate({
                 provider,
                 model,
                 prompt: finalPrompt,
                 senderId,
                 isOwner,
-                systemPrompt: finalSystemPrompt,
+                systemPrompt: effectiveSystemPrompt,
                 imageBuffer: chatImageBuffer
             });
 
