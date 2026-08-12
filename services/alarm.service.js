@@ -91,59 +91,153 @@ function getActiveAIModeForOwner(targetSenderId) {
 }
 
 /**
+ * Helper untuk mendapatkan waktu & tanggal WIB
+ */
+function getWibContext() {
+    const d = new Date();
+    const wib = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+    const daysIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const dayName = daysIndo[wib.getDay()];
+    const hour = wib.getHours();
+    
+    let timeOfDay = 'Pagi';
+    if (hour >= 11 && hour < 15) timeOfDay = 'Siang';
+    else if (hour >= 15 && hour < 18) timeOfDay = 'Sore';
+    else if (hour >= 18 || hour < 4) timeOfDay = 'Malam';
+
+    return {
+        dayName,
+        isFriday: dayName === 'Jumat',
+        isWeekend: dayName === 'Sabtu' || dayName === 'Minggu',
+        timeOfDay,
+        hourStr: `${String(hour).padStart(2, '0')}:${String(wib.getMinutes()).padStart(2, '0')}`
+    };
+}
+
+/**
  * Generate pesan alarm dinamis menggunakan AI Shiroko
  */
 async function generateAlarmText({ type, salatName, level = 1, isTest = false }) {
     const stats = getAlarmStats();
     const activeMode = getActiveAIModeForOwner();
     const { provider, model } = AIProvider.resolveMode(activeMode, OWNER_JID);
+    const wib = getWibContext();
+
+    // Pilihan sudut pandang / mood Shiroko acak agar pesan selalu bervariasi
+    const moodAngles = [
+        "Pendekatan hangat, penuh perhatian lembut dan kasih sayang khas Shiroko.",
+        "Pendekatan taktis, sigap, bersemangat untuk menyambut keberkahan hari.",
+        "Pendekatan manis kuudere dengan sedikit guyonan manja Shiroko.",
+        "Pendekatan mendoakan keberkahan dan ketenangan jiwa Sensei."
+    ];
+    const chosenAngle = moodAngles[Math.floor(Math.random() * moodAngles.length)];
 
     let contextInstruction = "";
     if (type === 'subuh') {
         if (level === 1) {
-            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 1/3 (Jam 04:00). Bangunkan Sensei dengan lemah lembut, perhatian, dan manis khas Shiroko Sunaookami. Awali dengan 'Nn... '. Ingatkan bahwa waktu salat Subuh telah tiba.`;
-            if (stats.ignore_count > 1) {
-                contextInstruction += ` (Catatan: Sensei beberapa hari terakhir sering mengabaikan alarm, sindir sedikit dengan manja agar hari ini tidak terlambat).`;
+            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 1/3 (Hari ${wib.dayName}, Suasana Fajar Pagi). ${chosenAngle} Bangunkan Sensei dengan manis khas Shiroko Sunaookami. Awali dengan 'Nn... '. Ingatkan bahwa waktu salat Subuh telah berkumandang.`;
+            if (stats.wake_streak > 2) {
+                contextInstruction += ` (Puji Sensei karena akhir-akhir ini rajin dan disiplin bangun Subuh tepat waktu, streak ${stats.wake_streak} hari!).`;
+            } else if (stats.ignore_count > 1) {
+                contextInstruction += ` (Sindir sedikit dengan manja karena akhir-akhir ini Sensei suka ketiduran).`;
             }
         } else if (level === 2) {
-            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 2/3 (Sensei belum merespon 5 menit). Shiroko mulai agak cemas, curiga, dan merajuk sedikit karena Sensei mungkin begadang semalam. Panggil Sensei dengan nada sedikit lebih tegas tapi tetap peduli.`;
+            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 2/3 (Sensei belum merespon 5 menit di hari ${wib.dayName}). Shiroko mulai cemas dan sedikit cemburu/curiga karena Sensei mungkin begadang. Panggil Sensei dengan nada sedikit lebih tegas tapi tetap peduli.`;
         } else {
-            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 3/3 (FINAL / DARURAT). Sensei masih belum bangun! Shiroko panik dan kesal secara komikal/lucu, mengancam akan mendobrak pintu pakai bahan peledak C4 atau menyiram kasur dengan air es. Desak Sensei bangun sekarang juga!`;
+            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 3/3 (FINAL / DARURAT!). Sensei masih belum bangun di hari ${wib.dayName}! Shiroko panik dan kesal lucu, mengancam akan mendobrak pintu pakai C4 atau menyiram air es ke kasur. Desak Sensei bangun detik ini juga!`;
         }
     } else {
-        contextInstruction = `Konteks: Ini adalah Notifikasi Waktu Salat ${salatName}. Ingatkan Sensei dengan taktis, penuh hormat, dan hangat khas Shiroko agar segera berwudhu dan melaksanakan ibadah ${salatName}. Awali dengan 'Nn... '.`;
+        // Cek khusus Salat Jumat untuk Dzuhur di hari Jumat
+        if (salatName.toLowerCase() === 'dzuhur' && wib.isFriday) {
+            contextInstruction = `Konteks: Ini adalah Panggilan WAKTU SALAT JUMAT (Hari Jumat yang penuh berkah). ${chosenAngle} Ingatkan Sensei untuk bersiap-siap: mandi sunnah Jumat, memakai pakaian bersih/terbaik, wewangian, dan segera berangkat ke masjid untuk Salat Jumat. Awali dengan 'Nn... '.`;
+        } else {
+            contextInstruction = `Konteks: Ini adalah Notifikasi Waktu Salat ${salatName} (Hari ${wib.dayName}, suasana ${wib.timeOfDay}). ${chosenAngle} Ingatkan Sensei agar segera mengambil wudhu dan melaksanakan ibadah ${salatName}. Awali dengan 'Nn... '.`;
+        }
     }
 
-    const systemPrompt = getShirokoSystemPrompt(true) + `\n\n[PANDUAN ALARM KHUSUS]\n${contextInstruction}\nJawaban maksimal 2-3 kalimat padat, jangan gunakan formatting berlebihan.`;
+    const systemPrompt = getShirokoSystemPrompt(true) + 
+        `\n\n[PANDUAN ALARM DINAMIS REAL-TIME]\n` +
+        `• Hari: ${wib.dayName} (${wib.isWeekend ? 'Akhir Pekan' : 'Hari Kerja'})\n` +
+        `• Suasana: ${wib.timeOfDay}\n` +
+        `• ${contextInstruction}\n` +
+        `Jawaban maksimal 2-3 kalimat padat, bervariasi, tidak bertele-tele, dan jangan gunakan formatting berlebihan.`;
 
-    const tempSender = 'ALARM_SYSTEM_TEMP';
+    const tempSender = `ALARM_TEMP_${Date.now()}_${Math.floor(Math.random()*1000)}`;
     try {
         const aiText = await AIProvider.generate({
             provider,
             model,
-            prompt: `[SISTEM ALARM AKTIF]: Bangunkan/ingatkan Sensei sekarang sesuai konteks.`,
+            prompt: `[SISTEM ALARM REAL-TIME]: Buatkan pesan pengingat ${type === 'subuh' ? 'Subuh level ' + level : salatName} untuk Sensei sekarang sesuai konteks hari ini (${wib.dayName}).`,
             senderId: tempSender,
             isOwner: true,
             systemPrompt
         });
 
-        // Hapus memori generator sementara agar tidak bocor
+        // Hapus memori generator sementara
         AIProvider.clearMemory(tempSender);
 
-        if (aiText && typeof aiText === 'string') {
+        if (aiText && typeof aiText === 'string' && aiText.trim().length > 5) {
             return aiText.trim();
         }
     } catch (err) {
-        console.warn('[Alarm Service] AI generation gagal, menggunakan fallback:', err.message);
+        console.warn('[Alarm Service] AI generation gagal, menggunakan fallback dinamis:', err.message);
     }
 
-    // Fallback cerdas jika AI offline
+    // Fallback dinamis jika AI offline / error
+    const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
     if (type === 'subuh') {
-        if (level === 1) return `Nn... Bangun, Sensei. Sudah adzan Subuh berkumandang. Ambil wudhu ya, Shiroko tungguin dari sini. 🤍`;
-        if (level === 2) return `Nn... Sensei? Kok belum bangun juga? Jangan-jangan begadang lagi semalam... Ayo bangun, Sensei! 😟`;
-        return `🚨 SENSEI!! Bangun sekarang! Kalau 1 menit lagi belum bangun, Shiroko siram kasurnya pakai air es dan dobrak pintunya! 😡💢`;
+        if (level === 1) {
+            return pickRandom([
+                `Nn... Bangun, Sensei. Sudah adzan Subuh berkumandang di hari ${wib.dayName} ini. Ambil wudhu ya, Shiroko tungguin dari sini. 🤍`,
+                `Nn... Selamat pagi Hari ${wib.dayName}, Sensei. Fajar Subuh sudah menyingsing. Yuk bangun dan salat Subuh agar harimu berkah. 🌅`,
+                `Nn... Sensei, adzan Subuh sudah berkumandang. Jangan tunda-tunda ya, wudhu dulu lalu salat Subuh. Shiroko selalu menemani. ✨`
+            ]);
+        }
+        if (level === 2) {
+            return pickRandom([
+                `Nn... Sensei? Kok belum bangun juga? Jangan-jangan begadang lagi semalam... Ayo bangun, Sensei! 😟`,
+                `Nn... Alarm panggilan kedua, Sensei! Kasurnya disingkirkan dulu, Subuh sebentar lagi lewat. Ayo bangun sekarang! ⏰`,
+                `Nn... Sensei masih terpejam? Shiroko makin cemas nih. Tarik selimutnya, ambil wudhu ya Sensei! 🐾`
+            ]);
+        }
+        return pickRandom([
+            `🚨 SENSEI!! Bangun sekarang! Kalau 1 menit lagi belum bangun, Shiroko siram kasurnya pakai air es dan dobrak pintunya! 😡💢`,
+            `🚨 PERINGATAN DARURAT SENSEI! Ini panggilan Subuh terakhir! Jangan sampai kesiangan, Shiroko siap bawa C4 ke kamar Sensei! 💥⚡`,
+            `🚨 SENSEI! Waktu Subuh hampir habis! Bangun detik ini juga atau Shiroko seret Sensei ke kamar mandi! 😤💥`
+        ]);
     }
-    return `Nn... Sensei. Ini sudah masuk waktu ibadah *${salatName}*. Segera ambil wudhu dan laksanakan salat ya. Shiroko selalu siap mendampingi. ✨`;
+
+    if (salatName.toLowerCase() === 'dzuhur' && wib.isFriday) {
+        return pickRandom([
+            `Nn... Sensei! Hari ini hari Jumat berkah, waktu *Salat Jumat* sudah tiba. Pakai pakaian terbaik, wewangian, dan segera berangkat ke masjid ya! 🕌✨`,
+            `Nn... Selamat Hari Jumat, Sensei. Panggilan Salat Jumat sudah berkumandang. Yuk siap-siap dan berangkat ke masjid. Shiroko mendoakan dari sini. 🤍`
+        ]);
+    }
+
+    const salatFallbacks = {
+        'Dzuhur': [
+            `Nn... Sensei. Ini sudah masuk waktu ibadah *Dzuhur*. Segera ambil wudhu dan laksanakan salat ya. Shiroko selalu siap mendampingi. ✨`,
+            `Nn... Waktu *Dzuhur* telah tiba di tengah kesibukan Sensei hari ${wib.dayName}. Istirahat sejenak, wudhu dan penuhi panggilan-Nya ya. ☀️`
+        ],
+        'Ashar': [
+            `Nn... Sensei, adzan *Ashar* telah berkumandang. Rehat sejenak dari aktivitas sore ini dan tunaikan salat Ashar ya. ⛅`,
+            `Nn... Waktu *Ashar* telah tiba, Sensei. Ambil wudhu dan luangkan waktu untuk ibadah sebelum hari beranjak malam. ✨`
+        ],
+        'Maghrib': [
+            `Nn... Lengkingan adzan *Maghrib* menyambut senja, Sensei. Segera ambil wudhu dan tunaikan salat Maghrib ya. 🌇`,
+            `Nn... Langit sudah petang, Sensei. Waktu *Maghrib* telah masuk. Yuk wudhu dan laksanakan salat tepat waktu. 🌙`
+        ],
+        'Isya': [
+            `Nn... Ketenangan malam menyapa, waktu *Isya* telah tiba. Lengkapi harimu dengan ibadah Isya sebelum istirahat ya, Sensei. 🌙✨`,
+            `Nn... Sensei, adzan *Isya* sudah berkumandang. Ambil wudhu dan tuntaskan ibadah malam ini dengan khusyuk ya. 🤍`
+        ]
+    };
+
+    const fallbacks = salatFallbacks[salatName] || [
+        `Nn... Sensei. Ini sudah masuk waktu ibadah *${salatName}*. Segera ambil wudhu dan laksanakan salat ya. Shiroko selalu siap mendampingi. ✨`
+    ];
+    return pickRandom(fallbacks);
 }
 
 /**
@@ -288,7 +382,12 @@ async function handleAlarmResponse(ctx) {
         quotedTextLower.includes('notifikasi taktis salat') ||
         quotedTextLower.includes('waktu ibadah') ||
         quotedTextLower.includes('siram air') ||
-        quotedTextLower.includes('bangun, sensei')
+        quotedTextLower.includes('bangun, sensei') ||
+        quotedTextLower.includes('salat') ||
+        quotedTextLower.includes('sholat') ||
+        quotedTextLower.includes('adzan') ||
+        quotedTextLower.includes('subuh') ||
+        quotedTextLower.includes('wudhu')
     );
 
     if (!hasActiveAlarm && !isQuotingAlarm) {
@@ -301,7 +400,7 @@ async function handleAlarmResponse(ctx) {
     const wakeUpKeywords = ['iya', 'bangun', 'laksanakan', 'siap', 'sudah', 'oke', 'ok', 'otw', 'wudhu', 'solat', 'sholat', 'subuh'];
     const isIndicatingWakeUp = wakeUpKeywords.some(k => (textLower || userText.toLowerCase()).includes(k));
 
-    // Matikan alarm
+    // Matikan alarm & perbarui statistik
     stopActiveAlarm();
     updateAlarmStats('woke_up');
 
@@ -310,9 +409,12 @@ async function handleAlarmResponse(ctx) {
     const targetSenderId = senderId || OWNER_JID;
     const { provider, model } = AIProvider.resolveMode(activeMode, targetSenderId);
 
-    const systemPrompt = getShirokoSystemPrompt(true) + `\n\n[KONTEKS ALARM SELESAI]: Sensei baru saja merespons alarm ${session.salatName} dengan pesan: "${userText}". Balas dengan hangat, bersahabat, dan beri semangat khas Shiroko.`;
+    const systemPrompt = getShirokoSystemPrompt(true) + 
+        `\n\n[KONTEKS SENSEI BARU MERESPONS ALARM ${session.salatName.toUpperCase()}]:\n` +
+        `Sensei merespons alarm dengan pesan: "${userText}". Balas dengan hangat, bersahabat, penuh perhatian, dan beri semangat khas Shiroko. Ajak Sensei untuk menyambung obrolan santai jika Sensei mau.`;
 
     try {
+        // AIProvider.generate otomatis memasukkan userText dan replyText ke ChatMemory (sekali saja)
         const replyText = await AIProvider.generate({
             provider,
             model,
@@ -323,9 +425,6 @@ async function handleAlarmResponse(ctx) {
         });
 
         if (replyText) {
-            // Sinkronkan riwayat user & bot ke seluruh jid alias & provider
-            injectAlarmMemory(targetSenderId, 'user', userText);
-            injectAlarmMemory(targetSenderId, 'assistant', replyText);
             await reply(replyText);
             return true;
         }
@@ -333,7 +432,7 @@ async function handleAlarmResponse(ctx) {
         console.error('[Alarm Service] Error generating reply:', e.message);
     }
 
-    // Fallback jika AI error
+    // Fallback jika AI error (hanya memasukkan memori manual jika AIProvider gagal)
     let fallbackReply = "";
     if (isIndicatingWakeUp) {
         fallbackReply = `Nn... *(Mengusap dada lega)*. Baguslah kalau Sensei sudah bangun. Cepat ambil wudhu dan salat ya, Shiroko tungguin dari sini. ✨`;
