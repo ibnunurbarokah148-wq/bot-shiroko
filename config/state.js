@@ -32,6 +32,7 @@ module.exports = {
     sesiOllamaMode: {},
     sesiOpenRouterMode: {},
     sesiCloudflareMode: {},
+    sesiXKiroMode: {},
     sesiCabutRole: {},
     sesiModelGambar: {},
     sesiArisu: {},
@@ -40,6 +41,7 @@ module.exports = {
     // Model AI Pilihan User
     userOpenRouterModel: {},
     userCloudflareModel: {},
+    userXKiroModel: {},
 
     // Cooldown anti-spam
     cooldownGacha: new Set(),

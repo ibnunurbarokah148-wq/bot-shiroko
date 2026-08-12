@@ -121,10 +121,12 @@ async function initDatabase() {
                 else if (row.id === 'ownerOpenRouterModel') state.ownerOpenRouterModel = parsed;
                 else if (row.id === 'ownerCloudflareModel') state.ownerCloudflareModel = parsed;
                 else if (row.id === 'ownerOllamaModel') state.ownerOllamaModel = parsed;
+                else if (row.id === 'ownerXKiroModel') state.ownerXKiroModel = parsed;
                 else if (row.id === 'userAIMode' && typeof parsed === 'object') state.userAIMode = { ...state.userAIMode, ...parsed };
                 else if (row.id === 'userOpenRouterModel' && typeof parsed === 'object') state.userOpenRouterModel = { ...state.userOpenRouterModel, ...parsed };
                 else if (row.id === 'userCloudflareModel' && typeof parsed === 'object') state.userCloudflareModel = { ...state.userCloudflareModel, ...parsed };
                 else if (row.id === 'userOllamaModel' && typeof parsed === 'object') state.userOllamaModel = { ...state.userOllamaModel, ...parsed };
+                else if (row.id === 'userXKiroModel' && typeof parsed === 'object') state.userXKiroModel = { ...state.userXKiroModel, ...parsed };
             } catch (err) {
                 if (row.id === 'ownerAIMode') state.ownerAIMode = row.value;
             }

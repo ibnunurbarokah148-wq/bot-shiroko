@@ -7,6 +7,7 @@ const ollamaProvider = require('./providers/ollama');
 const openrouterProvider = require('./providers/openrouter');
 const cloudflareProvider = require('./providers/cloudflare');
 const arisuProvider = require('./providers/arisu');
+const xkiroProvider = require('./providers/xkiro');
 const memory = require('./memory');
 const state = require('../../config/state');
 
@@ -27,6 +28,8 @@ function resolveMode(mode, senderId) {
         'or':           { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || 'deepseek/deepseek-r1:free' },
         'cloudflare':   { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
         'cf':           { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
+        'xkiro':        { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'openai/gpt-4o' },
+        'xk':           { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'openai/gpt-4o' },
         'ds3':          { provider: 'arisu',       model: 'deepseek-v3' },
         'ds4':          { provider: 'arisu',       model: 'deepseek-v4' },
         'glm':          { provider: 'arisu',       model: 'glm' },
@@ -42,7 +45,7 @@ function resolveMode(mode, senderId) {
 /**
  * Generate teks AI via provider yang sesuai.
  * @param {object} options
- * @param {string} options.provider - 'gemini' | 'ollama' | 'openrouter' | 'cloudflare' | 'arisu'
+ * @param {string} options.provider - 'gemini' | 'ollama' | 'openrouter' | 'cloudflare' | 'arisu' | 'xkiro'
  * @param {string} [options.model] - Model spesifik
  * @param {string} options.prompt - Pesan user
  * @param {string} options.senderId - ID pengirim
@@ -65,6 +68,8 @@ async function generate(options) {
             return cloudflareProvider.generate(options);
         case 'arisu':
             return arisuProvider.generate(options);
+        case 'xkiro':
+            return xkiroProvider.generate(options);
         default:
             throw new Error(`Provider tidak dikenali: ${provider}`);
     }
@@ -95,7 +100,7 @@ function clearMemory(senderId) {
 
 /**
  * Scan daftar model dari provider tertentu.
- * @param {string} provider - 'openrouter' | 'cloudflare'
+ * @param {string} provider - 'openrouter' | 'cloudflare' | 'xkiro'
  * @returns {Promise<Array<{id: string, name: string}>>}
  */
 async function fetchModels(provider) {
@@ -104,6 +109,8 @@ async function fetchModels(provider) {
             return openrouterProvider.fetchModels();
         case 'cloudflare':
             return cloudflareProvider.fetchModels();
+        case 'xkiro':
+            return xkiroProvider.fetchModels();
         default:
             throw new Error(`fetchModels tidak tersedia untuk provider: ${provider}`);
     }

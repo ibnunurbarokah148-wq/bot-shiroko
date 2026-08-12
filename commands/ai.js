@@ -65,8 +65,9 @@ async function handle(ctx) {
             teksModel += `8. Qwen AI (Arisu)\n`;
             teksModel += `9. Gemini (Arisu)\n`;
             teksModel += `10. GPT 5 Nano (Arisu)\n`;
-            teksModel += `11. Grok 4.1 (Arisu)\n\n`;
-            teksModel += `Balas dengan angka (1-11) atau ketik *batal*.`;
+            teksModel += `11. Grok 4.1 (Arisu)\n`;
+            teksModel += `12. xKiro Multi-Model Gateway 🚀\n\n`;
+            teksModel += `Balas dengan angka (1-12) atau ketik *batal*.`;
 
             await reply(teksModel);
             return true;
@@ -74,14 +75,14 @@ async function handle(ctx) {
 
         if (state.sesiWaifu[senderId].step === 2) {
             const num = parseInt(pilihan);
-            if (isNaN(num) || num < 1 || num > 11) {
-                await reply('Nn... Angka tidak valid. Balas dengan angka 1-11, atau ketik *batal*.');
+            if (isNaN(num) || num < 1 || num > 12) {
+                await reply('Nn... Angka tidak valid. Balas dengan angka 1-12, atau ketik *batal*.');
                 return true;
             }
 
             const modelMap = {
                 1: 'gemini', 2: 'openrouter', 3: 'cloudflare', 4: 'ollama',
-                5: 'ds3', 6: 'ds4', 7: 'glm', 8: 'qwen', 9: 'arisu-gemini', 10: 'gpt', 11: 'grok'
+                5: 'ds3', 6: 'ds4', 7: 'glm', 8: 'qwen', 9: 'arisu-gemini', 10: 'gpt', 11: 'grok', 12: 'xkiro'
             };
 
             const chosenModel = modelMap[num];
@@ -226,6 +227,47 @@ async function handle(ctx) {
     }
 
     // ==========================================
+    // HANDLER SESI MILIH MODEL XKIRO
+    // ==========================================
+    if (state.sesiXKiroMode && state.sesiXKiroMode[senderId]) {
+        const pilihan = textLower;
+        if (pilihan === 'batal' || pilihan === 'cancel') {
+            delete state.sesiXKiroMode[senderId];
+            await reply('Nn... Pemilihan otak xKiro dibatalkan.');
+            return true;
+        }
+
+        const num = parseInt(pilihan) - 1;
+        const listModels = state.sesiXKiroMode[senderId].list;
+
+        if (isNaN(num) || num < 0 || num >= listModels.length) {
+            await reply('Nn... Angka tidak valid, Sensei. Balas dengan angka yang ada di daftar, atau ketik *batal*.');
+            return true;
+        }
+
+        const chosenModel = listModels[num];
+        const core = getCoreNumber(senderId);
+        state.userXKiroModel[senderId] = chosenModel.id;
+        if (core) state.userXKiroModel[core] = chosenModel.id;
+        state.userAIMode[senderId] = 'xkiro';
+        if (core) state.userAIMode[core] = 'xkiro';
+
+        if (isOwner) {
+            state.ownerXKiroModel = chosenModel.id;
+            state.ownerAIMode = 'xkiro';
+            db.setSetting('ownerXKiroModel', chosenModel.id);
+            db.setSetting('ownerAIMode', 'xkiro');
+        }
+        db.setSetting('userXKiroModel', state.userXKiroModel);
+        db.setSetting('userAIMode', state.userAIMode);
+
+        delete state.sesiXKiroMode[senderId];
+
+        await reply(`✅ *MODE XKIRO GATEWAY AKTIF*\n\nNn... Otak xKiro berhasil dikunci ke model:\n*${chosenModel.name}* (\`${chosenModel.id}\`). ✨`);
+        return true;
+    }
+
+    // ==========================================
     // MY BINI / WAIFU MODE
     // ==========================================
     if (textLower === '!mybini' || textLower === '!waifu') {
@@ -331,7 +373,7 @@ async function handle(ctx) {
 
     if (textLower.startsWith('!aimode')) {
         const args = textClean.split(' ')[1];
-        const allowedModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
+        const allowedModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'xkiro', 'xk', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
         
         const core = getCoreNumber(senderId);
         const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
@@ -339,14 +381,15 @@ async function handle(ctx) {
         const currentOllama = state.userOllamaModel[senderId] || (core && state.userOllamaModel[core]) || state.ownerOllamaModel || 'gemma3:4b';
         const currentOR = state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || state.ownerOpenRouterModel || 'deepseek/deepseek-r1:free';
         const currentCF = state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || state.ownerCloudflareModel || '@cf/meta/llama-3-8b-instruct';
+        const currentXK = state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'openai/gpt-4o';
 
         if (!args || !allowedModes.includes(args)) {
             let listModes = isOwner 
                 ? `🔹 *!aimode gemini* (Gemini Cloud)\n🔹 *!aimode ollama* (Lokal Offline)\n` 
                 : ``;
-            listModes += `🔹 *!aimode openrouter* (Live OpenRouter Scanner)\n🔹 *!aimode cloudflare* (Live Cloudflare AI Scanner)\n🔹 *!aimode ds3* (Deepseek V3.2)\n🔹 *!aimode ds4* (Deepseek V4 Pro)\n🔹 *!aimode glm* (GLM AI)\n🔹 *!aimode qwen* (Qwen AI)\n🔹 *!aimode arisu-gemini* (Gemini via Arisu)\n🔹 *!aimode gpt* (GPT 5 Nano)\n🔹 *!aimode grok* (Grok 4.1)`;
+            listModes += `🔹 *!aimode xkiro* (Live xKiro Multi-Model Gateway)\n🔹 *!aimode openrouter* (Live OpenRouter Scanner)\n🔹 *!aimode cloudflare* (Live Cloudflare AI Scanner)\n🔹 *!aimode ds3* (Deepseek V3.2)\n🔹 *!aimode ds4* (Deepseek V4 Pro)\n🔹 *!aimode glm* (GLM AI)\n🔹 *!aimode qwen* (Qwen AI)\n🔹 *!aimode arisu-gemini* (Gemini via Arisu)\n🔹 *!aimode gpt* (GPT 5 Nano)\n🔹 *!aimode grok* (Grok 4.1)`;
             
-            await reply(`Nn... Format salah, Sensei. Pilih salah satu mode di bawah ini:\n\n${listModes}\n\nMode saat ini: *${currentMode.toUpperCase()}*\nOpenRouter Aktif: *${currentOR}*\nCloudflare Aktif: *${currentCF}*`);
+            await reply(`Nn... Format salah, Sensei. Pilih salah satu mode di bawah ini:\n\n${listModes}\n\nMode saat ini: *${currentMode.toUpperCase()}*\nxKiro Aktif: *${currentXK}*\nOpenRouter Aktif: *${currentOR}*\nCloudflare Aktif: *${currentCF}*`);
             return true;
         }
 
@@ -370,6 +413,28 @@ async function handle(ctx) {
             } catch (err) {
                 console.error('Error cek Ollama:', err.message);
                 await reply('Nn... Gagal nyambung ke Ollama. Pastikan aplikasi Ollama di laptop udah nyala.');
+            }
+        } else if (args === 'xkiro' || args === 'xk') {
+            try {
+                await reply('Nn... Men-scan daftar model live dari xKiro Multi-Model Gateway...');
+                let models = await AIProvider.fetchModels('xkiro');
+
+                if (!models || models.length === 0) { await reply('Nn... Tidak ada model xKiro yang ditemukan.'); return true; }
+
+                const userRole = state.userRole ? (state.userRole[senderId] || (core && state.userRole[core])) : null;
+                models = filterModelsByRole(models, userRole, 'openrouter');
+
+                state.sesiXKiroMode[senderId] = { list: models };
+
+                let roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
+                let teksList = `🚀 *DAFTAR MODEL XKIRO GATEWAY LIVE*${roleNotice}\n\nNn... Sensei, pilih otak xKiro yang mau dipakai dengan membalas angkanya:\n\n`;
+                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name} (\`${m.id}\`)\n`; });
+                teksList += `\n_Ketik *batal* untuk membatalkan._`;
+
+                await reply(teksList);
+            } catch (err) {
+                console.error('Error scan xKiro:', err.message);
+                await reply(`Nn... Gagal men-scan xKiro AI: ${err.message}`);
             }
         } else if (args === 'openrouter' || args === 'or') {
             try {
@@ -434,7 +499,7 @@ async function handle(ctx) {
         const costMap = {
             'ds3': 2, 'ds4': 4, 'glm': 2, 'qwen': 2,
             'arisu-gemini': 2, 'gpt': 2, 'grok': 2,
-            'gemini': 2, 'ollama': 0, 'openrouter': 2, 'cloudflare': 2
+            'gemini': 2, 'ollama': 0, 'openrouter': 2, 'cloudflare': 2, 'xkiro': 2, 'xk': 2
         };
         return costMap[mode] || 2;
     }
