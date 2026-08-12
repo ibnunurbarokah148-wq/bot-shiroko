@@ -12,14 +12,14 @@ const COMPANION_IMAGE_COST = 2;
  */
 function detectHeuristicIntent(textLower, hasImage) {
     if (hasImage) {
-        if (/pakai\s+ini|pake\s+ini|coba.*(pakai|pake)|ganti.*(baju|pakaian)|pakaian\s+ini|baju\s+ini/i.test(textLower)) {
-            return { intent: 'OUTFIT_APPLY', renderRequested: true };
-        }
-        if (/bagus\s+nggak|bagus\s+ga|cocok\s+nggak|cocok\s+ga|pendapatmu/i.test(textLower)) {
+        if (/bagus\s+nggak|bagus\s+ga|cocok\s+nggak|cocok\s+ga|pendapatmu|menurutmu/i.test(textLower)) {
             return { intent: 'OUTFIT_DISCUSSION', renderRequested: false };
         }
         if (/ini\s+apa|apa\s+ini|jelaskan|foto\s+apa/i.test(textLower)) {
             return { intent: 'VISION_ANALYSIS', renderRequested: false };
+        }
+        if (/pakai\s+ini|pake\s+ini|coba.*(pakai|pake)|ganti.*(baju|pakaian)|pakaian\s+ini|baju\s+ini/i.test(textLower)) {
+            return { intent: 'OUTFIT_APPLY', renderRequested: true };
         }
     } else {
         if (/reset\s+baju|baju\s+semula|seragam\s+biasa|kembali\s+ke\s+seragam/i.test(textLower)) {
@@ -197,36 +197,45 @@ async function renderAndSendCharacter(ctx, outfit, sceneContextText) {
         return;
     }
 
-    const outfitTags = outfitState.toPixaiPromptTags(outfit);
-    const fullPixaiPrompt = `${SHIROKO_CHARACTER_ANCHOR}, ${outfitTags}, solo, looking at viewer, high quality, masterpiece`;
-
-    // Buat pesan roleplay pendamping gambar
-    const roleplayContext = `[SISTEM ROLEPLAY]: Kamu baru saja berganti/memakai pakaian ini: (${outfit.description || outfitTags}). Responlah ucapan Sensei dengan sikap Shiroko yang kalem, agak malu-malu tapi senang. Sampaikan bahwa kamu sudah memakai pakaian ini untuknya.`;
-    const roleplayText = await generateShirokoRoleplayReply(roleplayContext, senderId, isOwner);
-
-    let refunded = false; // Single refund guard untuk mencegah double refund
-
-    const pos = pixaiService.tambahAntrianPixAI({
-        prompt: fullPixaiPrompt,
-        senderId,
-        reply,
-        onSuccess: async (buffer) => {
-            await sock.sendMessage(from, {
-                image: buffer,
-                caption: `${roleplayText}\n\n👗 *Outfit:* _${outfit.description || 'Pakaian Pilihan Sensei'}_`
-            }, { quoted: msg });
-        },
-        onError: async (error) => {
-            console.error('🚨 [COMPANION] Render PixAI gagal:', error.message);
-            if (!refunded) {
-                refunded = true;
-                kembalikanLimit(senderId, COMPANION_IMAGE_COST);
-            }
-            await reply(`${roleplayText}\n\n_(Nn... Maaf Sensei, modul kamera PixAI sedang bermasalah: ${error.message}. Tapi Shiroko sudah memakai pakaiannya!)_`);
+    let limitRefunded = false;
+    const safeRefund = () => {
+        if (!limitRefunded) {
+            limitRefunded = true;
+            kembalikanLimit(senderId, COMPANION_IMAGE_COST);
         }
-    });
+    };
 
-    await reply(`🎨 *[ SHIROKO OUTFIT RENDER ]*\n\nNn... Shiroko sedang memutar baju dan menyiapkan kamera (Posisi antrean: *${pos}*)... 🐺✨`);
+    try {
+        const outfitTags = outfitState.toPixaiPromptTags(outfit);
+        const fullPixaiPrompt = `${SHIROKO_CHARACTER_ANCHOR}, ${outfitTags}, solo, looking at viewer, high quality, masterpiece`;
+
+        // Buat pesan roleplay pendamping gambar
+        const roleplayContext = `[SISTEM ROLEPLAY]: Kamu baru saja berganti/memakai pakaian ini: (${outfit.description || outfitTags}). Responlah ucapan Sensei dengan sikap Shiroko yang kalem, agak malu-malu tapi senang. Sampaikan bahwa kamu sudah memakai pakaian ini untuknya.`;
+        const roleplayText = await generateShirokoRoleplayReply(roleplayContext, senderId, isOwner);
+
+        const pos = pixaiService.tambahAntrianPixAI({
+            prompt: fullPixaiPrompt,
+            senderId,
+            reply,
+            onSuccess: async (buffer) => {
+                await sock.sendMessage(from, {
+                    image: buffer,
+                    caption: `${roleplayText}\n\n👗 *Outfit:* _${outfit.description || 'Pakaian Pilihan Sensei'}_`
+                }, { quoted: msg });
+            },
+            onError: async (error) => {
+                console.error('🚨 [COMPANION] Render PixAI gagal:', error.message);
+                safeRefund();
+                await reply(`${roleplayText}\n\n_(Nn... Maaf Sensei, modul kamera PixAI sedang bermasalah: ${error.message}. Tapi Shiroko sudah memakai pakaiannya!)_`);
+            }
+        });
+
+        console.log(`[COMPANION RENDER] Task PixAI terdaftar untuk User: ${senderId} (Posisi Antrean: ${pos})`);
+    } catch (err) {
+        console.error('🚨 [COMPANION] Gagal memproses render/queue PixAI:', err.message);
+        safeRefund();
+        await reply(`❌ Nn... Terjadi kesalahan saat menyiapkan kamera render: _${err.message}_. Limit telah dikembalikan.`);
+    }
 }
 
 /**
@@ -257,7 +266,7 @@ async function handleCompanionFlow(ctx) {
                 await reply('Nn... Lampirkan gambar pakaian yang ingin Shiroko pakai, Sensei.');
                 return true;
             }
-            await reply('Nn... Shiroko sedang mengamati gambar pakaian yang Sensei kirim...');
+            console.log(`[COMPANION] Menganalisis gambar pakaian via Gemini Vision untuk User: ${senderId}...`);
             const extracted = await extractOutfitFromVision(chatImageBuffer, senderId, isOwner);
             if (!extracted) {
                 await reply('Nn... Maaf Sensei, Shiroko gagal menganalisis gambar pakaian tersebut. Coba gambar yang lebih jelas ya.');
@@ -271,7 +280,7 @@ async function handleCompanionFlow(ctx) {
         }
 
         case 'OUTFIT_CHANGE': {
-            await reply('Nn... Shiroko mencatat perubahan pakaian ini...');
+            console.log(`[COMPANION] Memproses perubahan outfit dari teks untuk User: ${senderId}...`);
             const extracted = await extractOutfitFromText(textClean, senderId, isOwner);
 
             // Cek apakah perintah merupakan parsial tweak (hanya celana/sepatu/topi dll) atau full replacement

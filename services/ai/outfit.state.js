@@ -57,12 +57,22 @@ function setOutfit(senderId, outfitData, options = {}) {
             updatedAt: Date.now()
         };
     } else {
-        // PARTIAL UPDATE: Merge atribut dan kosongkan englishPromptTags agar menyusun ulang tag yang konsisten
-        const { englishPromptTags, ...restData } = outfitData;
+        // PARTIAL UPDATE: Hanya perbarui field yang terisi (non-empty string / non-empty array) dari outfitData.
+        // Atribut lama yang tidak disebutkan/kosong dalam request baru TETAP DIPERTAHANKAN.
+        const mergedFields = {};
+        for (const [key, value] of Object.entries(outfitData)) {
+            if (key === 'englishPromptTags') continue;
+            if (typeof value === 'string' && value.trim().length > 0) {
+                mergedFields[key] = value.trim();
+            } else if (Array.isArray(value) && value.length > 0) {
+                mergedFields[key] = value;
+            }
+        }
+
         updated = {
             ...current,
-            ...restData,
-            englishPromptTags: englishPromptTags || '',
+            ...mergedFields,
+            englishPromptTags: '', // Kosongkan agar toPixaiPromptTags menyusun tag dari gabungan field terbaru
             updatedAt: Date.now()
         };
     }
