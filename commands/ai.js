@@ -13,6 +13,7 @@ const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const { ROLE_PROMPTS, getRolePrompt } = require('../services/ai/prompts');
 const { getCoreNumber } = require('../utils/helpers');
 const db = require('../config/database');
+const companionService = require('../services/ai/companion.service');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, isGroup, textClean, textLower,
@@ -617,6 +618,10 @@ async function handle(ctx) {
                 }
             }
         }
+
+        // AI Companion Flow (Intent Check, Vision Outfit Extraction, Outfit State & PixAI Render)
+        const companionHandled = await companionService.handleCompanionFlow({ ...ctx, chatImageBuffer });
+        if (companionHandled) return true;
     }
 
     // ==========================================

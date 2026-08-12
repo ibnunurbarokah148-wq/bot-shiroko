@@ -102,11 +102,17 @@ async function initDatabase() {
             value TEXT
         )
     `);
+    db.run(`
+        CREATE TABLE IF NOT EXISTS user_outfits (
+            id TEXT PRIMARY KEY,
+            data TEXT
+        )
+    `);
 
     // Migrasi jika tabel lama terlanjur dibuat dengan kolom 'key'
     try {
         db.run(`ALTER TABLE statistics RENAME COLUMN key TO id`);
-    } catch(e) {
+    } catch (e) {
         // Abaikan jika error (kolom sudah id, atau tabel baru dibuat benar)
     }
 

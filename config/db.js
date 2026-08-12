@@ -194,6 +194,7 @@ const dbRole = createJsonProxy('user_roles');
 const dbTugas = createJsonProxy('user_tugas');
 const dbCoba = createJsonProxy('user_coba');
 const dbJadibot = createJsonProxy('user_jadibot');
+const dbOutfit = createJsonProxy('user_outfits');
 const dbPremium = createPremiumProxy();
 const dbPanitia = createPanitiaProxy();
 
@@ -208,6 +209,7 @@ const simpanPanitia = () => {};
 const simpanCoba = () => {};
 const simpanJadibot = () => {};
 const simpanPremium = () => {};
+const simpanOutfit = () => {};
 
 // ==========================================
 // LIMIT FUNCTIONS
@@ -252,8 +254,8 @@ function kembalikanLimit(targetID, amount = 1) {
 // EXPORT (API TETAP SAMA PERSIS)
 // ==========================================
 module.exports = {
-    dbLimit, dbRole, dbTugas, dbPanitia, dbCoba, dbJadibot, dbPremium,
-    simpanDB, simpanRole, simpanTugas, simpanPanitia, simpanCoba, simpanJadibot, simpanPremium,
+    dbLimit, dbRole, dbTugas, dbPanitia, dbCoba, dbJadibot, dbPremium, dbOutfit,
+    simpanDB, simpanRole, simpanTugas, simpanPanitia, simpanCoba, simpanJadibot, simpanPremium, simpanOutfit,
     getCoreNumber, // Re-export dari utils/helpers untuk kemudahan
     cekDanPotongLimit, kembalikanLimit
 };

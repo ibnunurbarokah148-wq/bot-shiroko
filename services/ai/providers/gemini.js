@@ -63,36 +63,54 @@ const PROVIDER_NAME = 'gemini';
  * @param {Buffer|null} [options.imageBuffer]
  * @returns {Promise<string>}
  */
-async function generate({ prompt, senderId, isOwner, model = 'gemini-2.5-flash-lite', systemPrompt = null, imageBuffer = null }) {
+async function generate({ prompt, senderId, isOwner, model = 'gemini-2.5-flash-lite', systemPrompt = null, imageBuffer = null, useMemory = true }) {
     const { genAI } = getGeminiComponents();
     const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
+    const shouldKeepMemory = useMemory !== false;
 
-    // Inisialisasi memory jika belum ada
-    if (!memory.get(senderId, PROVIDER_NAME)) {
-        memory.init(senderId, PROVIDER_NAME);
-    }
+    let contents;
+    if (shouldKeepMemory) {
+        // Inisialisasi memory jika belum ada
+        if (!memory.get(senderId, PROVIDER_NAME)) {
+            memory.init(senderId, PROVIDER_NAME);
+        }
 
-    // Push pesan user ke ChatMemory
-    memory.push(senderId, PROVIDER_NAME, 'user', prompt);
+        // Push pesan user ke ChatMemory
+        memory.push(senderId, PROVIDER_NAME, 'user', prompt);
 
-    const historyMessages = memory.getMessages(senderId, PROVIDER_NAME);
+        const historyMessages = memory.getMessages(senderId, PROVIDER_NAME);
 
-    // Format histori pesan untuk Gemini API (role: 'user' | 'model')
-    const contents = historyMessages.map(m => {
-        const role = (m.role === 'assistant' || m.role === 'model') ? 'model' : 'user';
-        const parts = [{ text: m.content || '' }];
-        return { role, parts };
-    });
-
-    // Lampirkan imageBuffer jika ada pada pesan user terakhir
-    if (imageBuffer && contents.length > 0) {
-        const lastMsg = contents[contents.length - 1];
-        lastMsg.parts.push({
-            inlineData: {
-                data: imageBuffer.toString('base64'),
-                mimeType: 'image/jpeg'
-            }
+        // Format histori pesan untuk Gemini API (role: 'user' | 'model')
+        contents = historyMessages.map(m => {
+            const role = (m.role === 'assistant' || m.role === 'model') ? 'model' : 'user';
+            const parts = [{ text: m.content || '' }];
+            return { role, parts };
         });
+
+        // Lampirkan imageBuffer jika ada pada pesan user terakhir
+        if (imageBuffer && contents.length > 0) {
+            const lastMsg = contents[contents.length - 1];
+            lastMsg.parts.push({
+                inlineData: {
+                    data: imageBuffer.toString('base64'),
+                    mimeType: 'image/jpeg'
+                }
+            });
+        }
+    } else {
+        // Single turn tanpa memory
+        contents = [{
+            role: 'user',
+            parts: [{ text: prompt || '' }]
+        }];
+        if (imageBuffer) {
+            contents[0].parts.push({
+                inlineData: {
+                    data: imageBuffer.toString('base64'),
+                    mimeType: 'image/jpeg'
+                }
+            });
+        }
     }
 
     const geminiModel = genAI.getGenerativeModel({
@@ -105,11 +123,15 @@ async function generate({ prompt, senderId, isOwner, model = 'gemini-2.5-flash-l
         const result = await geminiModel.generateContent({ contents });
         const textResult = result.response.text().trim();
 
-        // Simpan respon assistant ke ChatMemory
-        memory.push(senderId, PROVIDER_NAME, 'assistant', textResult);
+        if (shouldKeepMemory) {
+            // Simpan respon assistant ke ChatMemory
+            memory.push(senderId, PROVIDER_NAME, 'assistant', textResult);
+        }
         return textResult;
     } catch (err) {
-        memory.popLast(senderId, PROVIDER_NAME);
+        if (shouldKeepMemory) {
+            memory.popLast(senderId, PROVIDER_NAME);
+        }
         throw err;
     }
 }
