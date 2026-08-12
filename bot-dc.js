@@ -67,5 +67,12 @@ client.on('messageCreate', async (message) => {
     if (lower === '!antrian') return cmdAntrian.handle(message);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+if (process.env.DISCORD_TOKEN && process.env.DISCORD_TOKEN.trim() && !process.env.DISCORD_TOKEN.includes('masukkan')) {
+    client.login(process.env.DISCORD_TOKEN).catch(err => {
+        console.warn('⚠️ [DISCORD] Gagal terhubung ke Discord:', err.message);
+    });
+} else {
+    console.log('ℹ️ [DISCORD] DISCORD_TOKEN tidak terpasang di .env. Fitur Discord nonaktif.');
+}
+
 
