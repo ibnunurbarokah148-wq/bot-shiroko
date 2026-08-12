@@ -11,6 +11,7 @@ const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
 const AIProvider = require('../services/ai/AIProvider');
 const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const { ROLE_PROMPTS, getRolePrompt } = require('../services/ai/prompts');
+const { getCoreNumber } = require('../utils/helpers');
 const db = require('../config/database');
 const companionService = require('../services/ai/companion.service');
 const appearanceState = require('../services/ai/appearance.state');
