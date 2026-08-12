@@ -238,14 +238,15 @@ app.get('/api/dashboard', (req, res) => {
     };
     
     const services = [
-        { name: 'WhatsApp', status: 'ONLINE', icon: 'fab fa-whatsapp' },
-        { name: 'Discord', status: 'ONLINE', icon: 'fab fa-discord' },
-        { name: 'Minecraft', status: 'ONLINE', icon: 'fas fa-cube' },
-        { name: 'Gemini', status: 'ONLINE', icon: 'fas fa-brain' },
-        { name: 'Cloudflare', status: 'ONLINE', icon: 'fas fa-cloud' },
-        { name: 'OpenRouter', status: 'ONLINE', icon: 'fas fa-network-wired' },
-        { name: 'Ollama', status: ollamaStatus, icon: 'fas fa-server' },
-        { name: 'ComfyUI', status: comfyUIStatus, icon: 'fas fa-palette' }
+        { name: 'WhatsApp Bot', status: 'ONLINE', icon: 'fab fa-whatsapp' },
+        { name: 'Discord Bot', status: process.env.DISCORD_TOKEN ? 'ONLINE' : 'OFFLINE', icon: 'fab fa-discord' },
+        { name: 'Google Gemini', status: process.env.GEMINI_API_KEY ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-brain' },
+        { name: 'OpenRouter AI', status: process.env.OPENROUTER_API_KEY ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-network-wired' },
+        { name: 'Cloudflare AI', status: process.env.CLOUDFLARE_API_TOKEN ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-cloud' },
+        { name: 'ArisuSoft AI', status: process.env.ARISU_API_KEY ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-robot' },
+        { name: 'PixAI Engine', status: process.env.PIXAI_TOKEN ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-palette' },
+        { name: 'Server Minecraft', status: 'ONLINE', icon: 'fas fa-cube' },
+        { name: 'Local AI (Ollama)', status: ollamaStatus || 'STANDBY', icon: 'fas fa-server' }
     ];
 
     res.json({ stats, services });
