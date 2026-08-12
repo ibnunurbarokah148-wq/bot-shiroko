@@ -1,10 +1,12 @@
 const AIProvider = require('./AIProvider');
-const outfitState = require('./outfit.state');
+const appearanceState = require('./appearance.state');
+const outfitState = require('./outfit.state'); // Re-exported façade
 const pixaiService = require('../pixai.service');
 const { cekDanPotongLimit, kembalikanLimit } = require('../../config/db');
 const { getShirokoSystemPrompt } = require('./prompts');
 
-const SHIROKO_CHARACTER_ANCHOR = 'sunaookami shiroko, 1girl, light blue hair, blue eyes, halo, wolf ears, side braid, anime style';
+// Base Anchor Shiroko tanpa tag "side braid" agar hairstyle dinamis dapat di-override bersih
+const SHIROKO_CHARACTER_ANCHOR = 'sunaookami shiroko, 1girl, light blue hair, blue eyes, halo, wolf ears, anime style';
 const COMPANION_IMAGE_COST = 2;
 
 /**
@@ -22,15 +24,15 @@ function detectHeuristicIntent(textLower, hasImage) {
             return { intent: 'OUTFIT_APPLY', renderRequested: true };
         }
     } else {
-        if (/reset\s+baju|baju\s+semula|seragam\s+biasa|kembali\s+ke\s+seragam/i.test(textLower)) {
-            return { intent: 'OUTFIT_RESET', renderRequested: false };
+        if (/reset\s+(baju|pakaian|penampilan|rambut)|penampilan\s+semula|seragam\s+biasa|kembali\s+ke\s+seragam/i.test(textLower)) {
+            return { intent: 'APPEARANCE_RESET', renderRequested: false };
         }
-        if (/sekarang\s+kamu\s+(pakai|pake)|lagi\s+(pakai|pake)\s+apa|kamu\s+(pakai|pake)\s+baju\s+apa|kirim\s+foto|mana\s+foto|pap\s+dong|lihat\s+foto|foto\s+kamu/i.test(textLower)) {
+        if (/sekarang\s+kamu\s+(pakai|pake)|lagi\s+(pakai|pake)\s+apa|kamu\s+(pakai|pake)\s+baju\s+apa|kirim\s+foto|mana\s+foto|pap\s+dong|lihat\s+foto|foto\s+kamu|lihat\s+kamu/i.test(textLower)) {
             return { intent: 'CHARACTER_VISUAL_REQUEST', renderRequested: true };
         }
-        if (/ganti\s+(baju|pakaian)|pakai\s+(hoodie|gaun|kaos|jaket|kemeja|rok|seragam|celana)/i.test(textLower)) {
-            const wantsRender = /kirim\s+foto|lihat|tunjukkan|mana/i.test(textLower);
-            return { intent: 'OUTFIT_CHANGE', renderRequested: wantsRender };
+        if (/ganti\s+(baju|pakaian|rambut)|pakai\s+(hoodie|gaun|kaos|jaket|kemeja|rok|seragam|celana|jepit)|rambut.*(kuncir|potong|gerai|ponytail|twintail)|(senyum|cemberut|blush|melambai|duduk|berdiri)|coba\s+di\s+(taman|pantai|kamar|sekolah)/i.test(textLower)) {
+            const wantsRender = /kirim\s+foto|lihat|tunjukkan|mana|pap/i.test(textLower);
+            return { intent: 'APPEARANCE_CHANGE', renderRequested: wantsRender };
         }
     }
 
@@ -52,8 +54,8 @@ Daftar Intent:
 2. VISION_ANALYSIS: Pengguna hanya bertanya tentang isi gambar secara umum.
 3. OUTFIT_DISCUSSION: Pengguna membahas pakaian atau meminta pendapat Shiroko tanpa meminta Shiroko memakainya.
 4. OUTFIT_APPLY: Pengguna mengirim gambar pakaian dan meminta Shiroko memakai pakaian tersebut.
-5. OUTFIT_CHANGE: Pengguna secara eksplisit meminta Shiroko mengganti pakaian via teks.
-6. CHARACTER_VISUAL_REQUEST: Pengguna meminta melihat foto/wujud Shiroko saat ini.
+5. APPEARANCE_CHANGE: Pengguna meminta Shiroko mengganti penampilan (gaya rambut, ekspresi, pose, scene, atau pakaian) via teks.
+6. CHARACTER_VISUAL_REQUEST: Pengguna meminta melihat foto/wujud/penampilan Shiroko saat ini ("pap dong", "foto kamu").
 
 Berikan respons JSON murni dengan format:
 {
@@ -68,7 +70,7 @@ Berikan respons JSON murni dengan format:
             prompt,
             senderId,
             isOwner,
-            useMemory: false, // Isolasi Memory AI Internal
+            useMemory: false,
             systemPrompt: 'Anda adalah parser JSON intent murni. Kembalikan JSON valid tanpa tag markdown.'
         });
 
@@ -84,7 +86,7 @@ Berikan respons JSON murni dengan format:
 }
 
 /**
- * Ekstraksi Atribut Outfit dari Gambar via Vision AI (Gemini) - TANPA MEMORY
+ * Ekstraksi Atribut Outfit/Appearance dari Gambar via Vision AI (Gemini) - TANPA MEMORY
  */
 async function extractOutfitFromVision(imageBuffer, senderId, isOwner) {
     const prompt = `Anda adalah pakar fashion anime & analis vision.
@@ -92,13 +94,13 @@ Analisis gambar pakaian ini dengan teliti. Ekstrak informasi komponen pakaian me
 
 Kembalikan respons JSON murni tanpa markdown dengan skema berikut:
 {
-  "outer": "deskripsi outerwear/jaket/syal dalam bahasa inggris",
-  "inner": "deskripsi atasan/kaos/kemeja dalam bahasa inggris",
-  "bottom": "deskripsi celana/rok dalam bahasa inggris",
-  "shoes": "deskripsi sepatu dalam bahasa inggris",
-  "accessories": ["aksesoris1", "aksesoris2"],
-  "colors": ["warna1", "warna2"],
-  "style": "gaya pakaian (misal: casual, gothic, sporty, streetwear)",
+  "outer": "outerwear/jaket/syal dalam bahasa inggris",
+  "inner": "atasan/kaos/kemeja dalam bahasa inggris",
+  "bottom": "celana/rok dalam bahasa inggris",
+  "shoes": "sepatu dalam bahasa inggris",
+  "accessories": ["aksesoris pakaian"],
+  "colors": ["warna utama"],
+  "style": "gaya pakaian",
   "englishPromptTags": "tag prompt comma-separated untuk generator gambar anime",
   "description": "penjelasan ringkas pakaian dalam bahasa indonesia"
 }`;
@@ -110,14 +112,13 @@ Kembalikan respons JSON murni tanpa markdown dengan skema berikut:
             prompt,
             senderId,
             isOwner,
-            useMemory: false, // Isolasi Memory AI Internal
+            useMemory: false,
             systemPrompt: 'Anda adalah parser vision JSON murni. Output harus JSON valid tanpa tambahan teks lain.',
             imageBuffer
         });
 
         const cleanJson = resultText.replace(/```json|```/gi, '').trim();
-        const parsed = JSON.parse(cleanJson);
-        return parsed;
+        return JSON.parse(cleanJson);
     } catch (err) {
         console.error('🚨 [COMPANION] Gagal ekstraksi outfit vision:', err.message);
         return null;
@@ -125,22 +126,33 @@ Kembalikan respons JSON murni tanpa markdown dengan skema berikut:
 }
 
 /**
- * Ekstraksi Atribut Outfit dari Teks Perintah User - TANPA MEMORY
+ * Ekstraksi Atribut Appearance (Hair, Expression, Pose, Scene, Outfit) dari Teks - TANPA MEMORY
  */
-async function extractOutfitFromText(userText, senderId, isOwner) {
-    const prompt = `Pengguna meminta karakter Shiroko mengganti pakaian dengan deskripsi berikut: "${userText}".
-Ubah instruksi ini menjadi atribut outfit berstruktur JSON dalam Bahasa Inggris untuk generator gambar anime:
+async function extractAppearanceFromText(userText, senderId, isOwner) {
+    const prompt = `Pengguna meminta karakter Shiroko mengubah penampilannya dengan instruksi: "${userText}".
+Ubah instruksi ini menjadi atribut penampilan berstruktur JSON dalam Bahasa Inggris untuk generator gambar anime.
 
+Kembalikan respons JSON murni tanpa markdown:
 {
-  "outer": "outerwear dalam bahasa inggris",
-  "inner": "atasan dalam bahasa inggris",
-  "bottom": "bawahan dalam bahasa inggris",
-  "shoes": "sepatu dalam bahasa inggris",
-  "accessories": ["aksesoris"],
-  "colors": ["warna"],
-  "style": "gaya pakaian",
-  "englishPromptTags": "tag prompt comma-separated",
-  "description": "penjelasan ringkas dalam bahasa indonesia"
+  "hair": {
+    "style": "gaya rambut bahasa inggris (misal: ponytail, twintails, loose hair, short hair, side braid)",
+    "length": "panjang rambut"
+  },
+  "expression": "ekspresi wajah dalam bahasa inggris (misal: smiling, blushing, pouting, neutral)",
+  "pose": "pose/postur tubuh dalam bahasa inggris (misal: standing, waving, sitting, looking back)",
+  "scene": {
+    "location": "lokasi/latar dalam bahasa inggris (misal: in a park, at beach, in classroom)"
+  },
+  "outfit": {
+    "outer": "outerwear",
+    "inner": "atasan",
+    "bottom": "bawahan",
+    "shoes": "sepatu",
+    "accessories": ["aksesoris pakaian"],
+    "colors": ["warna"],
+    "style": "gaya pakaian"
+  },
+  "description": "penjelasan ringkas perubahan penampilan dalam bahasa indonesia"
 }`;
 
     try {
@@ -150,15 +162,14 @@ Ubah instruksi ini menjadi atribut outfit berstruktur JSON dalam Bahasa Inggris 
             prompt,
             senderId,
             isOwner,
-            useMemory: false, // Isolasi Memory AI Internal
-            systemPrompt: 'Anda adalah parser outfit JSON murni. Output harus JSON valid.'
+            useMemory: false,
+            systemPrompt: 'Anda adalah parser appearance JSON murni. Output harus JSON valid.'
         });
 
         const cleanJson = resultText.replace(/```json|```/gi, '').trim();
         return JSON.parse(cleanJson);
     } catch (e) {
         return {
-            englishPromptTags: userText.replace(/ganti\s+baju|pakai/gi, '').trim(),
             description: userText
         };
     }
@@ -176,7 +187,7 @@ async function generateShirokoRoleplayReply(promptContext, senderId, isOwner, us
             prompt: promptContext,
             senderId,
             isOwner,
-            useMemory: true, // Roleplay normal memakai memory
+            useMemory: true,
             systemPrompt: getShirokoSystemPrompt(isOwner)
         });
         return reply;
@@ -186,12 +197,12 @@ async function generateShirokoRoleplayReply(promptContext, senderId, isOwner, us
 }
 
 /**
- * Render Karakter Shiroko via PixAI + Kirim Gambar + Balasan Roleplay
+ * Render Karakter Shiroko via PixAI + Kirim Gambar + Balasan Roleplay Natural
  */
-async function renderAndSendCharacter(ctx, outfit, sceneContextText) {
+async function renderAndSendCharacter(ctx, appearanceData, sceneContextText) {
     const { sock, from, msg, senderId, isOwner, reply } = ctx;
 
-    // Memotong limit hanya 1 kali saat render gambar
+    // Memotong limit 1 kali sebelum antrean gambar dibuat
     if (!cekDanPotongLimit(senderId, COMPANION_IMAGE_COST)) {
         await reply(`Nn... Token limit Sensei tidak cukup. Diperlukan *${COMPANION_IMAGE_COST} limit* untuk membuat gambar karakter.`);
         return;
@@ -206,11 +217,11 @@ async function renderAndSendCharacter(ctx, outfit, sceneContextText) {
     };
 
     try {
-        const outfitTags = outfitState.toPixaiPromptTags(outfit);
-        const fullPixaiPrompt = `${SHIROKO_CHARACTER_ANCHOR}, ${outfitTags}, solo, looking at viewer, high quality, masterpiece`;
+        const promptTags = appearanceState.toPixaiPromptTags(appearanceData);
+        const fullPixaiPrompt = `${SHIROKO_CHARACTER_ANCHOR}, ${promptTags}, solo, looking at viewer, high quality, masterpiece`;
 
         // Buat pesan roleplay pendamping gambar
-        const roleplayContext = `[SISTEM ROLEPLAY]: Kamu baru saja berganti/memakai pakaian ini: (${outfit.description || outfitTags}). Responlah ucapan Sensei dengan sikap Shiroko yang kalem, agak malu-malu tapi senang. Sampaikan bahwa kamu sudah memakai pakaian ini untuknya.`;
+        const roleplayContext = `[SISTEM ROLEPLAY]: Kamu baru saja mengubah penampilan/memakai pakaian ini: (${appearanceData.description || promptTags}). Responlah ucapan Sensei dengan sikap Shiroko yang kalem, agak malu-malu tapi senang. Sampaikan bahwa kamu sudah tampil dengan gaya ini untuknya.`;
         const roleplayText = await generateShirokoRoleplayReply(roleplayContext, senderId, isOwner);
 
         const pos = pixaiService.tambahAntrianPixAI({
@@ -218,15 +229,16 @@ async function renderAndSendCharacter(ctx, outfit, sceneContextText) {
             senderId,
             reply,
             onSuccess: async (buffer) => {
+                // WhatsApp Caption: HANYA roleplay text natural (tanpa catalog metadata)
                 await sock.sendMessage(from, {
                     image: buffer,
-                    caption: `${roleplayText}\n\n👗 *Outfit:* _${outfit.description || 'Pakaian Pilihan Sensei'}_`
+                    caption: roleplayText
                 }, { quoted: msg });
             },
             onError: async (error) => {
                 console.error('🚨 [COMPANION] Render PixAI gagal:', error.message);
                 safeRefund();
-                await reply(`${roleplayText}\n\n_(Nn... Maaf Sensei, modul kamera PixAI sedang bermasalah: ${error.message}. Tapi Shiroko sudah memakai pakaiannya!)_`);
+                await reply(`${roleplayText}\n\n_(Nn... Maaf Sensei, modul kamera PixAI sedang bermasalah: ${error.message}. Tapi Shiroko sudah siap!)_`);
             }
         });
 
@@ -249,7 +261,7 @@ async function handleCompanionFlow(ctx) {
     let intentInfo = detectHeuristicIntent(textLower, hasImage);
 
     // 2. Fallback LLM jika ambigu dan ada gambar atau frase visual
-    if (!intentInfo && (hasImage || /baju|pakaian|foto|pap|penampilan/i.test(textLower))) {
+    if (!intentInfo && (hasImage || /baju|pakaian|rambut|foto|pap|penampilan|senyum|pose/i.test(textLower))) {
         intentInfo = await detectLlmIntent(textClean, hasImage, senderId, isOwner);
     }
 
@@ -267,53 +279,52 @@ async function handleCompanionFlow(ctx) {
                 return true;
             }
             console.log(`[COMPANION] Menganalisis gambar pakaian via Gemini Vision untuk User: ${senderId}...`);
-            const extracted = await extractOutfitFromVision(chatImageBuffer, senderId, isOwner);
-            if (!extracted) {
+            const extractedOutfit = await extractOutfitFromVision(chatImageBuffer, senderId, isOwner);
+            if (!extractedOutfit) {
                 await reply('Nn... Maaf Sensei, Shiroko gagal menganalisis gambar pakaian tersebut. Coba gambar yang lebih jelas ya.');
                 return true;
             }
 
-            // Full Replacement untuk OUTFIT_APPLY (kirim gambar pakaian baru)
-            const newOutfit = outfitState.setOutfit(senderId, extracted, { mode: 'replace' });
-            await renderAndSendCharacter(ctx, newOutfit, textClean);
+            // FULL OUTFIT REPLACEMENT (OUTFIT_REPLACE): Mengganti outfit penuh tetapi MEMPERTAHANKAN hair, expression, pose, scene
+            const updatedAppearance = appearanceState.setAppearance(senderId, { outfit: extractedOutfit }, { mode: 'outfit_replace' });
+            await renderAndSendCharacter(ctx, updatedAppearance, textClean);
             return true;
         }
 
+        case 'APPEARANCE_CHANGE':
         case 'OUTFIT_CHANGE': {
-            console.log(`[COMPANION] Memproses perubahan outfit dari teks untuk User: ${senderId}...`);
-            const extracted = await extractOutfitFromText(textClean, senderId, isOwner);
+            console.log(`[COMPANION] Memproses perubahan appearance dari teks untuk User: ${senderId}...`);
+            const extractedAppearance = await extractAppearanceFromText(textClean, senderId, isOwner);
 
-            // Cek apakah perintah merupakan parsial tweak (hanya celana/sepatu/topi dll) atau full replacement
-            const isPartial = /ganti\s+(celana|sepatu|jaket|syal|aksesoris|topi|kaos|kemeja)|lepas\s+/i.test(textLower) && !/ganti\s+(baju|pakaian)/i.test(textLower);
-            const mode = isPartial ? 'merge' : 'replace';
-
-            const newOutfit = outfitState.setOutfit(senderId, extracted, { mode });
+            // PARTIAL UPDATE (MERGE): Hanya perbarui atribut yang diminta (hair/expression/pose/scene/outfit)
+            const updatedAppearance = appearanceState.setAppearance(senderId, extractedAppearance, { mode: 'merge' });
 
             if (intentInfo.renderRequested) {
-                await renderAndSendCharacter(ctx, newOutfit, textClean);
+                await renderAndSendCharacter(ctx, updatedAppearance, textClean);
             } else {
                 const roleplayText = await generateShirokoRoleplayReply(
-                    `Sensei meminta Shiroko berganti pakaian ke: "${extracted.description || textClean}". Katakan bahwa kamu sudah mengganti pakaianmu sesuai keinginannya dengan gaya Shiroko.`,
+                    `Sensei meminta Shiroko mengubah penampilan ke: "${extractedAppearance.description || textClean}". Katakan bahwa kamu sudah menyesuaikan penampilanmu sesuai keinginannya dengan gaya Shiroko.`,
                     senderId, isOwner
                 );
-                await reply(`${roleplayText}\n\n✨ *Outfit tersimpan:* _${extracted.description || 'Pakaian Baru'}_`);
+                await reply(roleplayText);
             }
             return true;
         }
 
         case 'CHARACTER_VISUAL_REQUEST': {
-            const currentOutfit = outfitState.getOutfit(senderId);
-            await renderAndSendCharacter(ctx, currentOutfit, textClean);
+            const currentAppearance = appearanceState.getAppearance(senderId);
+            await renderAndSendCharacter(ctx, currentAppearance, textClean);
             return true;
         }
 
+        case 'APPEARANCE_RESET':
         case 'OUTFIT_RESET': {
-            const defaultOutfit = outfitState.resetOutfit(senderId);
+            const defaultAppearance = appearanceState.resetAppearance(senderId);
             const roleplayText = await generateShirokoRoleplayReply(
-                'Shiroko mengembalikan pakaiannya ke seragam Abydos semula. Sampaikan ke Sensei dengan gaya Shiroko.',
+                'Shiroko mengembalikan penampilannya ke seragam Abydos dan gaya rambut semula. Sampaikan ke Sensei dengan gaya Shiroko.',
                 senderId, isOwner
             );
-            await reply(`${roleplayText}\n\n🌸 *Outfit dikembalikan ke Seragam Bawaan Abydos.*`);
+            await reply(roleplayText);
             return true;
         }
 
@@ -331,10 +342,11 @@ async function handleCompanionFlow(ctx) {
 }
 
 module.exports = {
-    handleCompanionFlow,
     detectHeuristicIntent,
     detectLlmIntent,
     extractOutfitFromVision,
-    extractOutfitFromText,
-    renderAndSendCharacter
+    extractAppearanceFromText,
+    generateShirokoRoleplayReply,
+    renderAndSendCharacter,
+    handleCompanionFlow
 };

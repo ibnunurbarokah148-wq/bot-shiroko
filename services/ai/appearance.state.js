@@ -1,0 +1,277 @@
+// ==========================================
+// APPEARANCE STATE MANAGER — Dynamic Character Appearance
+// Handles hair, expression, pose, scene, and outfit persistence
+// ==========================================
+const { dbOutfit, getCoreNumber } = require('../../config/db');
+
+const DEFAULT_SHIROKO_APPEARANCE = {
+    hair: {
+        style: 'side braid',
+        length: 'medium',
+        color: 'light blue'
+    },
+    expression: 'neutral',
+    pose: 'standing',
+    scene: {
+        location: '',
+        lighting: ''
+    },
+    outfit: {
+        outer: 'abydos blue scarf, dark grey jacket on shoulders',
+        inner: 'white collared shirt with black tie',
+        bottom: 'pleated skirt',
+        shoes: 'loafers with socks',
+        accessories: ['black gloves'],
+        colors: ['blue', 'white', 'black'],
+        style: 'abydos high school uniform',
+        description: 'Seragam sekolah Abydos lengkap dengan syal biru khas Shiroko'
+    },
+    englishPromptTags: '',
+    description: 'Penampilan bawaan Shiroko (Seragam Abydos)',
+    updatedAt: Date.now()
+};
+
+/**
+ * Normalisasi record lama dari database ke format Appearance State standar.
+ * Menjamin backward compatibility 100% untuk record user_outfits lama.
+ * @param {object} raw
+ * @returns {object}
+ */
+function normalizeAppearance(raw) {
+    if (!raw || typeof raw !== 'object') {
+        return JSON.parse(JSON.stringify(DEFAULT_SHIROKO_APPEARANCE));
+    }
+
+    // Cek apakah data merupakan format outfit lama (tanpa key hair/expression)
+    const isOldFormat = !raw.hair && !raw.expression && !raw.outfit;
+    let outfitObj;
+
+    if (isOldFormat) {
+        outfitObj = {
+            outer: raw.outer || '',
+            inner: raw.inner || '',
+            bottom: raw.bottom || '',
+            shoes: raw.shoes || '',
+            accessories: Array.isArray(raw.accessories) ? raw.accessories : [],
+            colors: Array.isArray(raw.colors) ? raw.colors : [],
+            style: raw.style || '',
+            description: raw.description || ''
+        };
+    } else {
+        outfitObj = {
+            outer: raw.outfit?.outer || '',
+            inner: raw.outfit?.inner || '',
+            bottom: raw.outfit?.bottom || '',
+            shoes: raw.outfit?.shoes || '',
+            accessories: Array.isArray(raw.outfit?.accessories) ? raw.outfit.accessories : (Array.isArray(raw.accessories) ? raw.accessories : []),
+            colors: Array.isArray(raw.outfit?.colors) ? raw.outfit.colors : [],
+            style: raw.outfit?.style || '',
+            description: raw.outfit?.description || ''
+        };
+    }
+
+    return {
+        hair: {
+            style: raw.hair?.style || DEFAULT_SHIROKO_APPEARANCE.hair.style,
+            length: raw.hair?.length || DEFAULT_SHIROKO_APPEARANCE.hair.length,
+            color: raw.hair?.color || DEFAULT_SHIROKO_APPEARANCE.hair.color
+        },
+        expression: raw.expression || DEFAULT_SHIROKO_APPEARANCE.expression,
+        pose: raw.pose || DEFAULT_SHIROKO_APPEARANCE.pose,
+        scene: {
+            location: raw.scene?.location || '',
+            lighting: raw.scene?.lighting || ''
+        },
+        outfit: {
+            ...DEFAULT_SHIROKO_APPEARANCE.outfit,
+            ...outfitObj
+        },
+        englishPromptTags: raw.englishPromptTags || '',
+        description: raw.description || outfitObj.description || DEFAULT_SHIROKO_APPEARANCE.description,
+        updatedAt: raw.updatedAt || Date.now()
+    };
+}
+
+/**
+ * Mengambil Appearance State user saat ini.
+ * @param {string} senderId
+ * @returns {object}
+ */
+function getAppearance(senderId) {
+    const core = getCoreNumber(senderId) || senderId;
+    const existing = dbOutfit[core];
+    return normalizeAppearance(existing);
+}
+
+/**
+ * Menyimpan/memperbarui Appearance State user.
+ * @param {string} senderId
+ * @param {object} inputData
+ * @param {object} [options]
+ * @param {'outfit_replace'|'appearance_replace'|'merge'} [options.mode='merge']
+ * @returns {object} appearance terbaru
+ */
+function setAppearance(senderId, inputData, options = {}) {
+    const core = getCoreNumber(senderId) || senderId;
+    const mode = options.mode || 'merge';
+    const current = getAppearance(senderId);
+
+    let updated;
+
+    if (mode === 'appearance_replace') {
+        // FULL APPEARANCE REPLACEMENT: Reset total penampilan ke bawaan + ganti outfit/atribut baru
+        const inputOutfit = inputData.outfit || inputData;
+        updated = {
+            ...DEFAULT_SHIROKO_APPEARANCE,
+            outfit: {
+                outer: inputOutfit.outer || '',
+                inner: inputOutfit.inner || '',
+                bottom: inputOutfit.bottom || '',
+                shoes: inputOutfit.shoes || '',
+                accessories: Array.isArray(inputOutfit.accessories) ? inputOutfit.accessories : [],
+                colors: Array.isArray(inputOutfit.colors) ? inputOutfit.colors : [],
+                style: inputOutfit.style || '',
+                description: inputOutfit.description || 'Penampilan Baru'
+            },
+            description: inputData.description || 'Penampilan Baru',
+            updatedAt: Date.now()
+        };
+    } else if (mode === 'outfit_replace') {
+        // FULL OUTFIT REPLACEMENT: Hanya ganti outfit total, tapi PERTAHANKAN hair, expression, pose, scene
+        const inputOutfit = inputData.outfit || inputData;
+        updated = {
+            ...current,
+            outfit: {
+                outer: inputOutfit.outer || '',
+                inner: inputOutfit.inner || '',
+                bottom: inputOutfit.bottom || '',
+                shoes: inputOutfit.shoes || '',
+                accessories: Array.isArray(inputOutfit.accessories) ? inputOutfit.accessories : [],
+                colors: Array.isArray(inputOutfit.colors) ? inputOutfit.colors : [],
+                style: inputOutfit.style || '',
+                description: inputOutfit.description || 'Outfit Baru'
+            },
+            englishPromptTags: '',
+            description: inputData.description || inputOutfit.description || current.description,
+            updatedAt: Date.now()
+        };
+    } else {
+        // PARTIAL MERGE: Update atribut yang terisi tanpa menghapus state lama
+        const newHair = { ...current.hair };
+        if (inputData.hair?.style) newHair.style = inputData.hair.style;
+        if (inputData.hair?.length) newHair.length = inputData.hair.length;
+        if (inputData.hair?.color) newHair.color = inputData.hair.color;
+
+        const newScene = { ...current.scene };
+        if (inputData.scene?.location) newScene.location = inputData.scene.location;
+        if (inputData.scene?.lighting) newScene.lighting = inputData.scene.lighting;
+
+        const newOutfit = { ...current.outfit };
+        const inputOutfit = inputData.outfit || (inputData.outer || inputData.inner || inputData.bottom || inputData.shoes ? inputData : null);
+        if (inputOutfit) {
+            if (inputOutfit.outer) newOutfit.outer = inputOutfit.outer;
+            if (inputOutfit.inner) newOutfit.inner = inputOutfit.inner;
+            if (inputOutfit.bottom) newOutfit.bottom = inputOutfit.bottom;
+            if (inputOutfit.shoes) newOutfit.shoes = inputOutfit.shoes;
+            if (inputOutfit.style) newOutfit.style = inputOutfit.style;
+            if (Array.isArray(inputOutfit.accessories) && inputOutfit.accessories.length > 0) {
+                newOutfit.accessories = inputOutfit.accessories;
+            }
+            if (Array.isArray(inputOutfit.colors) && inputOutfit.colors.length > 0) {
+                newOutfit.colors = inputOutfit.colors;
+            }
+            if (inputOutfit.description) newOutfit.description = inputOutfit.description;
+        }
+
+        updated = {
+            hair: newHair,
+            expression: inputData.expression || current.expression,
+            pose: inputData.pose || current.pose,
+            scene: newScene,
+            outfit: newOutfit,
+            englishPromptTags: '',
+            description: inputData.description || current.description,
+            updatedAt: Date.now()
+        };
+    }
+
+    dbOutfit[core] = updated;
+    return updated;
+}
+
+/**
+ * Reset Appearance State user kembali ke bawaan Shiroko.
+ * @param {string} senderId
+ * @returns {object}
+ */
+function resetAppearance(senderId) {
+    const core = getCoreNumber(senderId) || senderId;
+    const defaultData = { ...DEFAULT_SHIROKO_APPEARANCE, updatedAt: Date.now() };
+    dbOutfit[core] = defaultData;
+    return defaultData;
+}
+
+/**
+ * Mengonversi Appearance State menjadi prompt tags PixAI yang bersih tanpa konflik.
+ * @param {object} appearanceState
+ * @returns {string}
+ */
+function toPixaiPromptTags(appearanceState) {
+    const app = normalizeAppearance(appearanceState);
+
+    if (app.englishPromptTags) {
+        return app.englishPromptTags;
+    }
+
+    const parts = [];
+
+    // 1. Hairstyle (jika terisi)
+    if (app.hair && app.hair.style) {
+        const style = app.hair.style.toLowerCase();
+        if (style.includes('hair')) {
+            parts.push(app.hair.style);
+        } else {
+            parts.push(`${app.hair.style} hair`);
+        }
+    }
+
+    // 2. Ekspresi
+    if (app.expression && app.expression !== 'neutral') {
+        parts.push(app.expression);
+    }
+
+    // 3. Pose
+    if (app.pose && app.pose !== 'standing') {
+        parts.push(app.pose);
+    }
+
+    // 4. Outfit & Aksesori Pakaian (Canonical Source)
+    const o = app.outfit;
+    if (o.style) parts.push(o.style);
+    if (o.outer) parts.push(o.outer);
+    if (o.inner) parts.push(o.inner);
+    if (o.bottom) parts.push(o.bottom);
+    if (o.shoes) parts.push(o.shoes);
+    if (Array.isArray(o.accessories) && o.accessories.length > 0) {
+        parts.push(o.accessories.join(', '));
+    }
+    if (Array.isArray(o.colors) && o.colors.length > 0) {
+        parts.push(`${o.colors.join(' and ')} theme`);
+    }
+
+    // 5. Scene / Location
+    if (app.scene && app.scene.location) {
+        parts.push(app.scene.location);
+    }
+
+    return parts.filter(Boolean).join(', ');
+}
+
+module.exports = {
+    DEFAULT_SHIROKO_APPEARANCE,
+    normalizeAppearance,
+    getAppearance,
+    setAppearance,
+    resetAppearance,
+    toPixaiPromptTags
+};
