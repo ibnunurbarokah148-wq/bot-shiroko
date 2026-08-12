@@ -6,7 +6,7 @@
 const axios = require('axios');
 const state = require('../../../config/state');
 const memory = require('../memory');
-const { cleanThinkingLogs, extractOpenRouterText } = require('../utils');
+const { cleanThinkingLogs, extractOpenRouterText, detectMimeType } = require('../utils');
 const { getShirokoSystemPrompt } = require('../prompts');
 
 const PROVIDER_NAME = 'xkiro';
@@ -25,18 +25,25 @@ function getRandomKey() {
 }
 
 /**
- * Generate chat via xKiro Gateway.
+ * Generate chat / vision via xKiro Gateway.
  * @param {object} options
  * @param {string} options.prompt
  * @param {string} options.senderId
  * @param {boolean} options.isOwner
  * @param {string} [options.model]
  * @param {string|null} [options.systemPrompt]
+ * @param {Buffer|null} [options.imageBuffer]
  * @returns {Promise<string>}
  */
-async function generate({ prompt, senderId, isOwner, model, systemPrompt = null }) {
+async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, imageBuffer = null }) {
     const apiKey = getRandomKey();
-    const modelName = model || state.userXKiroModel[senderId] || state.ownerXKiroModel || 'openai/gpt-4o';
+    let modelName = model || state.userXKiroModel[senderId] || state.ownerXKiroModel || 'google/gemini-2.5-flash';
+    
+    // Fallback jika model lama gpt-4o tersimpan
+    if (modelName === 'openai/gpt-4o' || modelName.includes('gpt-4o')) {
+        modelName = 'google/gemini-2.5-flash';
+    }
+
     const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
 
     // Inisialisasi memory jika belum ada
@@ -44,11 +51,36 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null 
         memory.init(senderId, PROVIDER_NAME);
     }
 
-    // Push user message
-    memory.push(senderId, PROVIDER_NAME, 'user', prompt);
+    // Format payload pesan user (teks biasa atau vision payload)
+    let userContent = prompt || 'Nn... Tolong analisis gambar ini.';
+    if (imageBuffer) {
+        const mime = detectMimeType(imageBuffer, 'image');
+        const b64 = imageBuffer.toString('base64');
+        userContent = [
+            { type: 'text', text: prompt || 'Nn... Tolong analisis dan jelaskan gambar ini dengan detail.' },
+            { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }
+        ];
+    }
+
+    // Push pesan user ke ChatMemory (simpan ringkasan pesan)
+    memory.push(senderId, PROVIDER_NAME, 'user', prompt || '[Gambar]');
 
     const systemMessage = { role: 'system', content: instruction };
-    const payloadMessages = [systemMessage, ...memory.getMessages(senderId, PROVIDER_NAME)];
+    const historyMessages = memory.getMessages(senderId, PROVIDER_NAME);
+
+    // Susun payload messages sesuai format OpenAI Chat Completions
+    const payloadMessages = [systemMessage];
+
+    for (let i = 0; i < historyMessages.length; i++) {
+        const m = historyMessages[i];
+        const isLastUser = (i === historyMessages.length - 1) && (m.role === 'user');
+
+        if (isLastUser && imageBuffer) {
+            payloadMessages.push({ role: 'user', content: userContent });
+        } else {
+            payloadMessages.push({ role: m.role, content: m.content });
+        }
+    }
 
     let rawData = null;
 
@@ -101,9 +133,9 @@ async function fetchModels() {
 
         const mapped = allModels.map(m => {
             const modelId = m.id || m.name || String(m);
-            let cleanName = modelId;
-            if (modelId.includes('/')) {
-                cleanName = modelId.split('/')[1];
+            let cleanName = m.display_name || modelId;
+            if (modelId.includes('gemini') || modelId.includes('gpt') || modelId.includes('claude') || modelId.includes('omni')) {
+                cleanName += ' (Vision 👁️)';
             }
             return { id: modelId, name: cleanName };
         });
@@ -117,14 +149,14 @@ async function fetchModels() {
 
 function getFallbackModels() {
     return [
-        { id: 'openai/gpt-4o', name: 'gpt-4o' },
-        { id: 'openai/gpt-4o-mini', name: 'gpt-4o-mini' },
-        { id: 'anthropic/claude-3-5-sonnet', name: 'claude-3-5-sonnet' },
-        { id: 'deepseek/deepseek-r1', name: 'deepseek-r1' },
-        { id: 'deepseek/deepseek-v3', name: 'deepseek-v3' },
-        { id: 'google/gemini-2.5-flash', name: 'gemini-2.5-flash' },
-        { id: 'z-ai/glm-4', name: 'glm-4' },
-        { id: 'minimax/minimax-01', name: 'minimax-01' }
+        { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash (Vision 👁️)' },
+        { id: 'google/gemini-3-flash', name: 'Gemini 3 Flash (Vision 👁️)' },
+        { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini (Vision 👁️)' },
+        { id: 'openai/gpt-5.4', name: 'GPT-5.4 (Vision 👁️)' },
+        { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6 (Vision 👁️)' },
+        { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
+        { id: 'qwen/qwen3.5-omni-flash', name: 'Qwen 3.5 Omni Flash (Vision 👁️)' },
+        { id: 'z-ai/glm-5', name: 'GLM-5' }
     ];
 }
 
