@@ -100,6 +100,21 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null 
     throw new Error(`Respons OpenRouter (${modelName}) tidak valid atau kosong`);
 }
 
+async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model }) {
+    const apiKey = getRandomKey();
+    const modelName = model || 'google/gemini-2.5-flash';
+    const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+        model: modelName,
+        messages: [{ role: 'user', content: [
+            { type: 'text', text: 'Transkripsikan audio ini secara akurat. Keluarkan hanya transkripnya.' },
+            { type: 'input_audio', input_audio: { data: audioBuffer.toString('base64'), format: mimeType.split('/')[1] || 'ogg' } }
+        ] }]
+    }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 120000 });
+    const text = extractOpenRouterText(response.data);
+    if (!text) throw new Error(`Model OpenRouter ${modelName} tidak mengembalikan transkrip.`);
+    return cleanThinkingLogs(text);
+}
+
 /**
  * Scan daftar model live dari OpenRouter API.
  * @returns {Promise<Array<{id: string, name: string}>>}
@@ -125,6 +140,7 @@ async function fetchModels() {
 
 module.exports = {
     generate,
+    transcribe,
     fetchModels,
     OPENROUTER_API_KEYS
 };

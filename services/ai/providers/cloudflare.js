@@ -133,6 +133,20 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null 
     throw new Error(`Respons Cloudflare AI (${cleanModel}) gagal atau kosong`);
 }
 
+async function transcribe({ audioBuffer }) {
+    const { accountId, token } = getCloudflarePair();
+    // Chat models selected by !aimode are not necessarily ASR models.
+    const cleanModel = '@cf/openai/whisper';
+    const response = await axios.post(
+        `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${cleanModel}`,
+        { audio: audioBuffer.toString('base64') },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 120000 }
+    );
+    const text = extractCloudflareText(response.data?.result);
+    if (!text) throw new Error(`Model Cloudflare ${cleanModel} tidak mengembalikan transkrip.`);
+    return text.trim();
+}
+
 /**
  * Generate gambar via Cloudflare text-to-image.
  * @param {string} promptInput
@@ -410,6 +424,7 @@ async function fetchTTSModels() {
 
 module.exports = {
     generate,
+    transcribe,
     generateImage,
     textToSpeech,
     fetchModels,

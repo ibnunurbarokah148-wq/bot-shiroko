@@ -13,6 +13,8 @@ const { tambahMetadataStiker } = require('../utils/sticker');
 const { antrianGambar, prosesAntrianGambar, isComfyUIActive } = require('../services/comfyui.service');
 const sharp = require('sharp');
 const pixaiService = require('../services/pixai.service');
+const AIProvider = require('../services/ai/AIProvider');
+const { temporaryAudioFile, cleanupTemp } = require('../services/ai/media.service');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, textClean, textLower, msgType,
@@ -718,22 +720,19 @@ async function handle(ctx) {
                     await reply('Nn... File diterima. Shiroko butuh waktu menyandikan data ini. Mohon tunggu...');
 
                     const mediaBuffer = await downloadMediaBaileys(messageToDownload, quotedType === 'audioMessage' ? 'audio' : 'document');
-                    const tempDir = path.join(__dirname, '..', 'temp');
-                    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-
-                    const tempFilePath = path.join(tempDir, `sadap_${Date.now()}.ogg`);
-                    fs.writeFileSync(tempFilePath, mediaBuffer);
-
-                    const { fileManager } = getGeminiComponents();
-
-                    const uploadResponse = await fileManager.uploadFile(tempFilePath, { mimeType: "audio/ogg", displayName: "Audio Sadapan" });
-                    const prompt = "Transkrip suara ini dengan akurat. Awali jawabanmu dengan mengomentari isi suaranya sedikit menggunakan kepribadian Shiroko (Blue Archive), lalu berikan teks aslinya.";
-
-                    const result = await getShirokoModel().generateContent([prompt, { fileData: { fileUri: uploadResponse.file.uri, mimeType: uploadResponse.file.mimeType } }]);
-                    await reply(`*🎧 HASIL SADAP AUDIO (HD)*\n\n${result.response.text()}`);
-
-                    await fileManager.deleteFile(uploadResponse.file.name);
-                    fs.unlinkSync(tempFilePath);
+                    const provider = 'gemini';
+                    const temp = temporaryAudioFile(mediaBuffer, messageToDownload.mimetype || 'audio/ogg');
+                    try {
+                        const transcript = await AIProvider.transcribe({
+                            provider,
+                            model: 'gemini-2.5-flash-lite',
+                            audioBuffer: mediaBuffer,
+                            mimeType: messageToDownload.mimetype || 'audio/ogg'
+                        });
+                        await reply(`*🎧 HASIL SADAP AUDIO (HD)*\n\n${transcript}`);
+                    } finally {
+                        cleanupTemp(temp.dir);
+                    }
                 } else {
                     await reply('Nn... Format salah. Pastikan me-reply Audio/VN.');
                 }

@@ -6,6 +6,7 @@ const { GoogleAIFileManager } = require('@google/generative-ai/server');
 const state = require('../../../config/state');
 const memory = require('../memory');
 const { getShirokoSystemPrompt, getShirokoGenerationConfig } = require('../prompts');
+const { temporaryAudioFile, cleanupTemp } = require('../media.service');
 
 // Rotasi multi-API key
 const GEMINI_API_KEYS = process.env.GEMINI_API_KEY
@@ -136,10 +137,30 @@ async function generate({ prompt, senderId, isOwner, model = 'gemini-2.5-flash-l
     }
 }
 
+async function transcribe({ audioBuffer, mimeType = 'audio/ogg' }) {
+    if (!audioBuffer) throw new Error('Data audio kosong.');
+    const { fileManager, genAI } = getGeminiComponents();
+    const temp = temporaryAudioFile(audioBuffer, mimeType);
+    let uploaded;
+    try {
+        uploaded = await fileManager.uploadFile(temp.filePath, { mimeType, displayName: 'WhatsApp Audio' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+        const result = await model.generateContent([
+            'Transkripsikan audio berikut secara akurat. Keluarkan hanya transkripnya, tanpa komentar atau rangkuman.',
+            { fileData: { fileUri: uploaded.file.uri, mimeType: uploaded.file.mimeType || mimeType } }
+        ]);
+        return result.response.text().trim();
+    } finally {
+        if (uploaded?.file?.name) await fileManager.deleteFile(uploaded.file.name).catch(() => {});
+        cleanupTemp(temp.dir);
+    }
+}
+
 module.exports = {
     generate,
     getGeminiComponents,
     getShirokoModel,
     getAkademikModel,
+    transcribe,
     GEMINI_API_KEYS
 };

@@ -75,6 +75,23 @@ async function generate(options) {
     }
 }
 
+async function transcribe(options) {
+    const { provider } = options;
+    if (provider === 'arisu') {
+        throw new Error('Mode ArisuSoft belum mendukung pemrosesan audio atau ZIP.');
+    }
+    const providerModule = {
+        gemini: geminiProvider,
+        openrouter: openrouterProvider,
+        cloudflare: cloudflareProvider,
+        xkiro: xkiroProvider
+    }[provider];
+    if (!providerModule?.transcribe) {
+        throw new Error(`Provider ${provider} belum mendukung transkripsi audio.`);
+    }
+    return providerModule.transcribe(options);
+}
+
 /**
  * Menghapus SEMUA memori chat user (untuk !lupa).
  * Juga hapus sesi Gemini dari state.
@@ -182,6 +199,7 @@ async function fetchTTSModels(provider) {
 
 module.exports = {
     generate,
+    transcribe,
     resolveMode,
     clearMemory,
     fetchModels,

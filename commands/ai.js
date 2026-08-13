@@ -15,6 +15,7 @@ const { getCoreNumber } = require('../utils/helpers');
 const db = require('../config/database');
 const companionService = require('../services/ai/companion.service');
 const appearanceState = require('../services/ai/appearance.state');
+const { extractZip, isZip } = require('../services/ai/media.service');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, isGroup, textClean, textLower,
@@ -574,13 +575,17 @@ async function handle(ctx) {
     // RADAR PENANGKAP GAMBAR & FILE UNTUK NGOBROL
     // ==========================================
     let chatImageBuffer = null;
+    let chatAudioBuffer = null;
+    let chatAudioMime = 'audio/ogg';
     let extractedFileText = "";
 
     if (pemicuObrolan) {
         const isTargetImage = msgType === 'imageMessage';
         const isQuotedImage = isQuoted && quotedType === 'imageMessage';
-        const isTargetDoc = msgType === 'documentMessage';
-        const isQuotedDoc = isQuoted && quotedType === 'documentMessage';
+        const isTargetAudio = msgType === 'audioMessage';
+        const isQuotedAudio = isQuoted && quotedType === 'audioMessage';
+        const isTargetDoc = msgType === 'documentMessage' || msgType === 'documentWithCaptionMessage';
+        const isQuotedDoc = isQuoted && (quotedType === 'documentMessage' || quotedType === 'documentWithCaptionMessage');
 
         if (isTargetImage || isQuotedImage) {
             const messageToDownload = isQuotedImage ? quotedMsg?.imageMessage : msg?.message?.imageMessage;
@@ -592,16 +597,30 @@ async function handle(ctx) {
                     console.error("Gagal download gambar chat:", e);
                 }
             }
+        } else if (isTargetAudio || isQuotedAudio) {
+            const audioMsg = isQuotedAudio ? quotedMsg?.audioMessage : msg?.message?.audioMessage;
+            if (audioMsg) {
+                try {
+                    chatAudioBuffer = await downloadMediaBaileys(audioMsg, 'audio');
+                    chatAudioMime = audioMsg.mimetype || 'audio/ogg';
+                    if (!pesanUser) pesanUser = 'Transkripsikan dan jelaskan isi audio ini.';
+                } catch (e) {
+                    console.error('Gagal download audio chat:', e);
+                }
+            }
         } else if (isTargetDoc || isQuotedDoc) {
-            const docMsg = isQuotedDoc ? quotedMsg?.documentMessage : msg?.message?.documentMessage;
+            const docContainer = isQuotedDoc ? quotedMsg : msg?.message;
+            const docMsg = docContainer?.documentMessage || docContainer?.documentWithCaptionMessage?.message?.documentMessage;
             if (docMsg) {
                 try {
                     await reply('Nn... Sedang membaca dokumen yang Sensei kirim...');
                     const docBuffer = await downloadMediaBaileys(docMsg, 'document');
                     const fileName = docMsg.fileName || 'document.txt';
                     const mimeType = docMsg.mimetype || '';
-                    
-                    if (fileName.endsWith('.pdf') || mimeType.includes('pdf')) {
+                    if (isZip(docBuffer, fileName) || mimeType.includes('zip')) {
+                        const zipData = await extractZip(docBuffer, fileName);
+                        extractedFileText = `[ISI ARSIP ZIP: ${fileName}, ${zipData.fileCount} file]\n${zipData.text}`;
+                    } else if (fileName.toLowerCase().endsWith('.pdf') || mimeType.includes('pdf')) {
                         const pdfData = await pdfParse(docBuffer);
                         extractedFileText = pdfData.text;
                     } else if (fileName.endsWith('.docx') || mimeType.includes('wordprocessingml')) {
@@ -628,7 +647,7 @@ async function handle(ctx) {
     // ==========================================
     // MESIN OBROLAN AI — UNIFIED via AIProvider
     // ==========================================
-    if (pemicuObrolan && (pesanUser || chatImageBuffer || extractedFileText)) {
+    if (pemicuObrolan && (pesanUser || chatImageBuffer || chatAudioBuffer || extractedFileText)) {
         const core = getCoreNumber(senderId);
         const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
         const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
@@ -639,14 +658,30 @@ async function handle(ctx) {
             await sock.sendPresenceUpdate('composing', from);
             const { provider, model } = AIProvider.resolveMode(userMode, senderId);
 
-            const { incrementStat } = require('../config/database');
-            incrementStat('aiRequests');
-            
-            // Gabungkan teks dokumen dengan pesan user jika ada
+            // Media processing must remain on the selected provider; Arisu has no media adapter.
+            if (provider === 'arisu' && (chatAudioBuffer || extractedFileText.startsWith('[ISI ARSIP ZIP:'))) {
+                throw new Error('Mode ArisuSoft belum mendukung pemrosesan audio atau ZIP. Silakan pilih Gemini, OpenRouter, Cloudflare, atau xKiro.');
+            }
+
+            // Gabungkan teks dokumen dengan pesan user jika ada.
             let finalPrompt = pesanUser;
             if (extractedFileText) {
-                finalPrompt = `${pesanUser}\n\n[ISI DOKUMEN DARI USER]:\n${extractedFileText.substring(0, 15000)}`; // limit chars
+                finalPrompt = `${pesanUser}\n\n[ISI DOKUMEN DARI USER]:\n${extractedFileText.substring(0, 15000)}`;
             }
+
+            if (chatAudioBuffer) {
+                await reply('Nn... Sedang membaca audio menggunakan provider sesuai aimode Sensei...');
+                const transcript = await AIProvider.transcribe({
+                    provider,
+                    model,
+                    audioBuffer: chatAudioBuffer,
+                    mimeType: chatAudioMime
+                });
+                finalPrompt = `${pesanUser}\n\n[TRANSKRIP AUDIO USER]:\n${transcript.substring(0, 20000)}`;
+            }
+
+            const { incrementStat } = require('../config/database');
+            incrementStat('aiRequests');
             
             let finalSystemPrompt = state.userSystemPrompt ? (state.userSystemPrompt[senderId] || (core && state.userSystemPrompt[core])) : null;
             if (!finalSystemPrompt && state.userRole && (state.userRole[senderId] || (core && state.userRole[core]))) {

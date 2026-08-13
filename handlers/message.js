@@ -64,7 +64,9 @@ function registerMessageHandler(sock, isJadibot = false) {
         const contextInfo = msg.message?.extendedTextMessage?.contextInfo ||
             msg.message?.imageMessage?.contextInfo ||
             msg.message?.videoMessage?.contextInfo ||
-            msg.message?.documentMessage?.contextInfo || null;
+            msg.message?.audioMessage?.contextInfo ||
+            msg.message?.documentMessage?.contextInfo ||
+            msg.message?.documentWithCaptionMessage?.message?.documentMessage?.contextInfo || null;
         const isQuoted = !!contextInfo?.quotedMessage;
         const quotedMsg = contextInfo?.quotedMessage || null;
         const quotedType = quotedMsg ? Object.keys(quotedMsg)[0] : null;

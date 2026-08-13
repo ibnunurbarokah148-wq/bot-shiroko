@@ -17,6 +17,7 @@
     "@google/generative-ai": "^0.24.1",
     "@huggingface/inference": "^4.13.22",
     "@whiskeysockets/baileys": "^7.0.0-rc13",
+    "adm-zip": "^0.6.0",
     "api-dylux": "^1.8.6",
     "axios": "^1.16.1",
     "cheerio": "^1.2.0",
