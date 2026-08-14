@@ -16,10 +16,32 @@ const db = require('../config/database');
 const companionService = require('../services/ai/companion.service');
 const appearanceState = require('../services/ai/appearance.state');
 const { extractZip, isZip } = require('../services/ai/media.service');
+const moodState = require('../services/ai/mood.state');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, isGroup, textClean, textLower,
             msgType, isQuoted, quotedMsg, quotedType, reply, downloadMediaBaileys } = ctx;
+
+    if (textLower === '!mood') {
+        if (!isOwner) {
+            await reply('Nn... Status mood hanya bisa dilihat oleh Owner.');
+            return true;
+        }
+        const mood = moodState.getMood();
+        const updated = mood.updatedAt ? new Date(mood.updatedAt).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : 'Belum ada';
+        await reply(`🧠 *STATUS MOOD SHIROKO*\n\n• Mood: *${mood.mood}*\n• Intensitas: *${Math.round(mood.intensity * 100)}%*\n• Confidence: *${Math.round(mood.confidence * 100)}%*\n• Tren: *${mood.trend}*\n• Sinyal terakhir: *${mood.lastSignal}*\n• Diperbarui: ${updated}`);
+        return true;
+    }
+
+    if (textLower === '!resetmood') {
+        if (!isOwner) {
+            await reply('Nn... Mood hanya bisa direset oleh Owner.');
+            return true;
+        }
+        moodState.resetMood();
+        await reply('Nn... Mood Shiroko sudah dikembalikan ke *neutral*.');
+        return true;
+    }
 
     // ==========================================
     // HANDLER SESI MILIH WAIFU (!mybini)
@@ -528,6 +550,8 @@ async function handle(ctx) {
             await sock.sendPresenceUpdate('composing', from);
             const { provider, model } = AIProvider.resolveMode(userMode, senderId);
 
+            if (isOwner && pesanUser) moodState.updateFromResponse(pesanUser);
+
             if (provider === 'gemini') {
                 await reply('Nn... Membuka jalur perpustakaan satelit Google Scholar (Gemini)...');
                 const jawaban = await AIProvider.generate({
@@ -693,7 +717,12 @@ async function handle(ctx) {
             // Sisipkan konteks penampilan fisik terkini Shiroko (tanpa masuk ChatMemory)
             const currentApp = appearanceState.getAppearance(senderId);
             const appearanceContext = appearanceState.buildAppearanceContext(currentApp);
-            const effectiveSystemPrompt = finalSystemPrompt ? `${finalSystemPrompt}\n\n${appearanceContext}` : `${getRolePrompt(null, isOwner, (provider === 'arisu' ? 'arisu' : 'system'))}\n\n${appearanceContext}`;
+            const moodContext = isOwner ? moodState.buildMoodContext() : '';
+            const effectiveSystemPrompt = [
+                finalSystemPrompt || getRolePrompt(null, isOwner, (provider === 'arisu' ? 'arisu' : 'system')),
+                moodContext,
+                appearanceContext
+            ].filter(Boolean).join('\n\n');
 
             const jawaban = await AIProvider.generate({
                 provider,
@@ -747,6 +776,8 @@ async function handle(ctx) {
             delete state.userRole[senderId];
             if (core) delete state.userRole[core];
         }
+
+        if (isOwner) moodState.resetMood();
 
         await reply('Nn... *(Menggelengkan kepala)*. Shiroko sudah melupakan seluruh riwayat obrolan dan mereset sistem pengingat/alarm.');
         return true;

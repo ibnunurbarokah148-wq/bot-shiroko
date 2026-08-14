@@ -11,6 +11,7 @@ const memory = require('./ai/memory');
 const { getShirokoSystemPrompt } = require('./ai/prompts');
 const db = require('../config/database');
 const { getCoreNumber } = require('../utils/helpers');
+const moodState = require('./ai/mood.state');
 
 const OWNER_JID = ID_OWNER[0] + '@s.whatsapp.net';
 const ALARM_MEMORY_PROVIDERS = ['gemini', 'arisu', 'cloudflare', 'openrouter', 'ollama', 'xkiro'];
@@ -34,7 +35,7 @@ function updateAlarmStats(action, ownerCore = ID_OWNER[0]) {
     if (action === 'woke_up' || action === 'prayed') {
         current.wake_streak = (current.wake_streak || 0) + 1;
         current.ignore_count = 0;
-    } else if (action === 'ignored') {
+    } else if (action === 'ignored' || action === 'refused') {
         current.wake_streak = 0;
         current.ignore_count = (current.ignore_count || 0) + 1;
     }
@@ -135,6 +136,10 @@ async function generateAlarmText({ type, salatName, level = 1, isTest = false })
     const activeMode = getActiveAIModeForOwner();
     const { provider, model } = AIProvider.resolveMode(activeMode, OWNER_JID);
     const wib = getWibContext();
+    const ownerMood = moodState.getMood();
+    const moodGuidance = ownerMood.mood !== 'neutral' && ownerMood.intensity > 0
+        ? `Mood owner: ${ownerMood.mood} (${Math.round(ownerMood.intensity * 100)}%). Sesuaikan kehangatan alarm dengan mood ini, tetapi jangan mengurangi urgensi alarm.`
+        : 'Mood owner netral. Gunakan gaya alarm sesuai level dan variasi yang tersedia.';
 
     // Pilihan sudut pandang / mood Shiroko acak agar pesan selalu bervariasi
     const moodAngles = [
@@ -182,6 +187,7 @@ async function generateAlarmText({ type, salatName, level = 1, isTest = false })
         `\n\n[PANDUAN ALARM DINAMIS REAL-TIME]\n` +
         `• Hari: ${wib.dayName} (${wib.isWeekend ? 'Akhir Pekan' : 'Hari Kerja'})\n` +
         `• Suasana: ${wib.timeOfDay}\n` +
+        `• ${moodGuidance}\n` +
         `• ${contextInstruction}\n` +
         `Jawaban maksimal 2-3 kalimat padat, bervariasi, tidak bertele-tele, dan jangan gunakan formatting berlebihan. Jangan mengulang template atau ancaman dari alarm sebelumnya; buat respons terasa spontan dan berbeda setiap panggilan.`;
 
@@ -436,11 +442,15 @@ async function handleAlarmResponse(ctx) {
 
     // Deteksi indikasi bangun / siap ibadah
     const wakeUpKeywords = ['iya', 'bangun', 'laksanakan', 'siap', 'sudah', 'oke', 'ok', 'otw', 'wudhu', 'solat', 'sholat', 'subuh'];
-    const isIndicatingWakeUp = wakeUpKeywords.some(k => (textLower || userText.toLowerCase()).includes(k));
+    const responseMood = moodState.updateFromAlarmResponse(userText);
+    const isIndicatingWakeUp = wakeUpKeywords.some(k => new RegExp(`\\b${k}\\b`, 'i').test(textLower || userText));
+    const isDelayed = /sebentar|nanti|bentar|masih ngantuk/i.test(userText);
+    const isRefused = /jangan ganggu|diam|berisik|matikan|gak mau|nggak mau|tidak mau/i.test(userText);
+    const alarmAction = isIndicatingWakeUp ? 'woke_up' : isDelayed ? 'will_comply' : isRefused ? 'refused' : 'responded';
 
     // Matikan alarm & perbarui statistik
     stopActiveAlarm();
-    updateAlarmStats('woke_up');
+    updateAlarmStats(alarmAction);
 
     // Generate respon AI yang menyambung secara natural
     const activeMode = getActiveAIModeForOwner(senderId);
@@ -449,7 +459,7 @@ async function handleAlarmResponse(ctx) {
 
     const systemPrompt = getShirokoSystemPrompt(true) + 
         `\n\n[KONTEKS SENSEI BARU MERESPONS ALARM ${session.salatName.toUpperCase()}]:\n` +
-        `Sensei merespons alarm dengan pesan: "${userText}". Balas dengan hangat, bersahabat, penuh perhatian, dan beri semangat khas Shiroko. Ajak Sensei untuk menyambung obrolan santai jika Sensei mau.`;
+        `Sensei merespons alarm dengan pesan: "${userText}". Klasifikasi respons: ${alarmAction}. Mood owner terdeteksi ${responseMood.mood}. Balas dengan hangat, bersahabat, penuh perhatian, dan beri semangat khas Shiroko. Ajak Sensei untuk menyambung obrolan santai jika Sensei mau.`;
 
     try {
         // AIProvider.generate otomatis memasukkan userText dan replyText ke ChatMemory (sekali saja)

@@ -95,6 +95,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ !limit (Cek Sisa Limit)
 *║* ➸ !ping (Cek Status Bot)
 *║* ➸ !cekid (Cek ID WA & Role)
+${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset Mood Shiroko)\n` : ''}*║*
 *║*
 *╠═══「 LMS & EVALUASI 」*
 *║* ➸ !reg_guru
@@ -107,8 +108,8 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║*
 *╠═══「 KEPANITIAAN 」*
 *║* ➸ !divisi [nama]
-*║* ➸ !daftar_anggota
-*║* ➸ !daftar_tugas
+*║* ➸ !daftar_anggota / !list_anggota
+*║* ➸ !daftar_tugas / !list_tugas_panitia
 *║* ➸ !tambah_panitia
 *║* ➸ !cabut_divisi
 *║* ➸ !tambah_tugas
@@ -131,13 +132,13 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ \`!pixai [prompt]\` (PixAI Anime Generator)
 *║* ➸ !cekpixai (Cek Status Token Pool PixAI)
 *║* ➸ !buatpixai [email] [pass] (Generate API Token PixAI)
-*║* ➸ \`!tts [teks]\` (Ubah Teks ke Suara/VN)
+*║* ➸ \`!tts / !suara [teks]\` (Ubah Teks ke Suara/VN)
 *║* ➸ \`!pdf2jpg\` (Reply PDF)
 *║* ➸ \`!stiker\` (Kirim Gambar)
 *║* ➸ \`!toimg\` (Reply Stiker)
 *║* ➸ \`!meme [teks]\` (Reply Gambar)
 *║* ➸ \`!tiktok [link]\` (Download Video/Audio)
-*║* ➸ \`!dengar\` (Reply VN ke Teks)
+*║* ➸ \`!dengar / !transkrip\` (Reply VN ke Teks)
 *║*
 *╠═══「 DATA INTEL 」*
 *║* ➸ \`!pixiv [query]\`
@@ -160,6 +161,10 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ !mc stop (Matikan Bot MC)
 *║* ➸ !mc status (Cek Status & Mode Bot MC)
 *║* ➸ !mc chat [teks] (Kirim Chat MC)
+*║* ➸ !mc server (Cek Server MC)
+*║* ➸ !alarmstatus (Status Alarm Owner)
+*║* ➸ !testsubuh / !testsalat (Tes Alarm Owner)
+*║* ➸ !aktifkanalarm / !matikanalarm
 *║*
 *╚═══▼△▼△▼△▼△▼*`;
 

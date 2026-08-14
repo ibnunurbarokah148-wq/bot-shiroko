@@ -8,6 +8,7 @@ module.exports = {
     // Mode AI per user
     userAIMode: {},
     userOllamaModel: {},
+    ownerMood: null,
 
     // Status ComfyUI
     comfyUIEnabled: true,

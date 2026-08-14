@@ -14,6 +14,7 @@ const sharp = require('sharp');
 const pixaiService = require('../services/pixai.service');
 const AIProvider = require('../services/ai/AIProvider');
 const { temporaryAudioFile, cleanupTemp } = require('../services/ai/media.service');
+const { getCoreNumber } = require('../utils/helpers');
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, textClean, textLower, msgType,
@@ -719,12 +720,19 @@ async function handle(ctx) {
                     await reply('Nn... File diterima. Shiroko butuh waktu menyandikan data ini. Mohon tunggu...');
 
                     const mediaBuffer = await downloadMediaBaileys(messageToDownload, quotedType === 'audioMessage' ? 'audio' : 'document');
-                    const provider = 'gemini';
+                    const core = getCoreNumber(senderId);
+                    const currentMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || 'arisu-gemini';
+                    const { provider, model } = AIProvider.resolveMode(currentMode, senderId);
+                    if (provider === 'arisu') {
+                        await reply('Nn... Mode ArisuSoft belum mendukung transkripsi audio. Pilih Gemini, OpenRouter, Cloudflare, atau xKiro terlebih dahulu.');
+                        kembalikanLimit(senderId);
+                        return true;
+                    }
                     const temp = temporaryAudioFile(mediaBuffer, messageToDownload.mimetype || 'audio/ogg');
                     try {
                         const transcript = await AIProvider.transcribe({
                             provider,
-                            model: 'gemini-2.5-flash-lite',
+                            model,
                             audioBuffer: mediaBuffer,
                             mimeType: messageToDownload.mimetype || 'audio/ogg'
                         });
