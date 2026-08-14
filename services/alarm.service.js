@@ -13,6 +13,7 @@ const db = require('../config/database');
 const { getCoreNumber } = require('../utils/helpers');
 
 const OWNER_JID = ID_OWNER[0] + '@s.whatsapp.net';
+const ALARM_MEMORY_PROVIDERS = ['gemini', 'arisu', 'cloudflare', 'openrouter', 'ollama', 'xkiro'];
 
 /**
  * Mendapatkan statistik kedisiplinan alarm dari SQLite
@@ -53,23 +54,17 @@ function updateAlarmStats(action, ownerCore = ID_OWNER[0]) {
  * Menginjeksi pesan ke ChatMemory (Unified Memory) untuk semua provider aktif dan semua varian JID Owner
  */
 function injectAlarmMemory(senderJid, role, text) {
-    const providers = ['gemini', 'arisu', 'cloudflare', 'openrouter', 'ollama'];
-    const ownerCore = getCoreNumber(ID_OWNER[0]);
-    const senderCore = senderJid ? getCoreNumber(senderJid) : null;
-    const jids = [senderJid, OWNER_JID, ID_OWNER[0]];
-    if (ownerCore) jids.push(ownerCore);
-    if (senderCore) jids.push(senderCore);
+    // Alarm hanya milik owner; gunakan satu JID kanonis agar history tidak terduplikasi.
+    const jids = [OWNER_JID];
 
-    const uniqueJids = [...new Set(jids.filter(Boolean))];
-
-    for (const jid of uniqueJids) {
-        for (const p of providers) {
+    for (const jid of jids) {
+        for (const provider of ALARM_MEMORY_PROVIDERS) {
             try {
-                if (!memory.get(jid, p)) {
-                    memory.init(jid, p);
-                }
-                memory.push(jid, p, role, text);
-            } catch (e) {}
+                if (!memory.get(jid, provider)) memory.init(jid, provider);
+                memory.push(jid, provider, role, text);
+            } catch (e) {
+                console.warn(`[Alarm Service] Gagal sinkronisasi memory ${provider}:`, e.message);
+            }
         }
     }
 }
@@ -77,16 +72,34 @@ function injectAlarmMemory(senderJid, role, text) {
 /**
  * Mendapatkan mode AI aktif untuk Owner dari state
  */
+function injectAlarmMemoryExcept(senderJid, role, text, excludedProvider) {
+    // Gunakan key kanonis owner yang sama dengan alarm awal.
+    const jids = [OWNER_JID];
+
+    for (const jid of jids) {
+        for (const provider of ALARM_MEMORY_PROVIDERS) {
+            if (provider === excludedProvider) continue;
+            try {
+                if (!memory.get(jid, provider)) memory.init(jid, provider);
+                memory.push(jid, provider, role, text);
+            } catch (e) {
+                console.warn(`[Alarm Service] Gagal sinkronisasi respon ${provider}:`, e.message);
+            }
+        }
+    }
+}
+
 function getActiveAIModeForOwner(targetSenderId) {
     const ownerCore = getCoreNumber(ID_OWNER[0]);
     const senderCore = targetSenderId ? getCoreNumber(targetSenderId) : null;
-    
-    return state.ownerAIMode ||
+
+    // Prioritaskan mode user yang sudah dinormalisasi; ownerAIMode menjadi fallback.
+    return (senderCore && state.userAIMode[senderCore]) ||
            (targetSenderId && state.userAIMode[targetSenderId]) ||
-           (senderCore && state.userAIMode[senderCore]) ||
            state.userAIMode[OWNER_JID] ||
            state.userAIMode[ID_OWNER[0]] ||
            (ownerCore && state.userAIMode[ownerCore]) ||
+           state.ownerAIMode ||
            'gemini';
 }
 
@@ -252,17 +265,18 @@ async function triggerSalatAlarm(salatName, waktuStr, isTest = false) {
     const formattedMessage = `🔔 *NOTIFIKASI TAKTIS SALAT ${salatName.toUpperCase()}* (${waktuStr}) 🔔\n\n${alarmText}\n\n_(Balas pesan ini untuk ngobrol dengan Shiroko)_`;
 
     try {
-        await sock.sendMessage(OWNER_JID, { text: formattedMessage });
-        
-        // Simpan sesi alarm aktif & masukkan ke memory AI
+        const sentMessage = await sock.sendMessage(OWNER_JID, { text: formattedMessage });
+
+        // Simpan sesi alarm aktif & ID pesan agar hanya quote alarm ini yang diproses.
         state.activeAlarmSession = {
             type: 'salat',
             salatName,
             level: 1,
             startedAt: Date.now(),
-            isTest
+            isTest,
+            messageIds: sentMessage?.key?.id ? [sentMessage.key.id] : []
         };
-        injectAlarmMemory(OWNER_JID, 'assistant', alarmText);
+        injectAlarmMemory(OWNER_JID, 'assistant', formattedMessage);
         console.log(`[Alarm Service] Alarm Salat ${salatName} berhasil dikirim ke Owner.`);
     } catch (e) {
         console.error(`[Alarm Service] Gagal mengirim alarm salat ${salatName}:`, e.message);
@@ -289,7 +303,8 @@ async function triggerSubuhAlarm(isTest = false) {
         salatName: 'Subuh',
         level: 1,
         startedAt: Date.now(),
-        isTest
+        isTest,
+        messageIds: []
     };
 
     // Level 1
@@ -297,8 +312,9 @@ async function triggerSubuhAlarm(isTest = false) {
     const msgLevel1 = `🔔 *ALARM SUBUH (Panggilan 1/3)* 🔔\n\n${textLevel1}\n\n_(Balas *iya* atau sapa Shiroko jika sudah bangun)_`;
 
     try {
-        await sock.sendMessage(OWNER_JID, { text: msgLevel1 });
-        injectAlarmMemory(OWNER_JID, 'assistant', textLevel1);
+        const sentLevel1 = await sock.sendMessage(OWNER_JID, { text: msgLevel1 });
+        if (sentLevel1?.key?.id) state.activeAlarmSession.messageIds.push(sentLevel1.key.id);
+        injectAlarmMemory(OWNER_JID, 'assistant', msgLevel1);
     } catch (e) {
         console.error('[Alarm Service] Gagal kirim Subuh level 1:', e.message);
     }
@@ -319,15 +335,17 @@ async function triggerSubuhAlarm(isTest = false) {
             const textLevel2 = await generateAlarmText({ type: 'subuh', salatName: 'Subuh', level: 2, isTest });
             const msgLevel2 = `⏰ *ALARM SUBUH (Panggilan 2/3)* ⏰\n\n${textLevel2}`;
             try {
-                await s.sendMessage(OWNER_JID, { text: msgLevel2 });
-                injectAlarmMemory(OWNER_JID, 'assistant', textLevel2);
+                const sentLevel2 = await s.sendMessage(OWNER_JID, { text: msgLevel2 });
+                if (sentLevel2?.key?.id && state.activeAlarmSession) state.activeAlarmSession.messageIds.push(sentLevel2.key.id);
+                injectAlarmMemory(OWNER_JID, 'assistant', msgLevel2);
             } catch (e) {}
         } else if (currentLevel === 3) {
             const textLevel3 = await generateAlarmText({ type: 'subuh', salatName: 'Subuh', level: 3, isTest });
             const msgLevel3 = `🚨 *ALARM SUBUH (Panggilan 3/3 - FINAL)* 🚨\n\n${textLevel3}`;
             try {
-                await s.sendMessage(OWNER_JID, { text: msgLevel3 });
-                injectAlarmMemory(OWNER_JID, 'assistant', textLevel3);
+                const sentLevel3 = await s.sendMessage(OWNER_JID, { text: msgLevel3 });
+                if (sentLevel3?.key?.id && state.activeAlarmSession) state.activeAlarmSession.messageIds.push(sentLevel3.key.id);
+                injectAlarmMemory(OWNER_JID, 'assistant', msgLevel3);
             } catch (e) {}
         } else {
             // Berhenti jika sudah lewat 3 panggilan
@@ -370,14 +388,16 @@ function stopActiveAlarm() {
  * Menangani respon Sensei terhadap alarm aktif atau quote pesan alarm
  */
 async function handleAlarmResponse(ctx) {
-    const { sock, senderId, isOwner, textClean, text, textLower, isQuoted, quotedTextLower, reply } = ctx;
+    const { sock, senderId, isOwner, textClean, text, textLower, isQuoted, quotedTextLower, quotedStanzaId, reply } = ctx;
     if (!isOwner) return false;
 
     const userText = (textClean || text || '').trim();
     if (!userText) return false;
 
     const hasActiveAlarm = !!state.activeAlarmSession;
-    const isQuotingAlarm = isQuoted && (
+    const activeMessageIds = state.activeAlarmSession?.messageIds || [];
+    const isQuotingKnownAlarm = Boolean(quotedStanzaId && activeMessageIds.includes(quotedStanzaId));
+    const isQuotingAlarm = isQuoted && (isQuotingKnownAlarm || (
         quotedTextLower.includes('alarm subuh') ||
         quotedTextLower.includes('notifikasi taktis salat') ||
         quotedTextLower.includes('waktu ibadah') ||
@@ -388,7 +408,7 @@ async function handleAlarmResponse(ctx) {
         quotedTextLower.includes('adzan') ||
         quotedTextLower.includes('subuh') ||
         quotedTextLower.includes('wudhu')
-    );
+    ));
 
     if (!hasActiveAlarm && !isQuotingAlarm) {
         return false;
@@ -425,6 +445,10 @@ async function handleAlarmResponse(ctx) {
         });
 
         if (replyText) {
+            // Provider aktif sudah menyimpan user + assistant melalui generate().
+            // Sinkronkan ke provider lain agar perpindahan aimode tidak memutus konteks owner.
+            injectAlarmMemoryExcept(targetSenderId, 'user', userText, provider);
+            injectAlarmMemoryExcept(targetSenderId, 'assistant', replyText, provider);
             await reply(replyText);
             return true;
         }

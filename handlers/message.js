@@ -104,6 +104,7 @@ function registerMessageHandler(sock, isJadibot = false) {
             sock, msg, from, senderId, isOwner, isGroup,
             text: textClean, textClean, textLower, msgType,
             isQuoted, quotedMsg, quotedType, quotedText, quotedTextLower,
+            quotedStanzaId: contextInfo?.stanzaId || null,
             reply, downloadMediaBaileys
         };
 
