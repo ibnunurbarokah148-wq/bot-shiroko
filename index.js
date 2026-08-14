@@ -3,24 +3,20 @@
 // Minimal bootstrap: Baileys + Express + Cron
 // ==========================================
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const cron = require('node-cron');
 const express = require('express');
-const readline = require('readline');
-const { Boom } = require('@hapi/boom');
 
 // Modular imports
 const { JATAH_HARIAN, ID_OWNER } = require('./config/constants');
 const { dbLimit, simpanDB } = require('./config/db');
 const state = require('./config/state');
 const { registerMessageHandler } = require('./handlers/message');
-const { getCoreNumber } = require('./utils/helpers');
 const { setSocket, getSocket } = require('./utils/socket');
 const jadibotService = require('./services/jadibot.service');
 const { initDatabase, migrateFromJSON } = require('./config/database');
 const { startAutoCleanup } = require('./utils/cleanup');
-const alarmService = require('./services/alarm.service');
 const { initPrayerScheduler } = require('./services/prayer.service');
 
 // Services (auto-init saat di-require: Pixiv login, AI memory cleanup)
@@ -411,4 +407,3 @@ initDatabase().then(() => {
 // MULAI BOT DISCORD & MINECRAFT (SHARED MEMORY)
 // ==========================================
 require('./bot-dc.js');
-// require('./minecraft.js'); // Dihapus karena sudah pindah ke services/minecraft/

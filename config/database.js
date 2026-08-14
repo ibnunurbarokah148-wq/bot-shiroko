@@ -241,19 +241,6 @@ function deleteOne(table, id) {
 }
 
 /**
- * Update satu kolom untuk satu id.
- * @param {string} table
- * @param {string} id
- * @param {string} column
- * @param {*} value
- */
-function updateColumn(table, id, column, value) {
-    if (!db) return;
-    db.run(`UPDATE ${table} SET ${column} = ? WHERE id = ?`, [value, id]);
-    scheduleSave();
-}
-
-/**
  * Increment statistik global di tabel statistics.
  * @param {string} key
  */
@@ -342,16 +329,6 @@ function migrateFromJSON() {
     saveToDisk();
 }
 
-function getSetting(key, defaultValue = null) {
-    const row = getOne('bot_settings', key);
-    if (!row || row.value === undefined) return defaultValue;
-    try {
-        return JSON.parse(row.value);
-    } catch (e) {
-        return row.value;
-    }
-}
-
 function setSetting(key, value) {
     upsert('bot_settings', {
         id: key,
@@ -370,10 +347,8 @@ module.exports = {
     getAll,
     upsert,
     deleteOne,
-    updateColumn,
     incrementStat,
     migrateFromJSON,
-    getSetting,
     setSetting,
     getDb: () => db
 };

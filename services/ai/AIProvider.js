@@ -102,16 +102,6 @@ function clearMemory(senderId) {
     let cleared = memory.clearAll(senderId);
     const core = getCoreNumber(senderId);
 
-    // Hapus juga sesi Gemini Chat dari state jika ada
-    if (state.sesiObrolan[senderId]) {
-        delete state.sesiObrolan[senderId];
-        cleared = true;
-    }
-    if (core && state.sesiObrolan[core]) {
-        delete state.sesiObrolan[core];
-        cleared = true;
-    }
-
     return cleared;
 }
 

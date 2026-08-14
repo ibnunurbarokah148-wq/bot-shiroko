@@ -8,7 +8,6 @@ const { exec } = require('child_process');
 const axios = require('axios');
 const state = require('../config/state');
 const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
-const { getGeminiComponents, getShirokoModel } = require('../services/ai/providers/gemini');
 const { tambahMetadataStiker } = require('../utils/sticker');
 const { antrianGambar, prosesAntrianGambar, isComfyUIActive } = require('../services/comfyui.service');
 const sharp = require('sharp');
@@ -742,74 +741,6 @@ async function handle(ctx) {
             }
         } else {
             await reply('Nn... Sensei harus me-reply sebuah pesan suara sambil mengetik perintah ini.');
-        }
-        return true;
-    }
-
-    // ==========================================
-    // CIVITAI (KHUSUS OWNER)
-    // ==========================================
-    if (textLower.startsWith('!civitai ')) {
-        if (!isOwner) {
-            await reply('❌ Nn... Fitur ini menggunakan saldo berbayar (Buzz), sehingga dikunci khusus hanya untuk Sensei Owner.');
-            return true;
-        }
-
-        const promptMentah = textClean.slice(9).trim();
-        if (!promptMentah) {
-            await reply('Nn... Tolong masukkan prompt-nya, contoh:\n*!civitai A beautiful anime girl in a field of flowers*');
-            return true;
-        }
-
-        try {
-            if (!process.env.CIVITAI_API_KEY) {
-                await reply('❌ API Key Civitai belum disetel di .env');
-                return true;
-            }
-
-            await reply('⏳ Nn... Memulai render gambar di kluster Civitai. Proses antrean ini memakan waktu beberapa menit, mohon tunggu dengan sabar... 🐺');
-
-            const { Civitai } = require("civitai");
-            const civitaiClient = new Civitai({ auth: process.env.CIVITAI_API_KEY });
-
-            const input = {
-                model: "urn:air:sdxl:checkpoint:civitai:101055@128078", // Juggernaut XL (Default SDK)
-                params: {
-                    prompt: promptMentah,
-                    negativePrompt: "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry",
-                    scheduler: "EulerA",
-                    steps: 20,
-                    cfgScale: 7,
-                    width: 1024,
-                    height: 1024,
-                    clipSkip: 2
-                }
-            };
-
-            // Gunakan flag `true` untuk polling otomatis (menunggu sampai selesai)
-            const response = await civitaiClient.image.fromText(input, true); 
-
-            // Ekstrak blobUrl
-            let imageUrl = null;
-            if (response && response.jobs && response.jobs.length > 0) {
-                const job = response.jobs[0];
-                if (job.result && job.result.blobUrl) {
-                    imageUrl = job.result.blobUrl;
-                }
-            }
-
-            if (imageUrl) {
-                await sock.sendMessage(from, {
-                    image: { url: imageUrl },
-                    caption: `🎨 *Ide Sensei:* ${promptMentah}\n☁️ *Mesin:* Civitai API (Juggernaut XL)\n\nNn... Render dari kluster Civitai berhasil! Saldo Buzz sudah dipotong otomatis. 🐺✨`
-                }, { quoted: msg });
-            } else {
-                throw new Error("Job selesai tetapi gambar (blobUrl) tidak ditemukan dalam respons JSON Civitai.");
-            }
-
-        } catch (error) {
-            console.error("🚨 ERROR CIVITAI API:", error);
-            await reply(`Nn... Gagal merender gambar di Civitai.\n*Laporan Sistem:* ${error.message || error}`);
         }
         return true;
     }

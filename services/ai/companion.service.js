@@ -1,6 +1,5 @@
 const AIProvider = require('./AIProvider');
 const appearanceState = require('./appearance.state');
-const outfitState = require('./outfit.state'); // Re-exported façade
 const pixaiService = require('../pixai.service');
 const { cekDanPotongLimit, kembalikanLimit } = require('../../config/db');
 const { getShirokoSystemPrompt } = require('./prompts');

@@ -209,7 +209,6 @@ const simpanPanitia = () => {};
 const simpanCoba = () => {};
 const simpanJadibot = () => {};
 const simpanPremium = () => {};
-const simpanOutfit = () => {};
 
 // ==========================================
 // LIMIT FUNCTIONS
@@ -255,7 +254,7 @@ function kembalikanLimit(targetID, amount = 1) {
 // ==========================================
 module.exports = {
     dbLimit, dbRole, dbTugas, dbPanitia, dbCoba, dbJadibot, dbPremium, dbOutfit,
-    simpanDB, simpanRole, simpanTugas, simpanPanitia, simpanCoba, simpanJadibot, simpanPremium, simpanOutfit,
+    simpanDB, simpanRole, simpanTugas, simpanPanitia, simpanCoba, simpanJadibot, simpanPremium,
     getCoreNumber, // Re-export dari utils/helpers untuk kemudahan
     cekDanPotongLimit, kembalikanLimit
 };

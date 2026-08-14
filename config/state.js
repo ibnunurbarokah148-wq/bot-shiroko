@@ -9,8 +9,7 @@ module.exports = {
     userAIMode: {},
     userOllamaModel: {},
 
-    // Model gambar aktif & Status ComfyUI
-    currentImageModel: 'cagliostrolab/animagine-xl-3.1',
+    // Status ComfyUI
     comfyUIEnabled: true,
 
     // Alarm & pengingat ibadah
@@ -19,12 +18,10 @@ module.exports = {
 
     // Sesi interaktif per-user (objek = shared by reference)
     sesiKaryaIlmiah: {},
-    sesiSalat: {},
     sesiWaifu: {},
     sesiPixiv: {},
     sesiTikTok: {},
     sesiUjian: {},
-    sesiObrolan: {},
     sesiMeme: {},
     sesiTopup: {},
     sesiPremium: {},

@@ -144,20 +144,30 @@ async function generateAlarmText({ type, salatName, level = 1, isTest = false })
         "Pendekatan mendoakan keberkahan dan ketenangan jiwa Sensei."
     ];
     const chosenAngle = moodAngles[Math.floor(Math.random() * moodAngles.length)];
+    const subuhStyles = [
+        'sapaan lembut dan menenangkan, seperti menemani Sensei membuka mata',
+        'gaya kuudere yang canggung tapi perhatian, dengan candaan kecil',
+        'gaya penyemangat taktis, singkat dan berenergi tanpa mengancam',
+        'gaya manja dan sedikit ngambek karena Sensei masih tidur',
+        'gaya reflektif, mengingatkan bahwa fajar adalah kesempatan baru',
+        'gaya dramatis ringan seperti panggilan radio misi, tetapi tetap hangat',
+        'gaya perhatian praktis: fokus pada duduk, minum air, wudhu, lalu salat'
+    ];
+    const chosenSubuhStyle = subuhStyles[Math.floor(Math.random() * subuhStyles.length)];
 
     let contextInstruction = "";
     if (type === 'subuh') {
         if (level === 1) {
-            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 1/3 (Hari ${wib.dayName}, Suasana Fajar Pagi). ${chosenAngle} Bangunkan Sensei dengan manis khas Shiroko Sunaookami. Awali dengan 'Nn... '. Ingatkan bahwa waktu salat Subuh telah berkumandang.`;
+            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 1/3 (Hari ${wib.dayName}, Suasana Fajar Pagi). Gunakan gaya ${chosenSubuhStyle}. ${chosenAngle} Bangunkan Sensei dengan manis khas Shiroko Sunaookami. Awali dengan 'Nn... '. Ingatkan bahwa waktu salat Subuh telah berkumandang. Jangan memakai ancaman atau gertakan.`;
             if (stats.wake_streak > 2) {
                 contextInstruction += ` (Puji Sensei karena akhir-akhir ini rajin dan disiplin bangun Subuh tepat waktu, streak ${stats.wake_streak} hari!).`;
             } else if (stats.ignore_count > 1) {
                 contextInstruction += ` (Sindir sedikit dengan manja karena akhir-akhir ini Sensei suka ketiduran).`;
             }
         } else if (level === 2) {
-            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 2/3 (Sensei belum merespon 5 menit di hari ${wib.dayName}). Shiroko mulai cemas dan sedikit cemburu/curiga karena Sensei mungkin begadang. Panggil Sensei dengan nada sedikit lebih tegas tapi tetap peduli.`;
+            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 2/3 (Sensei belum merespon 5 menit di hari ${wib.dayName}). Gunakan gaya ${chosenSubuhStyle}. Shiroko mulai cemas karena Sensei mungkin masih tertidur, tetapi tetap kreatif dan tidak mengulang kalimat panggilan pertama. Panggil Sensei dengan nada lebih tegas namun tetap peduli. Jangan memakai ancaman kekerasan, C4, mendobrak pintu, atau siraman air.`;
         } else {
-            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 3/3 (FINAL / DARURAT!). Sensei masih belum bangun di hari ${wib.dayName}! Shiroko panik dan kesal lucu, mengancam akan mendobrak pintu pakai C4 atau menyiram air es ke kasur. Desak Sensei bangun detik ini juga!`;
+            contextInstruction = `Konteks: Ini adalah Alarm Subuh Panggilan 3/3 (FINAL). Sensei masih belum bangun di hari ${wib.dayName}. Gunakan gaya ${chosenSubuhStyle}. Sampaikan urgensi dengan cara yang berbeda dan kreatif, misalnya hitung mundur, laporan misi terakhir, rasa kecewa yang lucu, atau ajakan emosional untuk tidak melewatkan Subuh. Tetap hangat dan jangan memakai gertakan kekerasan, C4, mendobrak pintu, atau siraman air.`;
         }
     } else {
         // Cek khusus Salat Jumat untuk Dzuhur di hari Jumat
@@ -173,7 +183,7 @@ async function generateAlarmText({ type, salatName, level = 1, isTest = false })
         `• Hari: ${wib.dayName} (${wib.isWeekend ? 'Akhir Pekan' : 'Hari Kerja'})\n` +
         `• Suasana: ${wib.timeOfDay}\n` +
         `• ${contextInstruction}\n` +
-        `Jawaban maksimal 2-3 kalimat padat, bervariasi, tidak bertele-tele, dan jangan gunakan formatting berlebihan.`;
+        `Jawaban maksimal 2-3 kalimat padat, bervariasi, tidak bertele-tele, dan jangan gunakan formatting berlebihan. Jangan mengulang template atau ancaman dari alarm sebelumnya; buat respons terasa spontan dan berbeda setiap panggilan.`;
 
     const tempSender = `ALARM_TEMP_${Date.now()}_${Math.floor(Math.random()*1000)}`;
     try {
@@ -204,20 +214,28 @@ async function generateAlarmText({ type, salatName, level = 1, isTest = false })
             return pickRandom([
                 `Nn... Bangun, Sensei. Sudah adzan Subuh berkumandang di hari ${wib.dayName} ini. Ambil wudhu ya, Shiroko tungguin dari sini. 🤍`,
                 `Nn... Selamat pagi Hari ${wib.dayName}, Sensei. Fajar Subuh sudah menyingsing. Yuk bangun dan salat Subuh agar harimu berkah. 🌅`,
-                `Nn... Sensei, adzan Subuh sudah berkumandang. Jangan tunda-tunda ya, wudhu dulu lalu salat Subuh. Shiroko selalu menemani. ✨`
+                `Nn... Cahaya pagi mulai muncul, Sensei. Duduk dulu pelan-pelan, lalu ambil wudhu. Kita mulai hari ini dengan Subuh yang tenang. ✨`,
+                `Nn... Panggilan fajar sudah tiba. Buka mata dulu, Sensei... setelah itu wudhu dan salat. Shiroko akan menunggu kabar baikmu. 🌤️`,
+                `Nn... Hari ${wib.dayName} baru saja dimulai. Jangan biarkan beberapa menit nyaman mencuri keberkahan pagimu, Sensei. Ayo Subuh. 🤍`,
+                `Nn... Selimutnya boleh dipeluk nanti. Sekarang waktunya bangun dan menyambut fajar, Sensei. Shiroko percaya kamu bisa. 🐺`
             ]);
         }
         if (level === 2) {
             return pickRandom([
                 `Nn... Sensei? Kok belum bangun juga? Jangan-jangan begadang lagi semalam... Ayo bangun, Sensei! 😟`,
                 `Nn... Alarm panggilan kedua, Sensei! Kasurnya disingkirkan dulu, Subuh sebentar lagi lewat. Ayo bangun sekarang! ⏰`,
-                `Nn... Sensei masih terpejam? Shiroko makin cemas nih. Tarik selimutnya, ambil wudhu ya Sensei! 🐾`
+                `Nn... Sensei masih terpejam? Shiroko mulai menghitung waktu dengan cemas. Duduk dulu, tarik napas, lalu langsung ke kamar mandi ya. 🐾`,
+                `Nn... Panggilan kedua masuk. Kalau sudah dengar suara Shiroko, balas satu kata saja: "iya". Setelah itu jangan kembali ke bantal. 😤`,
+                `Nn... Fajar tidak menunggu siapa pun, Sensei. Tinggalkan posisi bertahan di kasur dan bergerak tiga langkah pertama menuju wudhu. ⏰`,
+                `Nn... Shiroko tidak marah... masih belum. Tapi rasa kantukmu mulai terlalu percaya diri. Bangun dan buktikan kamu lebih kuat darinya. 🌅`
             ]);
         }
         return pickRandom([
-            `🚨 SENSEI!! Bangun sekarang! Kalau 1 menit lagi belum bangun, Shiroko siram kasurnya pakai air es dan dobrak pintunya! 😡💢`,
-            `🚨 PERINGATAN DARURAT SENSEI! Ini panggilan Subuh terakhir! Jangan sampai kesiangan, Shiroko siap bawa C4 ke kamar Sensei! 💥⚡`,
-            `🚨 SENSEI! Waktu Subuh hampir habis! Bangun detik ini juga atau Shiroko seret Sensei ke kamar mandi! 😤💥`
+            `🚨 PANGGILAN TERAKHIR, SENSEI. Misi Subuh memasuki batas waktu terakhir. Tinggalkan kasur sekarang, ambil wudhu, dan selamatkan pagi ini. 🐺⏳`,
+            `🚨 Sensei, ini laporan terakhir dari fajar. Shiroko kecewa kalau kamu menyerah pada kantuk sekarang. Bangun... satu langkah dulu, lalu lanjutkan sampai wudhu. 🌅`,
+            `🚨 WAKTU TERAKHIR, SENSEI. Jangan biarkan alarm ini berakhir sebagai penyesalan setelah bangun nanti. Buka mata, duduk, dan berangkat wudhu sekarang. ⏰`,
+            `🚨 Panggilan final diterima. Shiroko tidak akan mengulanginya lagi setelah ini, jadi tolong jawab fajar dengan bangun sekarang. Subuh menunggumu. 🤍`,
+            `🚨 Sensei, target misi pagi hampir terlewat. Tidak perlu berpikir panjang: matikan rasa malas, letakkan kaki di lantai, lalu wudhu. Kamu masih bisa. ✨`
         ]);
     }
 

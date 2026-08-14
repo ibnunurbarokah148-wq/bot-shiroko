@@ -1,7 +1,5 @@
 require('dotenv').config();
-const { Client, Events, GatewayIntentBits, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
-const { getGeminiComponents } = require('./services/ai/providers/gemini');
-const axios = require('axios');
+const { Client, Events, GatewayIntentBits } = require('discord.js');
 const cmdGacha = require('./commands-dc/gacha');
 const cmdMybini = require('./commands-dc/mybini');
 const cmdWaifu = require('./commands-dc/waifu');
@@ -24,7 +22,6 @@ const client = new Client({
 // MODULE SHARE DENGAN WHATSAPP
 // ==========================================
 const { pixiv } = require('./services/pixiv.service');
-const { antrianGambar, prosesAntrianGambar } = require('./services/comfyui.service');
 const { upsert, incrementStat } = require('./config/database');
 
 // 2. KETIKA BOT ONLINE

@@ -194,7 +194,6 @@ VAST_INSTANCE_ID=12345678
 # ==========================================
 PIXIV_REFRESH_TOKEN=vYlnmRWf_xxxxxxxxxxxxxxxxxxxx
 CONVERT_API_KEY=iDYQeBgxxxxxxxxxxxxxxxxxx
-CIVITAI_API_KEY=2cec05b7xxxxxxxxxxxxxxxxxxxx
 
 # ==========================================
 # 📱 WHATSAPP & QRIS CONFIGURATION
