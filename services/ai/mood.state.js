@@ -90,13 +90,13 @@ function resetMood() {
 }
 
 const SIGNALS = [
-    { mood: 'affectionate', signal: 'warm', weight: 0.72, patterns: [/\bmakasih\b|terima kasih|sayang|cinta|kangen|peluk|😘|❤️|🤍/i] },
-    { mood: 'playful', signal: 'playful', weight: 0.65, patterns: [/wkwk|haha|hehe|lol|🤣|😂|becanda|bercanda|goda/i] },
-    { mood: 'tired', signal: 'tired', weight: 0.78, patterns: [/capek|lelah|ngantuk|pusing|mager|butuh istirahat|kurang tidur/i] },
-    { mood: 'sad', signal: 'sad', weight: 0.82, patterns: [/sedih|kecewa|nangis|menangis|hampa|sendirian|putus asa/i] },
-    { mood: 'anxious', signal: 'anxious', weight: 0.8, patterns: [/cemas|khawatir|takut|deg-degan|bingung banget|panik|stress|stres/i] },
     { mood: 'frustrated', signal: 'frustrated', weight: 0.78, patterns: [/kesal|frustrasi|nyerah|gagal lagi|error terus|sial|anjing|bangsat/i] },
     { mood: 'annoyed', signal: 'annoyed', weight: 0.72, patterns: [/jangan ganggu|diam|berisik|terserah|gak peduli|tidak peduli|marah/i] },
+    { mood: 'sad', signal: 'sad', weight: 0.82, patterns: [/sedih|kecewa|nangis|menangis|hampa|sendirian|putus asa/i] },
+    { mood: 'anxious', signal: 'anxious', weight: 0.8, patterns: [/cemas|khawatir|takut|deg-degan|bingung banget|panik|stress|stres/i] },
+    { mood: 'tired', signal: 'tired', weight: 0.78, patterns: [/capek|lelah|ngantuk|pusing|mager|butuh istirahat|kurang tidur/i] },
+    { mood: 'affectionate', signal: 'warm', weight: 0.72, patterns: [/\bmakasih\b|terima kasih|sayang|cinta|kangen|peluk|😘|❤️|🤍/i] },
+    { mood: 'playful', signal: 'playful', weight: 0.65, patterns: [/wkwk|haha|hehe|lol|🤣|😂|becanda|bercanda|goda/i] },
     { mood: 'happy', signal: 'positive', weight: 0.62, patterns: [/mantap|keren|bagus|sukses|senang|bahagia|alhamdulillah|siap|berhasil/i] },
     { mood: 'distant', signal: 'brief', weight: 0.35, patterns: [] }
 ];

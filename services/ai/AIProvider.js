@@ -56,23 +56,31 @@ function resolveMode(mode, senderId) {
  */
 async function generate(options) {
     const { provider } = options;
+    const syncShared = options.isOwner === true && options.useMemory !== false && options.syncSharedMemory !== false;
+    if (syncShared) memory.syncProviderFromShared(options.senderId, provider);
 
+    let result;
     switch (provider) {
         case 'gemini':
-            return geminiProvider.generate(options);
+            result = await geminiProvider.generate(options); break;
         case 'ollama':
-            return ollamaProvider.generate(options);
+            result = await ollamaProvider.generate(options); break;
         case 'openrouter':
-            return openrouterProvider.generate(options);
+            result = await openrouterProvider.generate(options); break;
         case 'cloudflare':
-            return cloudflareProvider.generate(options);
+            result = await cloudflareProvider.generate(options); break;
         case 'arisu':
-            return arisuProvider.generate(options);
+            result = await arisuProvider.generate(options); break;
         case 'xkiro':
-            return xkiroProvider.generate(options);
+            result = await xkiroProvider.generate(options); break;
         default:
             throw new Error(`Provider tidak dikenali: ${provider}`);
     }
+    if (syncShared) {
+        memory.pushShared(options.senderId, 'user', options.prompt);
+        memory.pushShared(options.senderId, 'assistant', result);
+    }
+    return result;
 }
 
 async function transcribe(options) {

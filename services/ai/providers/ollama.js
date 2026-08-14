@@ -31,6 +31,10 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
             memory.init(senderId, PROVIDER_NAME, [
                 { role: 'system', content: instruction }
             ]);
+        } else {
+            const systemMessage = existing.messages.find(message => message.role === 'system');
+            if (systemMessage) systemMessage.content = instruction;
+            else existing.messages.unshift({ role: 'system', content: instruction });
         }
 
         // Push user message

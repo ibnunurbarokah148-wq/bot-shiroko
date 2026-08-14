@@ -29,6 +29,11 @@ class ChatMemory {
         return `${core}::${provider}`;
     }
 
+    _sharedKey(senderId) {
+        const core = getCoreNumber(senderId) || senderId || 'global';
+        return `${core}::shared`;
+    }
+
     /**
      * Mendapatkan data memory untuk user + provider tertentu.
      * @param {string} senderId
@@ -111,6 +116,29 @@ class ChatMemory {
         const key = this._key(senderId, provider);
         if (!this._store[key]) return [];
         return this._store[key].messages;
+    }
+
+    getSharedMessages(senderId) {
+        const key = this._sharedKey(senderId);
+        return this._store[key]?.messages || [];
+    }
+
+    pushShared(senderId, role, content) {
+        const key = this._sharedKey(senderId);
+        if (!this._store[key]) this._store[key] = { messages: [], lastActive: Date.now() };
+        this._store[key].messages.push({ role, content: String(content || '') });
+        this._store[key].lastActive = Date.now();
+        while (this._store[key].messages.length > MAX_MESSAGES) this._store[key].messages.splice(0, 2);
+    }
+
+    syncProviderFromShared(senderId, provider) {
+        const key = this._key(senderId, provider);
+        const shared = this.getSharedMessages(senderId);
+        if (!shared.length) return;
+        this._store[key] = {
+            messages: shared.map(message => ({ ...message })),
+            lastActive: Date.now()
+        };
     }
 
     /**

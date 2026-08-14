@@ -57,6 +57,7 @@ function updateAlarmStats(action, ownerCore = ID_OWNER[0]) {
 function injectAlarmMemory(senderJid, role, text) {
     // Alarm hanya milik owner; gunakan satu JID kanonis agar history tidak terduplikasi.
     const jids = [OWNER_JID];
+    memory.pushShared(OWNER_JID, role, text);
 
     for (const jid of jids) {
         for (const provider of ALARM_MEMORY_PROVIDERS) {
@@ -76,6 +77,7 @@ function injectAlarmMemory(senderJid, role, text) {
 function injectAlarmMemoryExcept(senderJid, role, text, excludedProvider) {
     // Gunakan key kanonis owner yang sama dengan alarm awal.
     const jids = [OWNER_JID];
+    memory.pushShared(OWNER_JID, role, text);
 
     for (const jid of jids) {
         for (const provider of ALARM_MEMORY_PROVIDERS) {
@@ -199,6 +201,7 @@ async function generateAlarmText({ type, salatName, level = 1, isTest = false })
             prompt: `[SISTEM ALARM REAL-TIME]: Buatkan pesan pengingat ${type === 'subuh' ? 'Subuh level ' + level : salatName} untuk Sensei sekarang sesuai konteks hari ini (${wib.dayName}).`,
             senderId: tempSender,
             isOwner: true,
+            syncSharedMemory: false,
             systemPrompt
         });
 
@@ -467,6 +470,7 @@ async function handleAlarmResponse(ctx) {
             prompt: userText,
             senderId: targetSenderId,
             isOwner: true,
+            syncSharedMemory: false,
             systemPrompt
         });
 

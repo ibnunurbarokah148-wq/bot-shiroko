@@ -8,7 +8,7 @@ const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
 const AIProvider = require('../services/ai/AIProvider');
 
 async function handle(ctx) {
-    const { sock, from, senderId, isOwner, textClean, textLower, reply } = ctx;
+    const { sock, from, senderId, isOwner, textClean, textLower, quotedText, isQuoted, reply } = ctx;
 
     function getAiCost(mode) {
         const costMap = {
@@ -140,8 +140,9 @@ async function handle(ctx) {
     // ==========================================
     // RINGKAS
     // ==========================================
-    if (textLower.startsWith('!ringkas ')) {
-        const teksAsli = textClean.substring(9).trim();
+    if (textLower === '!ringkas' || textLower.startsWith('!ringkas ')) {
+        const teksInline = textClean.substring(8).trim();
+        const teksAsli = teksInline || (isQuoted ? quotedText.trim() : '');
         if (!teksAsli) { await reply('Nn... Mana teks yang mau diringkas?'); return true; }
         try {
             const defaultMode = isOwner ? 'gemini' : 'arisu-gemini';
