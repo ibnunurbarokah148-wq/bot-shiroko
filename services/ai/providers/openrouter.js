@@ -5,6 +5,7 @@ const axios = require('axios');
 const state = require('../../../config/state');
 const memory = require('../memory');
 const { cleanThinkingLogs, extractOpenRouterText } = require('../utils');
+const { normalizeAudioMime } = require('../media.service');
 const { getShirokoSystemPrompt } = require('../prompts');
 
 const PROVIDER_NAME = 'openrouter';
@@ -103,11 +104,12 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null 
 async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model }) {
     const apiKey = getRandomKey();
     const modelName = model || 'google/gemini-2.5-flash';
+    const audio = normalizeAudioMime(mimeType);
     const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
         model: modelName,
         messages: [{ role: 'user', content: [
             { type: 'text', text: 'Transkripsikan audio ini secara akurat. Keluarkan hanya transkripnya.' },
-            { type: 'input_audio', input_audio: { data: audioBuffer.toString('base64'), format: mimeType.split('/')[1] || 'ogg' } }
+            { type: 'input_audio', input_audio: { data: audioBuffer.toString('base64'), format: audio.format } }
         ] }]
     }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 120000 });
     const text = extractOpenRouterText(response.data);

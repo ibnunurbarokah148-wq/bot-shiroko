@@ -124,7 +124,7 @@ ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset M
 *║* ➸ \`!karyailmiah\`
 *║* ➸ \`!jurnal [topik]\`
 *║* ➸ \`!para [teks]\`
-*║* ➸ \`!ringkas\` (Reply Teks)
+*║* ➸ \`!ringkas [teks]\` (Ringkas Teks)
 *║* ➸ \`!ide\` (Ide Karya Ilmiah)
 *║*
 *╠═══「 EKSEKUSI MEDIA 」*

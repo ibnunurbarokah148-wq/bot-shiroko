@@ -46,6 +46,15 @@ function normalizeMood(raw) {
     };
 }
 
+function persistMood(mood) {
+    if (typeof db.upsert === 'function') {
+        db.upsert('bot_settings', {
+            id: 'ownerMood',
+            value: JSON.stringify(mood)
+        });
+    }
+}
+
 function getMood() {
     const normalized = normalizeMood(state.ownerMood);
     if (normalized.updatedAt && Date.now() - normalized.updatedAt > MOOD_DECAY_MS && normalized.mood !== 'neutral') {
@@ -54,6 +63,9 @@ function getMood() {
         normalized.intensity = decayedIntensity < 0.15 ? 0 : decayedIntensity;
         normalized.confidence = Math.min(normalized.confidence, 0.4);
         normalized.trend = 'falling';
+        state.ownerMood = normalized;
+        persistMood(normalized);
+        return cloneMood(normalized);
     }
     state.ownerMood = normalized;
     return cloneMood(normalized);
@@ -68,12 +80,7 @@ function setMood(input = {}) {
         console.log(`[MOOD] ${current.mood} -> ${updated.mood} | intensity=${Math.round(updated.intensity * 100)}% | confidence=${Math.round(updated.confidence * 100)}%`);
     }
 
-    if (typeof db.upsert === 'function') {
-        db.upsert('bot_settings', {
-            id: 'ownerMood',
-            value: JSON.stringify(updated)
-        });
-    }
+    persistMood(updated);
 
     return cloneMood(updated);
 }
@@ -135,21 +142,25 @@ function updateFromResponse(text) {
     });
 }
 
-function updateFromAlarmResponse(text) {
+function classifyAlarmResponse(text) {
     const value = String(text || '').trim().toLowerCase();
-    let signal;
-    if (/(sudah|udah|bangun|wudhu|wudu|otw|laksanakan|shalat|salat|solat)/i.test(value)) {
-        signal = { mood: 'happy', intensity: 0.58, confidence: 0.75, signal: 'alarm_cooperative' };
-    } else if (/(sebentar|nanti|bentar|tunggu|masih ngantuk)/i.test(value)) {
-        signal = { mood: 'tired', intensity: 0.65, confidence: 0.7, signal: 'alarm_delayed' };
-    } else if (/(jangan ganggu|diam|berisik|matikan|gak mau|nggak mau|tidak mau)/i.test(value)) {
-        signal = { mood: 'annoyed', intensity: 0.7, confidence: 0.8, signal: 'alarm_refused' };
-    } else if (/(apa|kenapa|alarm apa|bingung)/i.test(value)) {
-        signal = { mood: 'anxious', intensity: 0.45, confidence: 0.55, signal: 'alarm_confused' };
-    } else {
-        signal = { mood: 'neutral', intensity: 0.18, confidence: 0.3, signal: 'alarm_neutral' };
+    if (/(jangan ganggu|diam|berisik|matikan|gak mau|nggak mau|tidak mau)/i.test(value)) {
+        return { action: 'refused', mood: 'annoyed', intensity: 0.7, confidence: 0.8, signal: 'alarm_refused' };
     }
+    if (/(sebentar|nanti|bentar|tunggu|masih ngantuk)/i.test(value)) {
+        return { action: 'will_comply', mood: 'tired', intensity: 0.65, confidence: 0.7, signal: 'alarm_delayed' };
+    }
+    if (/(sudah|udah|bangun|wudhu|wudu|otw|laksanakan|shalat|salat|solat|iya|siap)/i.test(value)) {
+        return { action: 'woke_up', mood: 'happy', intensity: 0.58, confidence: 0.75, signal: 'alarm_cooperative' };
+    }
+    if (/(apa|kenapa|alarm apa|bingung)/i.test(value)) {
+        return { action: 'confused', mood: 'anxious', intensity: 0.45, confidence: 0.55, signal: 'alarm_confused' };
+    }
+    return { action: 'responded', mood: 'neutral', intensity: 0.18, confidence: 0.3, signal: 'alarm_neutral' };
+}
 
+function updateFromAlarmResponse(text) {
+    const signal = classifyAlarmResponse(text);
     const current = getMood();
     const alpha = signal.confidence * 0.45;
     const nextIntensity = current.mood === signal.mood
@@ -184,6 +195,7 @@ module.exports = {
     analyzeResponse,
     updateFromResponse,
     updateFromAlarmResponse,
+    classifyAlarmResponse,
     buildMoodContext,
     normalizeMood
 };

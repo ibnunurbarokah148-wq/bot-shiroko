@@ -550,7 +550,11 @@ async function handle(ctx) {
             await sock.sendPresenceUpdate('composing', from);
             const { provider, model } = AIProvider.resolveMode(userMode, senderId);
 
-            if (isOwner && pesanUser) moodState.updateFromResponse(pesanUser);
+            if (isOwner) moodState.updateFromResponse(pesanInstruksi);
+            const moodContext = isOwner ? moodState.buildMoodContext() : '';
+            const academicPrompt = getShirokoSystemPrompt(isOwner) +
+                (moodContext ? `\n\n${moodContext}` : '') +
+                '\n\n[MODE RISET AKADEMIK]: Anda adalah asisten peneliti elit. Berikan jawaban komprehensif, berbasis data, terstruktur dengan referensi ilmiah yang relevan.';
 
             if (provider === 'gemini') {
                 await reply('Nn... Membuka jalur perpustakaan satelit Google Scholar (Gemini)...');
@@ -560,13 +564,13 @@ async function handle(ctx) {
                     prompt: pesanInstruksi,
                     senderId,
                     isOwner,
-                    systemPrompt: getShirokoSystemPrompt(isOwner) + "\n\n[MODE RISET AKADEMIK]: Anda adalah asisten peneliti elit. Berikan jawaban komprehensif, berbasis data, terstruktur dengan referensi ilmiah yang relevan."
+                    systemPrompt: academicPrompt
                 });
                 await reply(`🧠 *SHIROKO AKADEMIK (GOOGLE SCHOLAR ENGINE)*\n\n${jawaban}`);
             } else {
                 await reply(`Nn... Membuka jalur perpustakaan ${provider.toUpperCase()} (${model})...`);
                 const jawaban = await AIProvider.generate({
-                    provider, model, prompt: pesanInstruksi, senderId, isOwner
+                    provider, model, prompt: pesanInstruksi, senderId, isOwner, systemPrompt: academicPrompt
                 });
                 await reply(`🧠 *SHIROKO PINTAR (${model.toUpperCase()})*\n\n${jawaban}`);
             }
@@ -647,7 +651,7 @@ async function handle(ctx) {
                     } else if (fileName.toLowerCase().endsWith('.pdf') || mimeType.includes('pdf')) {
                         const pdfData = await pdfParse(docBuffer);
                         extractedFileText = pdfData.text;
-                    } else if (fileName.endsWith('.docx') || mimeType.includes('wordprocessingml')) {
+                    } else if (fileName.toLowerCase().endsWith('.docx') || mimeType.includes('wordprocessingml')) {
                         const docxData = await mammoth.extractRawText({ buffer: docBuffer });
                         extractedFileText = docxData.value;
                     } else {
@@ -693,6 +697,7 @@ async function handle(ctx) {
                 finalPrompt = `${pesanUser}\n\n[ISI DOKUMEN DARI USER]:\n${extractedFileText.substring(0, 15000)}`;
             }
 
+            let moodInput = pesanUser;
             if (chatAudioBuffer) {
                 await reply('Nn... Sedang membaca audio menggunakan provider sesuai aimode Sensei...');
                 const transcript = await AIProvider.transcribe({
@@ -701,8 +706,10 @@ async function handle(ctx) {
                     audioBuffer: chatAudioBuffer,
                     mimeType: chatAudioMime
                 });
+                moodInput = `${pesanUser} ${transcript}`.trim();
                 finalPrompt = `${pesanUser}\n\n[TRANSKRIP AUDIO USER]:\n${transcript.substring(0, 20000)}`;
             }
+            if (isOwner && moodInput) moodState.updateFromResponse(moodInput);
 
             const { incrementStat } = require('../config/database');
             incrementStat('aiRequests');
@@ -761,11 +768,13 @@ async function handle(ctx) {
             AIProvider.clearMemory(ID_OWNER[0]);
         }
 
-        // Reset status dan timer alarm
-        const alarmService = require('../services/alarm.service');
-        alarmService.stopActiveAlarm();
-        state.activeAlarmSession = null;
-        state.alarmSubuhState = { aktif: false, count: 0, timer: null };
+        // Reset alarm global hanya boleh dilakukan oleh owner.
+        if (isOwner) {
+            const alarmService = require('../services/alarm.service');
+            alarmService.stopActiveAlarm();
+            state.activeAlarmSession = null;
+            state.alarmSubuhState = { aktif: false, count: 0, timer: null };
+        }
 
         // Reset custom persona
         if (state.userSystemPrompt) {

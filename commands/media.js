@@ -13,7 +13,6 @@ const { antrianGambar, prosesAntrianGambar, isComfyUIActive } = require('../serv
 const sharp = require('sharp');
 const pixaiService = require('../services/pixai.service');
 const AIProvider = require('../services/ai/AIProvider');
-const { temporaryAudioFile, cleanupTemp } = require('../services/ai/media.service');
 const { getCoreNumber } = require('../utils/helpers');
 
 async function handle(ctx) {
@@ -728,7 +727,6 @@ async function handle(ctx) {
                         kembalikanLimit(senderId);
                         return true;
                     }
-                    const temp = temporaryAudioFile(mediaBuffer, messageToDownload.mimetype || 'audio/ogg');
                     try {
                         const transcript = await AIProvider.transcribe({
                             provider,
@@ -736,11 +734,11 @@ async function handle(ctx) {
                             audioBuffer: mediaBuffer,
                             mimeType: messageToDownload.mimetype || 'audio/ogg'
                         });
-                        await reply(`*🎧 HASIL SADAP AUDIO (HD)*\n\n${transcript}`);
-                    } finally {
-                        cleanupTemp(temp.dir);
-                    }
-                } else {
+                         await reply(`*🎧 HASIL SADAP AUDIO (HD)*\n\n${transcript}`);
+                     } catch (error) {
+                         throw error;
+                     }
+                 } else {
                     await reply('Nn... Format salah. Pastikan me-reply Audio/VN.');
                 }
             } catch (error) {

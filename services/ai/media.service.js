@@ -18,12 +18,24 @@ const TEXT_EXTENSIONS = new Set([
     '.go', '.rs', '.php', '.rb', '.sh', '.sql', '.html', '.css'
 ]);
 
+function normalizeAudioMime(mime = '') {
+    const normalized = String(mime).toLowerCase().split(';')[0].trim();
+    const formats = {
+        'audio/mpeg': { mime: 'audio/mpeg', format: 'mp3' },
+        'audio/mp3': { mime: 'audio/mpeg', format: 'mp3' },
+        'audio/wav': { mime: 'audio/wav', format: 'wav' },
+        'audio/x-wav': { mime: 'audio/wav', format: 'wav' },
+        'audio/mp4': { mime: 'audio/mp4', format: 'm4a' },
+        'audio/m4a': { mime: 'audio/mp4', format: 'm4a' },
+        'audio/webm': { mime: 'audio/webm', format: 'webm' },
+        'audio/ogg': { mime: 'audio/ogg', format: 'ogg' },
+        'audio/opus': { mime: 'audio/ogg', format: 'ogg' }
+    };
+    return formats[normalized] || { mime: 'audio/ogg', format: 'ogg' };
+}
+
 function audioFormat(mime = '') {
-    if (mime.includes('mpeg') || mime.includes('mp3')) return 'mp3';
-    if (mime.includes('wav')) return 'wav';
-    if (mime.includes('mp4') || mime.includes('m4a')) return 'mp4';
-    if (mime.includes('webm')) return 'webm';
-    return 'ogg';
+    return normalizeAudioMime(mime).format;
 }
 
 function isZip(buffer, fileName = '') {
@@ -74,13 +86,6 @@ async function extractZip(buffer, fileName = 'archive.zip') {
     return { text: parts.join('').slice(0, MAX_CONTEXT_CHARS), fileCount: entries.length };
 }
 
-async function transcribeWithProvider(provider, options) {
-    if (provider === 'arisu') throw new Error('Mode ArisuSoft belum mendukung pemrosesan audio. Silakan pilih Gemini, OpenRouter, Cloudflare, atau xKiro.');
-    const transcribe = options.providerModule?.transcribe;
-    if (typeof transcribe !== 'function') throw new Error(`Provider ${provider} belum mendukung transkripsi audio.`);
-    return transcribe(options);
-}
-
 function temporaryAudioFile(buffer, mime) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shiroko-audio-'));
     const filePath = path.join(dir, `audio.${audioFormat(mime)}`);
@@ -92,4 +97,4 @@ function cleanupTemp(dir) {
     if (dir) fs.rmSync(dir, { recursive: true, force: true });
 }
 
-module.exports = { extractZip, isZip, transcribeWithProvider, temporaryAudioFile, cleanupTemp, audioFormat };
+module.exports = { extractZip, isZip, temporaryAudioFile, cleanupTemp, audioFormat, normalizeAudioMime };

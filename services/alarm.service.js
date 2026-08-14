@@ -440,13 +440,11 @@ async function handleAlarmResponse(ctx) {
 
     const session = state.activeAlarmSession || { type: 'subuh', salatName: 'Subuh' };
 
-    // Deteksi indikasi bangun / siap ibadah
-    const wakeUpKeywords = ['iya', 'bangun', 'laksanakan', 'siap', 'sudah', 'oke', 'ok', 'otw', 'wudhu', 'solat', 'sholat', 'subuh'];
+    // Klasifikasi tunggal dipakai untuk mood, statistik, prompt, dan fallback.
+    const alarmClassification = moodState.classifyAlarmResponse(userText);
     const responseMood = moodState.updateFromAlarmResponse(userText);
-    const isIndicatingWakeUp = wakeUpKeywords.some(k => new RegExp(`\\b${k}\\b`, 'i').test(textLower || userText));
-    const isDelayed = /sebentar|nanti|bentar|masih ngantuk/i.test(userText);
-    const isRefused = /jangan ganggu|diam|berisik|matikan|gak mau|nggak mau|tidak mau/i.test(userText);
-    const alarmAction = isIndicatingWakeUp ? 'woke_up' : isDelayed ? 'will_comply' : isRefused ? 'refused' : 'responded';
+    const isIndicatingWakeUp = alarmClassification.action === 'woke_up';
+    const alarmAction = alarmClassification.action;
 
     // Matikan alarm & perbarui statistik
     stopActiveAlarm();
@@ -488,8 +486,12 @@ async function handleAlarmResponse(ctx) {
     let fallbackReply = "";
     if (isIndicatingWakeUp) {
         fallbackReply = `Nn... *(Mengusap dada lega)*. Baguslah kalau Sensei sudah bangun. Cepat ambil wudhu dan salat ya, Shiroko tungguin dari sini. ✨`;
+    } else if (alarmAction === 'refused') {
+        fallbackReply = `Nn... Shiroko mengerti Sensei sedang tidak ingin diganggu. Tapi setelah ini, tolong ingat waktu ibadahnya ya. 🤍`;
+    } else if (alarmAction === 'will_comply') {
+        fallbackReply = `Nn... Baik, Sensei. Jangan terlalu lama kembali ke bantal. Bangun perlahan, ambil wudhu, lalu laksanakan salat ya. 🌅`;
     } else {
-        fallbackReply = `Nn... Apapun perkataan Sensei, yang terpenting sekarang adalah bangun dan ambil wudhu! Jangan tidur lagi ya! 🐺✨`;
+        fallbackReply = `Nn... Shiroko menerima jawaban Sensei. Sekarang pastikan tubuh benar-benar bangun dan ambil wudhu ya. 🐺✨`;
     }
     injectAlarmMemory(targetSenderId, 'user', userText);
     injectAlarmMemory(targetSenderId, 'assistant', fallbackReply);
