@@ -138,7 +138,7 @@ async function fetchModels() {
             cleanName = m.id.split('/')[1];
         }
         return { id: m.id, name: cleanName };
-    });
+    }).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 
 module.exports = {

@@ -453,7 +453,7 @@ async function handle(ctx) {
 
                 let roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
                 let teksList = `🚀 *DAFTAR MODEL XKIRO GATEWAY LIVE*${roleNotice}\n\nNn... Sensei, pilih otak xKiro yang mau dipakai dengan membalas angkanya:\n\n`;
-                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name} (\`${m.id}\`)\n`; });
+                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name}\n`; });
                 teksList += `\n_Ketik *batal* untuk membatalkan._`;
 
                 await reply(teksList);

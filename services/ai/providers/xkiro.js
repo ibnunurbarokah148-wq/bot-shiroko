@@ -153,13 +153,11 @@ async function fetchModels() {
         const mapped = allModels.map(m => {
             const modelId = m.id || m.name || String(m);
             let cleanName = m.display_name || modelId;
-            if (modelId.includes('gemini') || modelId.includes('gpt') || modelId.includes('claude') || modelId.includes('omni')) {
-                cleanName += ' (Vision 👁️)';
-            }
             return { id: modelId, name: cleanName };
         });
 
-        return mapped.length > 0 ? mapped : getFallbackModels();
+        return (mapped.length > 0 ? mapped : getFallbackModels())
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     } catch (e) {
         console.warn(`[XKIRO] Gagal fetch live models, menggunakan catalog fallback: ${e.message}`);
         return getFallbackModels();
@@ -168,15 +166,15 @@ async function fetchModels() {
 
 function getFallbackModels() {
     return [
-        { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash (Vision 👁️)' },
-        { id: 'google/gemini-3-flash', name: 'Gemini 3 Flash (Vision 👁️)' },
-        { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini (Vision 👁️)' },
-        { id: 'openai/gpt-5.4', name: 'GPT-5.4 (Vision 👁️)' },
-        { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6 (Vision 👁️)' },
+        { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+        { id: 'google/gemini-3-flash', name: 'Gemini 3 Flash' },
+        { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini' },
+        { id: 'openai/gpt-5.4', name: 'GPT-5.4' },
+        { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6' },
         { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
-        { id: 'qwen/qwen3.5-omni-flash', name: 'Qwen 3.5 Omni Flash (Vision 👁️)' },
+        { id: 'qwen/qwen3.5-omni-flash', name: 'Qwen 3.5 Omni Flash' },
         { id: 'z-ai/glm-5', name: 'GLM-5' }
-    ];
+    ].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 
 module.exports = {

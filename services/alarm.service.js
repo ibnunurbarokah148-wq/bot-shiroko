@@ -143,6 +143,17 @@ async function generateAlarmText({ type, salatName, level = 1, isTest = false })
         ? `Mood owner: ${ownerMood.mood} (${Math.round(ownerMood.intensity * 100)}%). Sesuaikan kehangatan alarm dengan mood ini, tetapi jangan mengurangi urgensi alarm.`
         : 'Mood owner netral. Gunakan gaya alarm sesuai level dan variasi yang tersedia.';
 
+    // Ambil konteks percakapan terbaru agar alarm terasa seperti kelanjutan obrolan,
+    // bukan notifikasi yang muncul tanpa hubungan dengan percakapan sebelumnya.
+    const recentConversation = memory.getMessages(OWNER_JID, provider)
+        .filter(message => message?.role === 'user' || message?.role === 'assistant')
+        .slice(-6)
+        .map(message => `${message.role === 'user' ? 'Sensei' : 'Shiroko'}: ${String(message.content || '').replace(/\s+/g, ' ').trim()}`)
+        .join('\n');
+    const conversationContext = recentConversation
+        ? `\nKonteks obrolan terakhir (gunakan hanya jika relevan, jangan mengarang detail baru):\n${recentConversation}\nBuat alarm terasa menyambung dengan obrolan itu. Jika sebelumnya sedang membahas rencana atau aktivitas, singgung secara singkat bahwa obrolan tersebut bisa dilanjutkan setelah salat.`
+        : '';
+
     // Pilihan sudut pandang / mood Shiroko acak agar pesan selalu bervariasi
     const moodAngles = [
         "Pendekatan hangat, penuh perhatian lembut dan kasih sayang khas Shiroko.",
@@ -191,6 +202,7 @@ async function generateAlarmText({ type, salatName, level = 1, isTest = false })
         `• Suasana: ${wib.timeOfDay}\n` +
         `• ${moodGuidance}\n` +
         `• ${contextInstruction}\n` +
+        conversationContext + '\n' +
         `Jawaban maksimal 2-3 kalimat padat, bervariasi, tidak bertele-tele, dan jangan gunakan formatting berlebihan. Jangan mengulang template atau ancaman dari alarm sebelumnya; buat respons terasa spontan dan berbeda setiap panggilan.`;
 
     const tempSender = `ALARM_TEMP_${Date.now()}_${Math.floor(Math.random()*1000)}`;
@@ -289,7 +301,7 @@ async function triggerSalatAlarm(salatName, waktuStr, isTest = false) {
     if (!sock) return;
 
     const alarmText = await generateAlarmText({ type: 'salat', salatName, isTest });
-    const formattedMessage = `🔔 *NOTIFIKASI TAKTIS SALAT ${salatName.toUpperCase()}* (${waktuStr}) 🔔\n\n${alarmText}\n\n_(Balas pesan ini untuk ngobrol dengan Shiroko)_`;
+    const formattedMessage = alarmText;
 
     try {
         const sentMessage = await sock.sendMessage(OWNER_JID, { text: formattedMessage });
@@ -336,7 +348,7 @@ async function triggerSubuhAlarm(isTest = false) {
 
     // Level 1
     const textLevel1 = await generateAlarmText({ type: 'subuh', salatName: 'Subuh', level: 1, isTest });
-    const msgLevel1 = `🔔 *ALARM SUBUH (Panggilan 1/3)* 🔔\n\n${textLevel1}\n\n_(Balas *iya* atau sapa Shiroko jika sudah bangun)_`;
+    const msgLevel1 = textLevel1;
 
     try {
         const sentLevel1 = await sock.sendMessage(OWNER_JID, { text: msgLevel1 });
@@ -360,7 +372,7 @@ async function triggerSubuhAlarm(isTest = false) {
 
         if (currentLevel === 2) {
             const textLevel2 = await generateAlarmText({ type: 'subuh', salatName: 'Subuh', level: 2, isTest });
-            const msgLevel2 = `⏰ *ALARM SUBUH (Panggilan 2/3)* ⏰\n\n${textLevel2}`;
+            const msgLevel2 = textLevel2;
             try {
                 const sentLevel2 = await s.sendMessage(OWNER_JID, { text: msgLevel2 });
                 if (sentLevel2?.key?.id && state.activeAlarmSession) state.activeAlarmSession.messageIds.push(sentLevel2.key.id);
@@ -368,7 +380,7 @@ async function triggerSubuhAlarm(isTest = false) {
             } catch (e) {}
         } else if (currentLevel === 3) {
             const textLevel3 = await generateAlarmText({ type: 'subuh', salatName: 'Subuh', level: 3, isTest });
-            const msgLevel3 = `🚨 *ALARM SUBUH (Panggilan 3/3 - FINAL)* 🚨\n\n${textLevel3}`;
+            const msgLevel3 = textLevel3;
             try {
                 const sentLevel3 = await s.sendMessage(OWNER_JID, { text: msgLevel3 });
                 if (sentLevel3?.key?.id && state.activeAlarmSession) state.activeAlarmSession.messageIds.push(sentLevel3.key.id);
@@ -423,21 +435,11 @@ async function handleAlarmResponse(ctx) {
 
     const hasActiveAlarm = !!state.activeAlarmSession;
     const activeMessageIds = state.activeAlarmSession?.messageIds || [];
+    // Karena header alarm sudah dihilangkan, identifikasi quote harus berdasarkan
+    // ID pesan asli. Jangan memakai keyword umum yang bisa ada di chat lama.
     const isQuotingKnownAlarm = Boolean(quotedStanzaId && activeMessageIds.includes(quotedStanzaId));
-    const isQuotingAlarm = isQuoted && (isQuotingKnownAlarm || (
-        quotedTextLower.includes('alarm subuh') ||
-        quotedTextLower.includes('notifikasi taktis salat') ||
-        quotedTextLower.includes('waktu ibadah') ||
-        quotedTextLower.includes('siram air') ||
-        quotedTextLower.includes('bangun, sensei') ||
-        quotedTextLower.includes('salat') ||
-        quotedTextLower.includes('sholat') ||
-        quotedTextLower.includes('adzan') ||
-        quotedTextLower.includes('subuh') ||
-        quotedTextLower.includes('wudhu')
-    ));
 
-    if (!hasActiveAlarm && !isQuotingAlarm) {
+    if ((!hasActiveAlarm && !isQuotingKnownAlarm) || (isQuoted && !isQuotingKnownAlarm)) {
         return false;
     }
 
@@ -458,9 +460,16 @@ async function handleAlarmResponse(ctx) {
     const targetSenderId = senderId || OWNER_JID;
     const { provider, model } = AIProvider.resolveMode(activeMode, targetSenderId);
 
+    const recentConversation = memory.getMessages(OWNER_JID, provider)
+        .filter(message => message?.role === 'user' || message?.role === 'assistant')
+        .slice(-8)
+        .map(message => `${message.role === 'user' ? 'Sensei' : 'Shiroko'}: ${String(message.content || '').replace(/\s+/g, ' ').trim()}`)
+        .join('\n');
     const systemPrompt = getShirokoSystemPrompt(true) + 
-        `\n\n[KONTEKS SENSEI BARU MERESPONS ALARM ${session.salatName.toUpperCase()}]:\n` +
-        `Sensei merespons alarm dengan pesan: "${userText}". Klasifikasi respons: ${alarmAction}. Mood owner terdeteksi ${responseMood.mood}. Balas dengan hangat, bersahabat, penuh perhatian, dan beri semangat khas Shiroko. Ajak Sensei untuk menyambung obrolan santai jika Sensei mau.`;
+         `\n\n[KONTEKS RESPON ALARM ${session.salatName.toUpperCase()}]:\n` +
+         `Pesan Sensei saat ini: "${userText}". Klasifikasi respons: ${alarmAction}. Mood owner terdeteksi ${responseMood.mood}. ` +
+         `Akui atau tanggapi pengingat salat secara natural terlebih dahulu, lalu lanjutkan topik obrolan sebelumnya bila masih relevan. Jangan mengulang header alarm, jangan menyebut sistem internal, dan jangan menjawab seolah-olah sedang memulai percakapan baru.` +
+         (recentConversation ? `\nObrolan sebelum alarm:\n${recentConversation}` : '');
 
     try {
         // AIProvider.generate otomatis memasukkan userText dan replyText ke ChatMemory (sekali saja)

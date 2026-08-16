@@ -96,7 +96,6 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ !ping (Cek Status Bot)
 *║* ➸ !cekid (Cek ID WA & Role)
 ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset Mood Shiroko)\n` : ''}*║*
-*║*
 *╠═══「 LMS & EVALUASI 」*
 *║* ➸ !reg_guru
 *║* ➸ !reg_siswa
@@ -162,6 +161,7 @@ ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset M
 *║* ➸ !mc status (Cek Status & Mode Bot MC)
 *║* ➸ !mc chat [teks] (Kirim Chat MC)
 *║* ➸ !mc server (Cek Server MC)
+*║* ── Alarm & Pengingat Salat ──
 *║* ➸ !alarmstatus (Status Alarm Owner)
 *║* ➸ !testsubuh / !testsalat (Tes Alarm Owner)
 *║* ➸ !aktifkanalarm / !matikanalarm
