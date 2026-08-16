@@ -396,6 +396,9 @@ async function prosesAntrianPixAI() {
             await onSuccess(buffer, mime, imageUrl);
         }
 
+        const { incrementStat } = require('../config/database');
+        incrementStat('imageGenerated');
+
         antrianPixAI.shift(); // Hapus item yang selesai
     } catch (err) {
         console.error(`[PIXAI QUEUE ERROR]:`, err.message);

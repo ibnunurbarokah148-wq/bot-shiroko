@@ -107,6 +107,9 @@ module.exports = {
                         content: `🎨 **Ide:** ${promptMentah}\n☁️ **Mesin:** ArisuSoft (${namaModel})\n\nNn... Render dari satelit selesai! 🐺✨`,
                         files: [attachment]
                     });
+
+                    const { incrementStat } = require('../config/database');
+                    incrementStat('imageGenerated');
                 } catch (error) {
                     console.error("🚨 ERROR ARISUSOFT DISCORD:", error.message);
                     await message.reply(`Nn... Gagal membuat gambar via ArisuSoft.\n*Laporan:* ${error.message}`);
