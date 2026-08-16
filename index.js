@@ -11,6 +11,7 @@ const express = require('express');
 // Modular imports
 const { JATAH_HARIAN, ID_OWNER } = require('./config/constants');
 const { dbLimit, simpanDB } = require('./config/db');
+const { getAll: getDatabaseRows } = require('./config/database');
 const state = require('./config/state');
 const { registerMessageHandler } = require('./handlers/message');
 const { setSocket, getSocket } = require('./utils/socket');
@@ -114,11 +115,12 @@ async function startBot() {
 // ==========================================
 cron.schedule('0 0 * * *', () => {
     const { dbPremium } = require('./config/db');
-    for (let id in dbLimit) {
-        const isPremium = dbPremium[id] && (dbPremium[id] === true || dbPremium[id] > Date.now());
+    for (const { id, amount } of getDatabaseRows('user_limits')) {
+        const premiumValue = dbPremium[id];
+        const isPremium = premiumValue && (premiumValue === true || premiumValue > Date.now());
         if (isPremium) {
             dbLimit[id] = 1000;
-        } else if (dbLimit[id] < JATAH_HARIAN) {
+        } else if (amount < JATAH_HARIAN) {
             dbLimit[id] = JATAH_HARIAN;
         }
     }
@@ -170,8 +172,6 @@ app.post('/laporan-masuk', async (req, res) => {
 // ==========================================
 const net = require('net');
 let ollamaStatus = 'OFFLINE';
-let comfyUIStatus = 'OFFLINE';
-
 function checkPort(port, host) {
     return new Promise((resolve) => {
         const socket = new net.Socket();
@@ -186,7 +186,6 @@ function checkPort(port, host) {
 // Cek status secara otomatis setiap 2 detik di background
 setInterval(async () => {
     ollamaStatus = (await checkPort(11434, '127.0.0.1')) ? 'ONLINE' : 'OFFLINE';
-    comfyUIStatus = (await checkPort(8188, '127.0.0.1')) ? 'ONLINE' : 'OFFLINE';
 }, 2000);
 
 // Endpoint API Dashboard Web Shiroko
@@ -249,7 +248,7 @@ app.get('/api/dashboard', (req, res) => {
 });
 
 // Endpoint untuk Control Panel (Dipanggil oleh Web Dashboard)
-app.post('/api/control', express.json(), (req, res) => {
+app.post('/api/control', (req, res) => {
     const apiKey = req.headers['x-api-key'];
     if (apiKey !== process.env.WEB_SECRET_KEY) {
         return res.status(401).json({ status: 'error', message: 'Unauthorized. Invalid API Key.' });

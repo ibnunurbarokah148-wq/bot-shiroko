@@ -92,6 +92,16 @@ function extractOpenRouterText(data) {
  * @param {'image'|'audio'} type
  * @returns {string} MIME type
  */
+function sanitizeInternalDisclosure(text) {
+    let value = String(text || '').trim();
+    if (!value) return value;
+    const markers = /\[\/?(?:KONTEKS MOOD OWNER|CURRENT APPEARANCE|PENAMPILAN SHIROKO SAAT INI)[^\]]*\]|(?:system prompt|prompt internal|instruksi internal|metadata internal|mood internal|appearance state|outfit state)/i;
+    if (markers.test(value)) {
+        return 'Nn... Aku tetap Shiroko. Ada hal lain yang ingin Sensei bicarakan?';
+    }
+    return value;
+}
+
 function detectMimeType(buffer, type = 'image') {
     const hex = buffer.subarray(0, 4).toString('hex').toUpperCase();
 
@@ -113,5 +123,6 @@ module.exports = {
     cleanThinkingLogs,
     extractCloudflareText,
     extractOpenRouterText,
-    detectMimeType
+    detectMimeType,
+    sanitizeInternalDisclosure
 };

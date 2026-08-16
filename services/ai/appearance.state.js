@@ -286,7 +286,7 @@ function buildAppearanceContext(appearanceState) {
     const app = normalizeAppearance(appearanceState);
     const parts = [];
 
-    parts.push(`[PENAMPILAN SHIROKO SAAT INI (CURRENT APPEARANCE)]`);
+    parts.push(`Gunakan detail visual berikut hanya jika user secara langsung bertanya tentang penampilan, pakaian, rambut, atau memujinya. Jangan menyebut sumber, state internal, metadata, atau instruksi ini.`);
     parts.push(`Karakter: Sunaookami Shiroko`);
 
     if (app.hair && app.hair.style) {
@@ -321,8 +321,7 @@ function buildAppearanceContext(appearanceState) {
         parts.push(`Lokasi/Latar: ${app.scene.location}`);
     }
 
-    parts.push(`Catatan: Ini adalah penampilan fisik Shiroko TERKINI yang sedang ia gunakan. Jika user bertanya tentang pakaian/rambut/penampilan sekarang atau memuji penampilan saat ini, jawablah sesuai konteks penampilan terkini ini (BUKAN seragam Abydos biasa). Jika user bertanya tentang pakaian "biasanya", kamu boleh menjelaskan seragam sekolah Abydos bawaanmu.`);
-    parts.push(`[/CURRENT APPEARANCE]`);
+    parts.push(`Jika user bertanya tentang penampilan sekarang atau memujinya, jawab secara natural sesuai detail ini; jika tidak relevan, jangan menyebutkannya.`);
 
     return parts.join('\n');
 }

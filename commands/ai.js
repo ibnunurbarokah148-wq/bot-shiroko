@@ -19,7 +19,7 @@ const { extractZip, isZip } = require('../services/ai/media.service');
 const moodState = require('../services/ai/mood.state');
 
 async function handle(ctx) {
-    const { sock, msg, from, senderId, isOwner, isGroup, textClean, textLower,
+    const { sock, msg, normalizedMessage, from, senderId, isOwner, isGroup, textClean, textLower,
             msgType, isQuoted, quotedMsg, quotedType, reply, downloadMediaBaileys } = ctx;
 
     if (textLower === '!mood') {
@@ -589,13 +589,20 @@ async function handle(ctx) {
     let pemicuObrolan = false, pesanUser = "";
     if (isGroup) {
         if (textLower.startsWith('!shiroko ')) { pemicuObrolan = true; pesanUser = textClean.substring(9).trim(); }
+        else if (msgType === 'audioMessage' && normalizedMessage.audioMessage?.ptt === true) {
+            pemicuObrolan = true;
+            pesanUser = 'Transkripsikan dan jelaskan isi voice note ini.';
+        }
     } else {
         const sedangSesiLain = state.sesiUjian[senderId] || state.sesiTikTok[senderId] ||
             state.sesiKaryaIlmiah[senderId] || state.sesiPixiv[senderId] || state.sesiWaifu[senderId] ||
             state.sesiTopup[senderId] || state.sesiMeme[senderId] || state.sesiOllamaMode[senderId] ||
             state.sesiOpenRouterMode[senderId] || state.sesiCloudflareMode[senderId] ||
             state.sesiCabutRole[senderId] || state.sesiModelGambar[senderId];
-        if (!textClean.startsWith('!') && !sedangSesiLain) { pemicuObrolan = true; pesanUser = textClean; }
+        if (msgType === 'audioMessage' && normalizedMessage.audioMessage?.ptt === true && !sedangSesiLain) {
+            pemicuObrolan = true;
+            pesanUser = 'Transkripsikan dan jelaskan isi voice note ini.';
+        } else if (!textClean.startsWith('!') && !sedangSesiLain) { pemicuObrolan = true; pesanUser = textClean; }
         else if (textLower.startsWith('!shiroko ')) { pemicuObrolan = true; pesanUser = textClean.substring(9).trim(); }
     }
 
@@ -616,7 +623,7 @@ async function handle(ctx) {
         const isQuotedDoc = isQuoted && (quotedType === 'documentMessage' || quotedType === 'documentWithCaptionMessage');
 
         if (isTargetImage || isQuotedImage) {
-            const messageToDownload = isQuotedImage ? quotedMsg?.imageMessage : msg?.message?.imageMessage;
+            const messageToDownload = isQuotedImage ? quotedMsg?.imageMessage : normalizedMessage?.imageMessage;
             if (messageToDownload) {
                 try {
                     chatImageBuffer = await downloadMediaBaileys(messageToDownload, 'image');
@@ -626,7 +633,7 @@ async function handle(ctx) {
                 }
             }
         } else if (isTargetAudio || isQuotedAudio) {
-            const audioMsg = isQuotedAudio ? quotedMsg?.audioMessage : msg?.message?.audioMessage;
+            const audioMsg = isQuotedAudio ? quotedMsg?.audioMessage : normalizedMessage?.audioMessage;
             if (audioMsg) {
                 try {
                     chatAudioBuffer = await downloadMediaBaileys(audioMsg, 'audio');

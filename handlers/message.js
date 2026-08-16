@@ -36,8 +36,20 @@ function registerMessageHandler(sock, isJadibot = false) {
         if (isJadibot && isGroup) return;
         const senderId = isGroup ? msg.key.participant : from;
 
-        // Identifikasi tipe pesan
-        const msgType = Object.keys(msg.message)[0];
+        // Buka wrapper pesan WhatsApp agar audio/image dalam ephemeral/view-once tetap terdeteksi.
+        function unwrapMessage(message) {
+            let current = message;
+            while (current) {
+                const wrapper = current.ephemeralMessage || current.viewOnceMessage ||
+                    current.viewOnceMessageV2 || current.viewOnceMessageV2Extension;
+                if (!wrapper?.message) break;
+                current = wrapper.message;
+            }
+            return current || message;
+        }
+
+        const normalizedMessage = unwrapMessage(msg.message);
+        const msgType = Object.keys(normalizedMessage)[0];
 
         // LOGIKA CACHE & GHOST MODE (REVOKE)
         if (msgType === 'protocolMessage') {
@@ -51,22 +63,22 @@ function registerMessageHandler(sock, isJadibot = false) {
 
         // Ekstrak teks dari berbagai tipe pesan
         let textClean = '';
-        if (msg.message.conversation) textClean = msg.message.conversation;
-        else if (msg.message.extendedTextMessage) textClean = msg.message.extendedTextMessage.text;
-        else if (msg.message.imageMessage) textClean = msg.message.imageMessage.caption || '';
-        else if (msg.message.videoMessage) textClean = msg.message.videoMessage.caption || '';
-        else if (msg.message.documentWithCaptionMessage) textClean = msg.message.documentWithCaptionMessage.message?.documentMessage?.caption || '';
+        if (normalizedMessage.conversation) textClean = normalizedMessage.conversation;
+        else if (normalizedMessage.extendedTextMessage) textClean = normalizedMessage.extendedTextMessage.text;
+        else if (normalizedMessage.imageMessage) textClean = normalizedMessage.imageMessage.caption || '';
+        else if (normalizedMessage.videoMessage) textClean = normalizedMessage.videoMessage.caption || '';
+        else if (normalizedMessage.documentWithCaptionMessage) textClean = normalizedMessage.documentWithCaptionMessage.message?.documentMessage?.caption || '';
 
         textClean = textClean.trim();
         const textLower = textClean.toLowerCase();
 
         // Identifikasi pesan yang di-reply (quoted)
-        const contextInfo = msg.message?.extendedTextMessage?.contextInfo ||
-            msg.message?.imageMessage?.contextInfo ||
-            msg.message?.videoMessage?.contextInfo ||
-            msg.message?.audioMessage?.contextInfo ||
-            msg.message?.documentMessage?.contextInfo ||
-            msg.message?.documentWithCaptionMessage?.message?.documentMessage?.contextInfo || null;
+        const contextInfo = normalizedMessage?.extendedTextMessage?.contextInfo ||
+            normalizedMessage?.imageMessage?.contextInfo ||
+            normalizedMessage?.videoMessage?.contextInfo ||
+            normalizedMessage?.audioMessage?.contextInfo ||
+            normalizedMessage?.documentMessage?.contextInfo ||
+            normalizedMessage?.documentWithCaptionMessage?.message?.documentMessage?.contextInfo || null;
         const isQuoted = !!contextInfo?.quotedMessage;
         const quotedMsg = contextInfo?.quotedMessage || null;
         const quotedType = quotedMsg ? Object.keys(quotedMsg)[0] : null;
@@ -86,12 +98,9 @@ function registerMessageHandler(sock, isJadibot = false) {
 
         // Helper function: download media dari Baileys
         async function downloadMediaBaileys(messageObj, type) {
-            const stream = await downloadMediaMessage(
-                { message: { [`${type}Message`]: messageObj } },
-                'buffer',
-                {}
-            );
-            return stream;
+            const mediaMessage = messageObj?.message || messageObj;
+            const payload = mediaMessage?.[`${type}Message`] ? mediaMessage : { [`${type}Message`]: mediaMessage };
+            return downloadMediaMessage({ ...msg, message: payload }, 'buffer', {});
         }
 
         // Helper function: reply ke pesan
@@ -101,7 +110,7 @@ function registerMessageHandler(sock, isJadibot = false) {
 
         // Objek konteks yang dikirim ke semua handler
         const ctx = {
-            sock, msg, from, senderId, isOwner, isGroup,
+            sock, msg, normalizedMessage, from, senderId, isOwner, isGroup,
             text: textClean, textClean, textLower, msgType,
             isQuoted, quotedMsg, quotedType, quotedText, quotedTextLower,
             quotedStanzaId: contextInfo?.stanzaId || null,
@@ -179,6 +188,9 @@ function registerMessageHandler(sock, isJadibot = false) {
             if (await ai.handle(ctx)) return;  // HARUS TERAKHIR — punya catch-all chat
         } catch (error) {
             console.error('🚨 ERROR HANDLER PESAN:', error);
+            try { await reply('Nn... Terjadi gangguan saat memproses pesan. Silakan kirim ulang beberapa saat lagi.'); } catch (replyError) {
+                console.error('Gagal mengirim fallback error:', replyError.message);
+            }
         } finally {
             // Matikan status ngetik setelah selesai memproses (kasih delay sedikit biar natural)
             if (global.io) {

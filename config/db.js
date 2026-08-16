@@ -46,17 +46,18 @@ function createDbProxy(table, valueColumn = 'amount') {
 }
 
 // Proxy khusus untuk tabel dengan kolom 'data' (JSON)
-function createJsonProxy(table) {
+function createJsonProxy(table, valueColumn = 'data') {
     return new Proxy({}, {
         get(target, prop) {
             if (typeof prop !== 'string') return undefined;
             const row = sqlite.getOne(table, prop);
             if (!row) return undefined;
-            try { return JSON.parse(row.data); } catch { return row.data; }
+            const rawValue = row[valueColumn];
+            try { return JSON.parse(rawValue); } catch { return rawValue; }
         },
         set(target, prop, value) {
             if (typeof prop !== 'string') return true;
-            sqlite.upsert(table, { id: prop, data: JSON.stringify(value) });
+            sqlite.upsert(table, { id: prop, [valueColumn]: JSON.stringify(value) });
             return true;
         },
         deleteProperty(target, prop) {
@@ -72,8 +73,9 @@ function createJsonProxy(table) {
         getOwnPropertyDescriptor(target, prop) {
             const row = sqlite.getOne(table, prop);
             if (row) {
+                const rawValue = row[valueColumn];
                 let val;
-                try { val = JSON.parse(row.data); } catch { val = row.data; }
+                try { val = JSON.parse(rawValue); } catch { val = rawValue; }
                 return { configurable: true, enumerable: true, value: val };
             }
             return undefined;
@@ -190,7 +192,7 @@ function createPanitiaProxy() {
 // PROXY INSTANCES
 // ==========================================
 const dbLimit = createDbProxy('user_limits', 'amount');
-const dbRole = createJsonProxy('user_roles');
+const dbRole = createJsonProxy('user_roles', 'role');
 const dbTugas = createJsonProxy('user_tugas');
 const dbCoba = createJsonProxy('user_coba');
 const dbJadibot = createJsonProxy('user_jadibot');

@@ -56,7 +56,7 @@ function resolveMode(mode, senderId) {
  */
 async function generate(options) {
     const { provider } = options;
-    const syncShared = options.isOwner === true && options.useMemory !== false && options.syncSharedMemory !== false;
+    const syncShared = options.isOwner === true && options.useMemory !== false && options.syncSharedMemory !== false && provider !== 'gemini';
     if (syncShared) memory.syncProviderFromShared(options.senderId, provider);
 
     let result;
