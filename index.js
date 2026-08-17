@@ -39,8 +39,21 @@ process.on('uncaughtException', (err) => {
 async function startBot() {
     const { state: authState, saveCreds } = await useMultiFileAuthState('./auth_session');
     
-    // Fetch latest WA Web version untuk mencegah error 405 (Method Not Allowed)
-    const { version, isLatest } = await fetchLatestBaileysVersion();
+    // Fetch latest WA Web version untuk mencegah error 405 (Method Not Allowed).
+    // Jangan biarkan request versi menahan startup WhatsApp tanpa batas.
+    const fallbackVersion = [2, 3000, 1043857760];
+    let version = fallbackVersion;
+    let isLatest = false;
+    try {
+        const versionResult = await Promise.race([
+            fetchLatestBaileysVersion(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout 10 detik')), 10000))
+        ]);
+        version = versionResult.version;
+        isLatest = versionResult.isLatest;
+    } catch (error) {
+        console.warn(`[WA] Gagal mengambil versi terbaru (${error.message}), menggunakan fallback v${fallbackVersion.join('.')}.`);
+    }
     console.log(`[WA] Menggunakan WA v${version.join('.')}, isLatest: ${isLatest}`);
 
     const sock = makeWASocket({
@@ -392,12 +405,21 @@ server.listen(3000, () => {
 // ==========================================
 // MULAI BOT: INIT DATABASE → WHATSAPP → JADIBOT
 // ==========================================
-initDatabase().then(() => {
+initDatabase().then(async () => {
     console.log('[STARTUP] Database SQLite berhasil diinisialisasi.');
-    // Migrasi data JSON lama (hanya berjalan sekali)
-    migrateFromJSON();
-    startAutoCleanup();
-    return startBot();
+
+    // Koneksi WhatsApp diprioritaskan; pekerjaan pemeliharaan dijalankan paralel
+    // agar migrasi/cleanup tidak menahan proses pairing atau reconnect WA.
+    setImmediate(() => {
+        try {
+            migrateFromJSON();
+            startAutoCleanup();
+        } catch (error) {
+            console.error('[STARTUP] Gagal menjalankan migrasi/cleanup:', error);
+        }
+    });
+
+    await startBot();
 }).then(() => {
     if (jadibotService.resumeAllJadibots) jadibotService.resumeAllJadibots();
 }).catch(console.error);
