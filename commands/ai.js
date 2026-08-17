@@ -587,13 +587,10 @@ async function handle(ctx) {
     // DETEKSI TRIGGER OBROLAN
     // ==========================================
     let pemicuObrolan = false, pesanUser = "";
-    if (isGroup) {
-        if (textLower.startsWith('!shiroko ')) { pemicuObrolan = true; pesanUser = textClean.substring(9).trim(); }
-        else if (msgType === 'audioMessage' && normalizedMessage.audioMessage?.ptt === true) {
-            pemicuObrolan = true;
-            pesanUser = 'Transkripsikan dan jelaskan isi voice note ini.';
-        }
-    } else {
+    if (textLower.startsWith('!shiroko ')) {
+        pemicuObrolan = true;
+        pesanUser = textClean.substring(9).trim();
+    } else if (!isGroup) {
         const sedangSesiLain = state.sesiUjian[senderId] || state.sesiTikTok[senderId] ||
             state.sesiKaryaIlmiah[senderId] || state.sesiPixiv[senderId] || state.sesiWaifu[senderId] ||
             state.sesiTopup[senderId] || state.sesiMeme[senderId] || state.sesiOllamaMode[senderId] ||
@@ -603,7 +600,6 @@ async function handle(ctx) {
             pemicuObrolan = true;
             pesanUser = 'Transkripsikan dan jelaskan isi voice note ini.';
         } else if (!textClean.startsWith('!') && !sedangSesiLain) { pemicuObrolan = true; pesanUser = textClean; }
-        else if (textLower.startsWith('!shiroko ')) { pemicuObrolan = true; pesanUser = textClean.substring(9).trim(); }
     }
 
     // ==========================================
