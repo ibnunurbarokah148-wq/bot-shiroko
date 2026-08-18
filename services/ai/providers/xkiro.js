@@ -136,7 +136,8 @@ async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model }) {
         maxBodyLength: Infinity
     });
     const text = extractOpenRouterText(response.data);
-    return cleanThinkingLogs(validateTranscript(text));
+    if (!text) throw new Error(`Model xKiro ${modelName} tidak mengembalikan transkrip.`);
+    return cleanThinkingLogs(text);
 }
 
 /**
