@@ -743,7 +743,8 @@ async function handle(ctx) {
                 }
             } catch (error) {
                 kembalikanLimit(senderId);
-                await reply('Nn... Gagal mengunduh dan memproses audio.');
+                console.error('[AUDIO ERROR]', error?.response?.data || error?.message || error);
+                await reply(`Nn... Gagal mengunduh dan memproses audio.\nDetail: ${error?.message || 'Tidak ada detail error.'}`);
             }
         } else {
             await reply('Nn... Sensei harus me-reply sebuah pesan suara sambil mengetik perintah ini.');

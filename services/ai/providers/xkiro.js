@@ -7,7 +7,7 @@ const axios = require('axios');
 const state = require('../../../config/state');
 const memory = require('../memory');
 const { cleanThinkingLogs, extractOpenRouterText, detectMimeType } = require('../utils');
-const { prepareAudioForChatApi, validateTranscript } = require('../media.service');
+const { validateTranscript, normalizeAudioMime } = require('../media.service');
 const { getShirokoSystemPrompt } = require('../prompts');
 
 const PROVIDER_NAME = 'xkiro';
@@ -120,17 +120,21 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
 async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model }) {
     const apiKey = getRandomKey();
     const modelName = model || 'google/gemini-2.5-flash';
-    const prepared = prepareAudioForChatApi(audioBuffer, mimeType);
-    const { buffer: payload, format } = prepared;
+    const { format } = normalizeAudioMime(mimeType);
 
-    console.log(`[AUDIO] provider=xkiro model=${modelName} mime=${mimeType} format=${format} bytes=${payload.length}`);
+    console.log(`[AUDIO] provider=xkiro model=${modelName} mime=${mimeType} format=${format} bytes=${audioBuffer?.length || 0}`);
     const response = await axios.post('https://api.xkiro.com/v1/chat/completions', {
         model: modelName,
         messages: [{ role: 'user', content: [
             { type: 'text', text: 'Transkripsikan audio ini secara akurat. Keluarkan hanya transkripnya.' },
-            { type: 'input_audio', input_audio: { data: payload.toString('base64'), format } }
+            { type: 'input_audio', input_audio: { data: audioBuffer.toString('base64'), format } }
         ] }]
-    }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 120000 });
+    }, {
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 120000,
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity
+    });
     const text = extractOpenRouterText(response.data);
     return cleanThinkingLogs(validateTranscript(text));
 }
