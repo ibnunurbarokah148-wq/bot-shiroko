@@ -7,7 +7,7 @@ const axios = require('axios');
 const state = require('../../../config/state');
 const memory = require('../memory');
 const { cleanThinkingLogs, extractOpenRouterText, detectMimeType } = require('../utils');
-const { validateTranscript, normalizeAudioMime } = require('../media.service');
+const { normalizeAudioMime } = require('../media.service');
 const { getShirokoSystemPrompt } = require('../prompts');
 
 const PROVIDER_NAME = 'xkiro';
