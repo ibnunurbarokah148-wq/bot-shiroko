@@ -4,7 +4,7 @@
 //          sesiOllamaMode, obrolan AI, penangkapan gambar
 // ==========================================
 const axios = require('axios');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const mammoth = require('mammoth');
 const state = require('../config/state');
 const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');

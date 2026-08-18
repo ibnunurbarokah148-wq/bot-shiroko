@@ -136,7 +136,11 @@ async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model }) {
         maxBodyLength: Infinity
     });
     const text = extractOpenRouterText(response.data);
-    if (!text) throw new Error(`Model xKiro ${modelName} tidak mengembalikan transkrip.`);
+    if (!text) {
+        console.error('[AUDIO] Respons mentah xKiro:', JSON.stringify(response.data).slice(0, 500));
+        throw new Error(`Model xKiro ${modelName} tidak mengembalikan transkrip.`);
+    }
+    console.log(`[AUDIO] xKiro menjawab: ${String(text).slice(0, 200)}`);
     return cleanThinkingLogs(text);
 }
 

@@ -129,7 +129,10 @@ async function readEntry(entry) {
     const ext = path.extname(entry.entryName).toLowerCase();
     const data = entry.getData();
     if (TEXT_EXTENSIONS.has(ext)) return data.toString('utf8');
-    if (ext === '.pdf') return (await pdfParse(data)).text;
+    if (ext === '.pdf') {
+        const parser = new pdfParse.PDFParse({ data });
+        try { return (await parser.getText()).text; } finally { await parser.destroy(); }
+    }
     if (ext === '.docx') return (await mammoth.extractRawText({ buffer: data })).value;
     return null;
 }
