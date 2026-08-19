@@ -7,8 +7,9 @@ const axios = require('axios');
 const state = require('../../../config/state');
 const memory = require('../memory');
 const { cleanThinkingLogs, extractOpenRouterText, detectMimeType } = require('../utils');
-const { normalizeAudioMime } = require('../media.service');
+const { prepareAudioForChatApi, validateTranscript } = require('../media.service');
 const { getShirokoSystemPrompt } = require('../prompts');
+const { getCoreNumber } = require('../../../utils/helpers');
 
 const PROVIDER_NAME = 'xkiro';
 
@@ -25,6 +26,21 @@ function getRandomKey() {
     return XKIRO_API_KEYS[Math.floor(Math.random() * XKIRO_API_KEYS.length)];
 }
 
+function resolveXKiroModel({ model, senderId } = {}) {
+    const core = senderId && getCoreNumber(senderId);
+    const selectedModel =
+        model ||
+        (senderId && state.userXKiroModel[senderId]) ||
+        (core && state.userXKiroModel[core]) ||
+        state.ownerXKiroModel ||
+        'google/gemini-2.5-flash';
+
+    // Pilihan GPT-4o lama tidak konsisten menerima input_audio di gateway xKiro.
+    return selectedModel.includes('gpt-4o')
+        ? 'google/gemini-2.5-flash'
+        : selectedModel;
+}
+
 /**
  * Generate chat / vision via xKiro Gateway.
  * @param {object} options
@@ -38,12 +54,7 @@ function getRandomKey() {
  */
 async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, imageBuffer = null }) {
     const apiKey = getRandomKey();
-    let modelName = model || state.userXKiroModel[senderId] || state.ownerXKiroModel || 'google/gemini-2.5-flash';
-    
-    // Fallback jika model lama gpt-4o tersimpan
-    if (modelName === 'openai/gpt-4o' || modelName.includes('gpt-4o')) {
-        modelName = 'google/gemini-2.5-flash';
-    }
+    const modelName = resolveXKiroModel({ model, senderId });
 
     const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
 
@@ -117,17 +128,17 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
     throw new Error(`Respons xKiro (${modelName}) tidak valid atau kosong`);
 }
 
-async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model }) {
+async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId }) {
     const apiKey = getRandomKey();
-    const modelName = model || 'google/gemini-2.5-flash';
-    const { format } = normalizeAudioMime(mimeType);
+    const modelName = resolveXKiroModel({ model, senderId });
+    const { buffer: preparedAudio, format, converted } = prepareAudioForChatApi(audioBuffer, mimeType);
 
-    console.log(`[AUDIO] provider=xkiro model=${modelName} mime=${mimeType} format=${format} bytes=${audioBuffer?.length || 0}`);
+    console.log(`[AUDIO] provider=xkiro model=${modelName} mime=${mimeType} format=${format} converted=${converted} bytes=${preparedAudio.length}`);
     const response = await axios.post('https://api.xkiro.com/v1/chat/completions', {
         model: modelName,
         messages: [{ role: 'user', content: [
             { type: 'text', text: 'Transkripsikan audio ini secara akurat. Keluarkan hanya transkripnya.' },
-            { type: 'input_audio', input_audio: { data: audioBuffer.toString('base64'), format } }
+            { type: 'input_audio', input_audio: { data: preparedAudio.toString('base64'), format } }
         ] }]
     }, {
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -138,10 +149,10 @@ async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model }) {
     const text = extractOpenRouterText(response.data);
     if (!text) {
         console.error('[AUDIO] Respons mentah xKiro:', JSON.stringify(response.data).slice(0, 500));
-        throw new Error(`Model xKiro ${modelName} tidak mengembalikan transkrip.`);
     }
-    console.log(`[AUDIO] xKiro menjawab: ${String(text).slice(0, 200)}`);
-    return cleanThinkingLogs(text);
+    const transcript = validateTranscript(cleanThinkingLogs(text), 'xKiro', modelName);
+    console.log(`[AUDIO] xKiro menjawab: ${transcript.slice(0, 200)}`);
+    return transcript;
 }
 
 /**
@@ -190,5 +201,6 @@ module.exports = {
     generate,
     transcribe,
     fetchModels,
+    resolveXKiroModel,
     XKIRO_API_KEYS
 };

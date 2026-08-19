@@ -28,8 +28,8 @@ function resolveMode(mode, senderId) {
         'or':           { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || 'deepseek/deepseek-r1:free' },
         'cloudflare':   { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
         'cf':           { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
-        'xkiro':        { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'openai/gpt-4o' },
-        'xk':           { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'openai/gpt-4o' },
+        'xkiro':        { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'google/gemini-2.5-flash' },
+        'xk':           { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'google/gemini-2.5-flash' },
         'ds3':          { provider: 'arisu',       model: 'deepseek-v3' },
         'ds4':          { provider: 'arisu',       model: 'deepseek-v4' },
         'glm':          { provider: 'arisu',       model: 'glm' },
@@ -97,7 +97,20 @@ async function transcribe(options) {
     if (!providerModule?.transcribe) {
         throw new Error(`Provider ${provider} belum mendukung transkripsi audio.`);
     }
-    return providerModule.transcribe(options);
+    try {
+        return await providerModule.transcribe(options);
+    } catch (err) {
+        // Panggil Gemini secara langsung satu kali agar tidak kembali masuk ke router ini.
+        if (provider === 'xkiro' && !options.geminiFallbackAttempted && geminiProvider?.transcribe) {
+            console.warn(`[AUDIO] xKiro gagal memproses audio (${err.message}). Fallback ke Gemini...`);
+            return geminiProvider.transcribe({
+                audioBuffer: options.audioBuffer,
+                mimeType: options.mimeType,
+                geminiFallbackAttempted: true
+            });
+        }
+        throw err;
+    }
 }
 
 /**
