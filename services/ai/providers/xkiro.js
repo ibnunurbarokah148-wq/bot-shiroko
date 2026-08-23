@@ -52,14 +52,16 @@ function resolveXKiroModel({ model, senderId } = {}) {
  * @param {Buffer|null} [options.imageBuffer]
  * @returns {Promise<string>}
  */
-async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, imageBuffer = null }) {
+async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, imageBuffer = null, useMemory = true }) {
     const apiKey = getRandomKey();
     const modelName = resolveXKiroModel({ model, senderId });
 
     const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
 
+    const shouldKeepMemory = useMemory !== false;
+
     // Inisialisasi memory jika belum ada
-    if (!memory.get(senderId, PROVIDER_NAME)) {
+    if (shouldKeepMemory && !memory.get(senderId, PROVIDER_NAME)) {
         memory.init(senderId, PROVIDER_NAME);
     }
 
@@ -75,10 +77,10 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
     }
 
     // Push pesan user ke ChatMemory (simpan ringkasan pesan)
-    memory.push(senderId, PROVIDER_NAME, 'user', prompt || '[Gambar]');
+    if (shouldKeepMemory) memory.push(senderId, PROVIDER_NAME, 'user', prompt || '[Gambar]');
 
     const systemMessage = { role: 'system', content: instruction };
-    const historyMessages = memory.getMessages(senderId, PROVIDER_NAME);
+    const historyMessages = shouldKeepMemory ? memory.getMessages(senderId, PROVIDER_NAME) : [{ role: 'user', content: prompt || '[Gambar]' }];
 
     // Susun payload messages sesuai format OpenAI Chat Completions
     const payloadMessages = [systemMessage];
@@ -110,7 +112,7 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
         });
         rawData = response.data;
     } catch (e) {
-        memory.popLast(senderId, PROVIDER_NAME);
+        if (shouldKeepMemory) memory.popLast(senderId, PROVIDER_NAME);
         const errMsg = e.response?.data?.error?.message || e.response?.data?.message || e.message;
         throw new Error(`xKiro Error (${modelName}): ${errMsg}`);
     }
@@ -119,12 +121,12 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
         const extracted = extractOpenRouterText(rawData);
         if (extracted) {
             const cleanedAns = cleanThinkingLogs(extracted);
-            memory.push(senderId, PROVIDER_NAME, 'assistant', cleanedAns);
+            if (shouldKeepMemory) memory.push(senderId, PROVIDER_NAME, 'assistant', cleanedAns);
             return cleanedAns;
         }
     }
 
-    memory.popLast(senderId, PROVIDER_NAME);
+    if (shouldKeepMemory) memory.popLast(senderId, PROVIDER_NAME);
     throw new Error(`Respons xKiro (${modelName}) tidak valid atau kosong`);
 }
 

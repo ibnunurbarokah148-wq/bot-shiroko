@@ -13,7 +13,7 @@ const { getCoreNumber } = require('../utils/helpers');
 const db = require('../config/database');
 const companionService = require('../services/ai/companion.service');
 const appearanceState = require('../services/ai/appearance.state');
-const { extractDocumentText } = require('../services/ai/media.service');
+const { extractDocumentText, splitDocumentText } = require('../services/ai/media.service');
 const moodState = require('../services/ai/mood.state');
 
 async function handle(ctx) {
@@ -693,10 +693,32 @@ async function handle(ctx) {
                 throw new Error('Mode ArisuSoft belum mendukung pemrosesan audio atau ZIP. Silakan pilih Gemini, OpenRouter, Cloudflare, atau xKiro.');
             }
 
-            // Gabungkan teks dokumen dengan pesan user jika ada.
+            // Dokumen panjang diproses bertahap agar seluruh isi tetap terbaca tanpa
+            // menjejalkan seluruh dokumen ke satu context window provider.
             let finalPrompt = pesanUser;
             if (extractedFileText) {
-                finalPrompt = `${pesanUser}\n\n[ISI DOKUMEN DARI USER]:\n${extractedFileText.substring(0, 15000)}`;
+                const documentChunks = splitDocumentText(extractedFileText);
+                if (documentChunks.length > 1) {
+                    await reply(`Nn... Dokumen cukup panjang (${documentChunks.length} bagian). Shiroko akan membaca seluruhnya secara bertahap...`);
+                    const chunkResults = [];
+                    for (let i = 0; i < documentChunks.length; i++) {
+                        const chunkPrompt = `Anda sedang membaca bagian ${i + 1} dari ${documentChunks.length} dokumen pengguna.\n\n[ISI BAGIAN DOKUMEN]:\n${documentChunks[i]}\n\nBuat catatan ringkas dan faktual tentang bagian ini. Pertahankan nama, angka, tanggal, kesimpulan, dan informasi penting. Jangan menjawab pertanyaan akhir dulu.`;
+                        const chunkResult = await AIProvider.generate({
+                            provider,
+                            model,
+                            prompt: chunkPrompt,
+                            senderId,
+                            isOwner,
+                            useMemory: false,
+                            syncSharedMemory: false,
+                            systemPrompt: 'Anda adalah analis dokumen. Keluarkan catatan faktual ringkas dalam bahasa yang sama dengan dokumen.'
+                        });
+                        chunkResults.push(`BAGIAN ${i + 1}:\n${chunkResult}`);
+                    }
+                    finalPrompt = `${pesanUser || 'Analisis dokumen ini.'}\n\n[RINGKASAN SELURUH DOKUMEN]:\n${chunkResults.join('\n\n')}`;
+                } else {
+                    finalPrompt = `${pesanUser}\n\n[ISI DOKUMEN DARI USER]:\n${documentChunks[0]}`;
+                }
             }
 
             let moodInput = pesanUser;
@@ -740,7 +762,8 @@ async function handle(ctx) {
                 senderId,
                 isOwner,
                 systemPrompt: effectiveSystemPrompt,
-                imageBuffer: chatImageBuffer
+                imageBuffer: chatImageBuffer,
+                useMemory: !extractedFileText
             });
 
             await reply(jawaban);

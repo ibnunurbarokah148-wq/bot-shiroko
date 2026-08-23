@@ -14,6 +14,7 @@ const MAX_ZIP_BYTES = 25 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 75 * 1024 * 1024;
 const MAX_FILES = 250;
 const MAX_CONTEXT_CHARS = 50000;
+const DOCUMENT_CHUNK_CHARS = 12000;
 const TEXT_EXTENSIONS = new Set([
     '.txt', '.md', '.csv', '.json', '.xml', '.yaml', '.yml', '.log', '.ini',
     '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.c', '.h', '.cpp', '.hpp',
@@ -107,6 +108,23 @@ function convertAudioForApi(buffer, mime) {
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }
+}
+
+function splitDocumentText(text, chunkSize = DOCUMENT_CHUNK_CHARS) {
+    const value = String(text || '').trim();
+    if (!value) return [];
+    const chunks = [];
+    for (let start = 0; start < value.length; start += chunkSize) {
+        let end = Math.min(start + chunkSize, value.length);
+        if (end < value.length) {
+            const boundary = value.lastIndexOf('\n', end);
+            if (boundary > start + Math.floor(chunkSize * 0.6)) end = boundary;
+        }
+        chunks.push(value.slice(start, end).trim());
+        if (end <= start) end = start + chunkSize;
+        start = end - 1;
+    }
+    return chunks.filter(Boolean);
 }
 
 function prepareAudioForChatApi(buffer, mime = 'audio/ogg') {
@@ -209,6 +227,7 @@ module.exports = {
     isDocx,
     isPdf,
     extractDocumentText,
+    splitDocumentText,
     temporaryAudioFile,
     cleanupTemp,
     audioFormat,
