@@ -7,6 +7,7 @@
 module.exports = {
     // Mode AI per user
     userAIMode: {},
+    userRole: {},
     userOllamaModel: {},
     ownerMood: null,
 

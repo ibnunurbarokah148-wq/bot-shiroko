@@ -103,6 +103,12 @@ async function initDatabase() {
         )
     `);
     db.run(`
+        CREATE TABLE IF NOT EXISTS user_ai_roles (
+            id TEXT PRIMARY KEY,
+            role TEXT
+        )
+    `);
+    db.run(`
         CREATE TABLE IF NOT EXISTS user_outfits (
             id TEXT PRIMARY KEY,
             data TEXT
@@ -140,6 +146,16 @@ async function initDatabase() {
         }
     } catch (e) {
         console.warn('[DATABASE] Warning muat bot_settings ke state:', e.message);
+    }
+
+    // Pulihkan peran AI terpisah dari role LMS/aplikasi.
+    try {
+        const state = require('./state');
+        for (const row of getAll('user_ai_roles')) {
+            if (row.role) state.userRole[row.id] = row.role;
+        }
+    } catch (e) {
+        console.warn('[DATABASE] Warning muat user_ai_roles:', e.message);
     }
 
     // Simpan ke disk setelah init

@@ -49,6 +49,7 @@ function registerMessageHandler(sock, isJadibot = false) {
         }
 
         const normalizedMessage = unwrapMessage(msg.message);
+        const unwrapQuotedMessage = (message) => unwrapMessage(message);
         const msgType = Object.keys(normalizedMessage)[0];
 
         // LOGIKA CACHE & GHOST MODE (REVOKE)
@@ -67,6 +68,7 @@ function registerMessageHandler(sock, isJadibot = false) {
         else if (normalizedMessage.extendedTextMessage) textClean = normalizedMessage.extendedTextMessage.text;
         else if (normalizedMessage.imageMessage) textClean = normalizedMessage.imageMessage.caption || '';
         else if (normalizedMessage.videoMessage) textClean = normalizedMessage.videoMessage.caption || '';
+        else if (normalizedMessage.documentMessage) textClean = normalizedMessage.documentMessage.caption || '';
         else if (normalizedMessage.documentWithCaptionMessage) textClean = normalizedMessage.documentWithCaptionMessage.message?.documentMessage?.caption || '';
 
         textClean = textClean.trim();
@@ -80,7 +82,7 @@ function registerMessageHandler(sock, isJadibot = false) {
             normalizedMessage?.documentMessage?.contextInfo ||
             normalizedMessage?.documentWithCaptionMessage?.message?.documentMessage?.contextInfo || null;
         const isQuoted = !!contextInfo?.quotedMessage;
-        const quotedMsg = contextInfo?.quotedMessage || null;
+        const quotedMsg = contextInfo?.quotedMessage ? unwrapQuotedMessage(contextInfo.quotedMessage) : null;
         const quotedType = quotedMsg ? Object.keys(quotedMsg)[0] : null;
 
         let quotedText = '';
@@ -89,6 +91,8 @@ function registerMessageHandler(sock, isJadibot = false) {
             else if (quotedMsg.extendedTextMessage) quotedText = quotedMsg.extendedTextMessage.text || '';
             else if (quotedMsg.imageMessage) quotedText = quotedMsg.imageMessage.caption || '';
             else if (quotedMsg.videoMessage) quotedText = quotedMsg.videoMessage.caption || '';
+            else if (quotedMsg.documentMessage) quotedText = quotedMsg.documentMessage.caption || '';
+            else if (quotedMsg.documentWithCaptionMessage) quotedText = quotedMsg.documentWithCaptionMessage.message?.documentMessage?.caption || '';
         }
         const quotedTextLower = quotedText.toLowerCase();
 
@@ -100,7 +104,19 @@ function registerMessageHandler(sock, isJadibot = false) {
         async function downloadMediaBaileys(messageObj, type) {
             const mediaMessage = messageObj?.message || messageObj;
             const payload = mediaMessage?.[`${type}Message`] ? mediaMessage : { [`${type}Message`]: mediaMessage };
-            return downloadMediaMessage({ ...msg, message: payload }, 'buffer', {});
+            const isQuotedMedia = messageObj === quotedMsg ||
+                (quotedMsg && messageObj?.[`${type}Message`] === quotedMsg?.[`${type}Message`]);
+            const sourceMessage = isQuotedMedia ? {
+                ...msg,
+                key: {
+                    ...msg.key,
+                    remoteJid: contextInfo?.remoteJid || msg.key.remoteJid,
+                    participant: contextInfo?.participant || msg.key.participant,
+                    id: contextInfo?.stanzaId || msg.key.id
+                },
+                message: payload
+            } : { ...msg, message: payload };
+            return downloadMediaMessage(sourceMessage, 'buffer', {});
         }
 
         // Helper function: reply ke pesan

@@ -4,10 +4,8 @@
 //          sesiOllamaMode, obrolan AI, penangkapan gambar
 // ==========================================
 const axios = require('axios');
-const { PDFParse } = require('pdf-parse');
-const mammoth = require('mammoth');
 const state = require('../config/state');
-const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
+const { cekDanPotongLimit, kembalikanLimit, dbAIRole } = require('../config/db');
 const AIProvider = require('../services/ai/AIProvider');
 const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const { ROLE_PROMPTS, getRolePrompt } = require('../services/ai/prompts');
@@ -15,7 +13,7 @@ const { getCoreNumber } = require('../utils/helpers');
 const db = require('../config/database');
 const companionService = require('../services/ai/companion.service');
 const appearanceState = require('../services/ai/appearance.state');
-const { extractZip, isZip } = require('../services/ai/media.service');
+const { extractDocumentText } = require('../services/ai/media.service');
 const moodState = require('../services/ai/mood.state');
 
 async function handle(ctx) {
@@ -319,8 +317,8 @@ async function handle(ctx) {
     // ==========================================
     // PERAN / PROFESI MODE
     // ==========================================
-    if (textLower.startsWith('!peran') || textLower.startsWith('!profesi')) {
-        const args = textClean.split(' ')[1];
+    if (/^!(?:peran|profesi)(?:\s|$)/i.test(textClean)) {
+        const args = textClean.split(/\s+/)[1];
         const roleKeys = Object.keys(ROLE_PROMPTS);
         
         if (!args) {
@@ -347,10 +345,12 @@ async function handle(ctx) {
         
         if (chosenRole === 'normal') {
             delete state.userRole[senderId];
+            delete dbAIRole[senderId];
             if (state.userSystemPrompt && state.userSystemPrompt[senderId]) delete state.userSystemPrompt[senderId];
             await reply('🌸 *MODE NORMAL AKTIF*\n\nNn... Shiroko sudah kembali ke wujud asisten/istri Sensei seperti biasa.');
         } else {
             state.userRole[senderId] = chosenRole;
+            dbAIRole[senderId] = chosenRole;
             if (state.userSystemPrompt && state.userSystemPrompt[senderId]) delete state.userSystemPrompt[senderId];
             const roleNama = chosenRole.charAt(0).toUpperCase() + chosenRole.slice(1);
             await reply(`✅ *PERAN ${roleNama.toUpperCase()} AKTIF*\n\nNn... Mulai sekarang Shiroko akan berperilaku sebagai ${roleNama}. ✨`);
@@ -640,7 +640,7 @@ async function handle(ctx) {
                 }
             }
         } else if (isTargetDoc || isQuotedDoc) {
-            const docContainer = isQuotedDoc ? quotedMsg : msg?.message;
+            const docContainer = isQuotedDoc ? quotedMsg : normalizedMessage;
             const docMsg = docContainer?.documentMessage || docContainer?.documentWithCaptionMessage?.message?.documentMessage;
             if (docMsg) {
                 try {
@@ -648,19 +648,7 @@ async function handle(ctx) {
                     const docBuffer = await downloadMediaBaileys(docMsg, 'document');
                     const fileName = docMsg.fileName || 'document.txt';
                     const mimeType = docMsg.mimetype || '';
-                    if (isZip(docBuffer, fileName) || mimeType.includes('zip')) {
-                        const zipData = await extractZip(docBuffer, fileName);
-                        extractedFileText = `[ISI ARSIP ZIP: ${fileName}, ${zipData.fileCount} file]\n${zipData.text}`;
-                    } else if (fileName.toLowerCase().endsWith('.pdf') || mimeType.includes('pdf')) {
-                        const pdfData = await pdfParse(docBuffer);
-                        extractedFileText = pdfData.text;
-                    } else if (fileName.toLowerCase().endsWith('.docx') || mimeType.includes('wordprocessingml')) {
-                        const docxData = await mammoth.extractRawText({ buffer: docBuffer });
-                        extractedFileText = docxData.value;
-                    } else {
-                        // Anggap teks biasa (.txt, .md, .csv, dll)
-                        extractedFileText = docBuffer.toString('utf-8');
-                    }
+                    extractedFileText = await extractDocumentText(docBuffer, fileName, mimeType);
                     
                     if (!pesanUser) pesanUser = "Nn... Tolong rangkum atau jelaskan isi dokumen ini.";
                 } catch (e) {
@@ -799,6 +787,8 @@ async function handle(ctx) {
             delete state.userRole[senderId];
             if (core) delete state.userRole[core];
         }
+        delete dbAIRole[senderId];
+        if (core) delete dbAIRole[core];
 
         if (isOwner) moodState.resetMood();
 

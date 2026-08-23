@@ -116,8 +116,33 @@ function prepareAudioForChatApi(buffer, mime = 'audio/ogg') {
     return convertAudioForApi(buffer, mime);
 }
 
-function isZip(buffer, fileName = '') {
-    return fileName.toLowerCase().endsWith('.zip') || buffer?.subarray(0, 4).toString('hex') === '504b0304';
+function isDocx(buffer, fileName = '', mimeType = '') {
+    const name = String(fileName || '').toLowerCase();
+    const mime = String(mimeType || '').toLowerCase();
+    return name.endsWith('.docx') || mime.includes('wordprocessingml.document');
+}
+
+function isPdf(fileName = '', mimeType = '') {
+    return String(fileName || '').toLowerCase().endsWith('.pdf') || String(mimeType || '').toLowerCase().includes('pdf');
+}
+
+function isZip(buffer, fileName = '', mimeType = '') {
+    const name = String(fileName || '').toLowerCase();
+    const mime = String(mimeType || '').toLowerCase();
+    // DOCX harus diklasifikasikan lebih dulu karena OOXML juga memakai signature ZIP.
+    if (isDocx(buffer, fileName, mimeType)) return false;
+    return name.endsWith('.zip') || mime.includes('zip') || buffer?.subarray(0, 4).toString('hex') === '504b0304';
+}
+
+async function extractDocumentText(buffer, fileName = 'document.txt', mimeType = '') {
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new Error('Dokumen kosong atau tidak valid.');
+    if (isDocx(buffer, fileName, mimeType)) return (await mammoth.extractRawText({ buffer })).value;
+    if (isPdf(fileName, mimeType)) {
+        const parser = new pdfParse.PDFParse({ data: buffer });
+        try { return (await parser.getText()).text; } finally { await parser.destroy(); }
+    }
+    if (isZip(buffer, fileName, mimeType)) return (await extractZip(buffer, fileName)).text;
+    return buffer.toString('utf8');
 }
 
 function isSafeEntry(name) {
@@ -181,6 +206,9 @@ function cleanupTemp(dir) {
 module.exports = {
     extractZip,
     isZip,
+    isDocx,
+    isPdf,
+    extractDocumentText,
     temporaryAudioFile,
     cleanupTemp,
     audioFormat,
