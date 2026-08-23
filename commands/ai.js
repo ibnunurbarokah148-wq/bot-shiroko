@@ -670,8 +670,19 @@ async function handle(ctx) {
             }
         }
 
-        // AI Companion Flow (Intent Check, Vision Outfit Extraction, Outfit State & PixAI Render)
-        const companionHandled = await companionService.handleCompanionFlow({ ...ctx, chatImageBuffer });
+        // Resolve mode sekali agar companion dan chat normal memakai mode yang sama.
+        const core = getCoreNumber(senderId);
+        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
+        const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
+        const resolvedMode = AIProvider.resolveMode(userMode, senderId);
+
+        // Companion auto-image hanya aktif untuk provider Arisu.
+        const companionHandled = await companionService.handleCompanionFlow({
+            ...ctx,
+            chatImageBuffer,
+            userMode,
+            ...resolvedMode
+        });
         if (companionHandled) return true;
     }
 

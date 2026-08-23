@@ -3,6 +3,7 @@ const appearanceState = require('./appearance.state');
 const pixaiService = require('../pixai.service');
 const { cekDanPotongLimit, kembalikanLimit } = require('../../config/db');
 const { getShirokoSystemPrompt } = require('./prompts');
+const memory = require('./memory');
 
 // Base Anchor Shiroko tanpa tag "side braid" agar hairstyle dinamis dapat di-override bersih
 const SHIROKO_CHARACTER_ANCHOR = 'sunaookami shiroko, 1girl, light blue hair, blue eyes, halo, wolf ears, anime style';
@@ -11,6 +12,11 @@ const COMPANION_IMAGE_COST = 2;
 /**
  * Deteksi Intent secara Heuristic (Tier 1)
  */
+function hasVisualRequest(text, conversationContext = '') {
+    const visualPattern = /\b(kirim\s+(?:foto|gambar)|buat\s+(?:foto|gambar)|generate\s+(?:foto|gambar)|tunjukkan|lihat(?:kan)?|pap(?:kan)?|mana\s+foto|foto\s+kamu|lihat\s+kamu)\b/i;
+    return visualPattern.test(`${text || ''} ${conversationContext || ''}`);
+}
+
 function detectHeuristicIntent(textLower, hasImage) {
     if (hasImage) {
         if (/bagus\s+nggak|bagus\s+ga|cocok\s+nggak|cocok\s+ga|pendapatmu|menurutmu/i.test(textLower)) {
@@ -48,9 +54,13 @@ function detectHeuristicIntent(textLower, hasImage) {
 /**
  * Deteksi Intent via LLM (Tier 2 Fallback jika heuristic ragu) - TANPA MEMORY
  */
-async function detectLlmIntent(text, hasImage, senderId, isOwner) {
-    const prompt = `Anda adalah klasifikator intent untuk bot WhatsApp AI Companion bernama Shiroko.
-Tugas Anda adalah mengklasifikasikan pesan pengguna ke salah satu intent di bawah ini.
+async function detectLlmIntent(text, hasImage, senderId, isOwner, provider = 'arisu', model, conversationContext = '') {
+    const prompt = `Anda adalah pengendali intent untuk bot WhatsApp AI Companion bernama Shiroko.
+Pahami maksud pesan berdasarkan konteks, bukan hanya kata kunci. Bedakan perubahan state penampilan dari permintaan gambar.
+Jangan meminta render hanya karena pesan menyebut pakaian, tubuh, atau penampilan. Set "renderRequested" true hanya jika pengguna secara eksplisit atau jelas dari konteks meminta melihat hasil visual/foto/gambar.
+
+Konteks percakapan terbaru:
+${conversationContext || '(tidak ada)'}
 
 Pesan Pengguna: "${text}"
 Ada Gambar Dilampirkan: ${hasImage ? 'YA' : 'TIDAK'}
@@ -71,8 +81,8 @@ Berikan respons JSON murni dengan format:
 
     try {
         const res = await AIProvider.generate({
-            provider: 'gemini',
-            model: 'gemini-2.5-flash-lite',
+            provider,
+            model,
             prompt,
             senderId,
             isOwner,
@@ -87,14 +97,15 @@ Berikan respons JSON murni dengan format:
             renderRequested: !!parsed.renderRequested
         };
     } catch (e) {
-        return { intent: 'NORMAL_CHAT', renderRequested: false };
+        console.warn(`[COMPANION] Intent classifier gagal: ${e.message}`);
+        return null;
     }
 }
 
 /**
  * Ekstraksi Atribut Outfit/Appearance dari Gambar via Vision AI (Gemini) - TANPA MEMORY
  */
-async function extractOutfitFromVision(imageBuffer, senderId, isOwner) {
+async function extractOutfitFromVision(imageBuffer, senderId, isOwner, provider = 'gemini', model = 'gemini-2.5-flash-lite') {
     const prompt = `Anda adalah pakar fashion anime & analis vision.
 Analisis gambar pakaian ini dengan teliti. Ekstrak informasi komponen pakaian menjadi tag bahasa inggris terkontrol untuk AI image generator.
 
@@ -113,8 +124,8 @@ Kembalikan respons JSON murni tanpa markdown dengan skema berikut:
 
     try {
         const resultText = await AIProvider.generate({
-            provider: 'gemini',
-            model: 'gemini-2.5-flash-lite',
+            provider,
+            model,
             prompt,
             senderId,
             isOwner,
@@ -134,7 +145,7 @@ Kembalikan respons JSON murni tanpa markdown dengan skema berikut:
 /**
  * Ekstraksi Atribut Appearance (Hair, Expression, Pose, Scene, Outfit) dari Teks - TANPA MEMORY
  */
-async function extractAppearanceFromText(userText, senderId, isOwner) {
+async function extractAppearanceFromText(userText, senderId, isOwner, provider = 'gemini', model = 'gemini-2.5-flash-lite') {
     const prompt = `Pengguna meminta karakter Shiroko mengubah penampilannya dengan instruksi: "${userText}".
 Ubah instruksi ini menjadi atribut penampilan berstruktur JSON dalam Bahasa Inggris untuk generator gambar anime.
 
@@ -163,8 +174,8 @@ Kembalikan respons JSON murni tanpa markdown:
 
     try {
         const resultText = await AIProvider.generate({
-            provider: 'gemini',
-            model: 'gemini-2.5-flash-lite',
+            provider,
+            model,
             prompt,
             senderId,
             isOwner,
@@ -206,7 +217,12 @@ async function generateShirokoRoleplayReply(promptContext, senderId, isOwner, us
  * Render Karakter Shiroko via PixAI + Kirim Gambar + Balasan Roleplay Natural
  */
 async function renderAndSendCharacter(ctx, appearanceData, sceneContextText) {
-    const { sock, from, msg, senderId, isOwner, reply } = ctx;
+    const { sock, from, msg, senderId, isOwner, reply, userMode, provider } = ctx;
+
+    if (provider !== 'arisu') {
+        console.warn(`[COMPANION] Image flow dilewati karena provider aktif bukan Arisu: ${provider || 'unknown'}`);
+        return false;
+    }
 
     // Memotong limit 1 kali sebelum antrean gambar dibuat
     if (!cekDanPotongLimit(senderId, COMPANION_IMAGE_COST)) {
@@ -228,7 +244,7 @@ async function renderAndSendCharacter(ctx, appearanceData, sceneContextText) {
 
         // Buat pesan roleplay pendamping gambar
         const roleplayContext = `[SISTEM ROLEPLAY]: Kamu baru saja mengubah penampilan/memakai pakaian ini: (${appearanceData.description || promptTags}). Responlah ucapan Sensei dengan sikap Shiroko yang kalem, agak malu-malu tapi senang. Sampaikan bahwa kamu sudah tampil dengan gaya ini untuknya.`;
-        const roleplayText = await generateShirokoRoleplayReply(roleplayContext, senderId, isOwner);
+        const roleplayText = await generateShirokoRoleplayReply(roleplayContext, senderId, isOwner, userMode);
 
         const pos = pixaiService.tambahAntrianPixAI({
             prompt: fullPixaiPrompt,
@@ -260,15 +276,34 @@ async function renderAndSendCharacter(ctx, appearanceData, sceneContextText) {
  * Main Companion Orchestrator Flow
  */
 async function handleCompanionFlow(ctx) {
-    const { textClean, textLower, chatImageBuffer, senderId, isOwner, reply } = ctx;
+    const { textClean, textLower, chatImageBuffer, senderId, isOwner, reply, provider, model, userMode } = ctx;
     const hasImage = !!chatImageBuffer;
 
-    // 1. Cek Heuristic Intent
+    // Auto-companion/image flow hanya khusus provider Arisu.
+    if (provider !== 'arisu') return false;
+
+    // Gunakan konteks provider Arisu agar follow-up seperti "tunjukkan" tetap dipahami.
+    const recentMessages = memory.getMessages(senderId, provider)
+        .slice(-6)
+        .map(message => `${message.role}: ${message.content}`)
+        .join('\n');
+
+    // 1. Cek heuristic intent
     let intentInfo = detectHeuristicIntent(textLower, hasImage);
 
-    // 2. Fallback LLM jika ambigu dan ada gambar atau frase visual
-    if (!intentInfo && (hasImage || /baju|pakaian|rambut|foto|pap|penampilan|senyum|pose/i.test(textLower))) {
-        intentInfo = await detectLlmIntent(textClean, hasImage, senderId, isOwner);
+    // 2. Fallback classifier Arisu untuk pesan yang relevan/ambigu.
+    if (!intentInfo && (hasImage || /baju|pakaian|rambut|foto|pap|penampilan|senyum|pose|tunjukkan|lihat/i.test(textLower))) {
+        intentInfo = await detectLlmIntent(textClean, hasImage, senderId, isOwner, provider, model, recentMessages);
+    }
+
+    // Perubahan state saja tidak otomatis membuat gambar; harus ada permintaan visual eksplisit atau kontekstual.
+    if (intentInfo && ['APPEARANCE_CHANGE', 'OUTFIT_CHANGE', 'OUTFIT_CANONICAL_PRESET'].includes(intentInfo.intent)) {
+        intentInfo.renderRequested = intentInfo.renderRequested && hasVisualRequest(textClean, recentMessages);
+    }
+
+    // Jangan render hanya karena classifier mengembalikan flag tanpa intent visual.
+    if (intentInfo && !['OUTFIT_APPLY', 'OUTFIT_CANONICAL_PRESET', 'APPEARANCE_CHANGE', 'OUTFIT_CHANGE', 'CHARACTER_VISUAL_REQUEST'].includes(intentInfo.intent)) {
+        intentInfo.renderRequested = false;
     }
 
     // Jika intent adalah normal chat, lewati ke handler AI biasa
@@ -285,7 +320,14 @@ async function handleCompanionFlow(ctx) {
                 return true;
             }
             console.log(`[COMPANION] Menganalisis gambar pakaian via Gemini Vision untuk User: ${senderId}...`);
-            const extractedOutfit = await extractOutfitFromVision(chatImageBuffer, senderId, isOwner);
+            // Arisu tidak memiliki adapter vision; analisis gambar tetap memakai Gemini.
+            const extractedOutfit = await extractOutfitFromVision(
+                chatImageBuffer,
+                senderId,
+                isOwner,
+                'gemini',
+                'gemini-2.5-flash-lite'
+            );
             if (!extractedOutfit) {
                 await reply('Nn... Maaf Sensei, Shiroko gagal menganalisis gambar pakaian tersebut. Coba gambar yang lebih jelas ya.');
                 return true;
@@ -319,7 +361,7 @@ async function handleCompanionFlow(ctx) {
             } else {
                 const roleplayText = await generateShirokoRoleplayReply(
                     'Shiroko berganti mengenakan seragam sekolah Abydos bawaannya. Sampaikan ke Sensei dengan gaya Shiroko.',
-                    senderId, isOwner
+                    senderId, isOwner, userMode
                 );
                 await reply(roleplayText);
             }
@@ -329,7 +371,7 @@ async function handleCompanionFlow(ctx) {
         case 'APPEARANCE_CHANGE':
         case 'OUTFIT_CHANGE': {
             console.log(`[COMPANION] Memproses perubahan appearance dari teks untuk User: ${senderId}...`);
-            const extractedAppearance = await extractAppearanceFromText(textClean, senderId, isOwner);
+            const extractedAppearance = await extractAppearanceFromText(textClean, senderId, isOwner, provider, model);
 
             const isCanonicalReference = /baju\s+biasanya|pakaian\s+biasanya|seragam\s+abydos|seragam\s+sekolah|baju\s+itu|seragam\s+itu|pakai\s+yang\s+biasa/i.test(textClean);
 
@@ -352,7 +394,7 @@ async function handleCompanionFlow(ctx) {
             } else {
                 const roleplayText = await generateShirokoRoleplayReply(
                     `Sensei meminta Shiroko mengubah penampilan: "${extractedAppearance.description || textClean}". Katakan bahwa kamu sudah menyesuaikan penampilanmu sesuai keinginannya dengan gaya Shiroko berdasarkan penampilanmu sekarang (${verifiedState.outfit.description || textClean}).`,
-                    senderId, isOwner
+                    senderId, isOwner, userMode
                 );
                 await reply(roleplayText);
             }
@@ -377,7 +419,7 @@ async function handleCompanionFlow(ctx) {
 
             const roleplayText = await generateShirokoRoleplayReply(
                 'Shiroko mengembalikan penampilannya ke seragam Abydos dan gaya rambut semula. Sampaikan ke Sensei dengan gaya Shiroko.',
-                senderId, isOwner
+                senderId, isOwner, userMode
             );
             await reply(roleplayText);
             return true;
