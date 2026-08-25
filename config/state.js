@@ -8,6 +8,12 @@ module.exports = {
     // Mode AI per user
     userAIMode: {},
     userRole: {},
+    userSystemPrompt: {},
+    waifuState: {},
+    afkStatus: {},
+    groupSettings: {},
+    mentionCooldowns: new Map(),
+    groupChatCooldown: new Map(),
     userOllamaModel: {},
     userArisuModel: {},
     ownerArisuModel: null,

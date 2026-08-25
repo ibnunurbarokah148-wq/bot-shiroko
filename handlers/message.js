@@ -19,6 +19,7 @@ const akademik = require('../commands/akademik');
 const media = require('../commands/media');
 const data = require('../commands/data');
 const minecraft = require('../commands/minecraft');
+const group = require('../commands/group');
 const ai = require('../commands/ai');
 
 function registerMessageHandler(sock, isJadibot = false) {
@@ -95,6 +96,7 @@ function registerMessageHandler(sock, isJadibot = false) {
             else if (quotedMsg.documentWithCaptionMessage) quotedText = quotedMsg.documentWithCaptionMessage.message?.documentMessage?.caption || '';
         }
         const quotedTextLower = quotedText.toLowerCase();
+        const mentionedJid = contextInfo?.mentionedJid || [];
 
         // Cek status Owner
         const coreSender = getCoreNumber(senderId);
@@ -130,8 +132,44 @@ function registerMessageHandler(sock, isJadibot = false) {
             text: textClean, textClean, textLower, msgType,
             isQuoted, quotedMsg, quotedType, quotedText, quotedTextLower,
             quotedStanzaId: contextInfo?.stanzaId || null,
-            reply, downloadMediaBaileys
+             mentionedJid, reply, downloadMediaBaileys
         };
+
+        // AFK: auto-back saat chat biasa dan notifikasi mention/reply.
+        if (isGroup) {
+            const afkService = require('../services/afk.service');
+            if (!textClean.startsWith('!')) {
+                const ownAfk = afkService.get(from, senderId);
+                if (ownAfk) {
+                    afkService.clear(from, senderId);
+                    await sock.sendMessage(from, {
+                        text: `Selamat datang kembali @${senderId.split('@')[0]}!\nStatus AFK kamu sudah dinonaktifkan otomatis setelah mengirim pesan.`,
+                        mentions: [senderId]
+                    }, { quoted: msg });
+                }
+            }
+            const targets = new Set(mentionedJid);
+            if (contextInfo?.participant) targets.add(contextInfo.participant);
+            for (const target of targets) {
+                const afk = afkService.get(from, target);
+                if (afk && afkService.canNotify(`${from}:${senderId}:${target}`)) {
+                    await sock.sendMessage(from, { text: `Nn... @${target.split('@')[0]} sedang AFK: *${afk.reason}* (${afkService.formatDuration(afk.since)}).`, mentions: [target] }, { quoted: msg });
+                }
+            }
+        }
+
+        // Moderasi antilink: admin dan owner dikecualikan.
+        if (isGroup && textClean && !textClean.startsWith('!')) {
+            const groupService = require('../services/group.service');
+            const settings = groupService.getSettings(from);
+            if (settings.antilink && groupService.hasLink(textClean) && !isOwner && !(await groupService.isAdmin(sock, from, senderId).catch(() => false))) {
+                if (await groupService.isBotAdmin(sock, from).catch(() => false)) {
+                    await sock.sendMessage(from, { delete: msg.key });
+                    await reply('Nn... Link tidak diizinkan di grup ini.');
+                    return;
+                }
+            }
+        }
 
         // ==========================================
         // HANDLER KHUSUS GHOST MODE (!kepo)
@@ -196,6 +234,7 @@ function registerMessageHandler(sock, isJadibot = false) {
             if (await premium.handle(ctx)) return;
             if (await topup.handle(ctx)) return;
             if (await panitia.handle(ctx)) return;
+            if (await group.handle(ctx)) return;
             if (await general.handle(ctx)) return;
             if (await akademik.handle(ctx)) return;
             if (await media.handle(ctx)) return;

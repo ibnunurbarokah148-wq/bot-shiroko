@@ -198,6 +198,8 @@ const dbTugas = createJsonProxy('user_tugas');
 const dbCoba = createJsonProxy('user_coba');
 const dbJadibot = createJsonProxy('user_jadibot');
 const dbOutfit = createJsonProxy('user_outfits');
+const dbAFK = createJsonProxy('afk_status');
+const dbGroupSettings = createJsonProxy('group_settings');
 const dbPremium = createPremiumProxy();
 const dbPanitia = createPanitiaProxy();
 
@@ -256,7 +258,7 @@ function kembalikanLimit(targetID, amount = 1) {
 // EXPORT (API TETAP SAMA PERSIS)
 // ==========================================
 module.exports = {
-    dbLimit, dbRole, dbAIRole, dbTugas, dbPanitia, dbCoba, dbJadibot, dbPremium, dbOutfit,
+    dbLimit, dbRole, dbAIRole, dbTugas, dbPanitia, dbCoba, dbJadibot, dbPremium, dbOutfit, dbAFK, dbGroupSettings,
     simpanDB, simpanRole, simpanTugas, simpanPanitia, simpanCoba, simpanJadibot, simpanPremium,
     getCoreNumber, // Re-export dari utils/helpers untuk kemudahan
     cekDanPotongLimit, kembalikanLimit

@@ -4,9 +4,33 @@
 const { ID_OWNER, JATAH_HARIAN } = require('../config/constants');
 const { dbLimit, dbRole, dbCoba, simpanCoba } = require('../config/db');
 const prayerService = require('../services/prayer.service');
+const afkService = require('../services/afk.service');
 
 async function handle(ctx) {
-    const { senderId, isOwner, textClean, textLower, msg, reply } = ctx;
+    const { sock, senderId, isOwner, isGroup, from, textClean, textLower, msg, reply } = ctx;
+
+    // ==========================================
+    // AFK GRUP
+    // ==========================================
+    if (isGroup && textLower === '!afklist') {
+        const rows = afkService.list(from);
+        if (!rows.length) { await reply('Nn... Tidak ada anggota yang sedang AFK.'); return true; }
+        await sock.sendMessage(from, { text: `*DAFTAR AFK GRUP*\n\n${rows.map((row, i) => `${i + 1}. @${row.userJid.split('@')[0]} — ${row.reason} (${afkService.formatDuration(row.since)})`).join('\n')}`, mentions: rows.map(row => row.userJid) }, { quoted: msg });
+        return true;
+    }
+    if (isGroup && (textLower === '!afk' || textLower.startsWith('!afk '))) {
+        const reason = textClean.substring(4).trim() || 'Sedang AFK';
+        afkService.set(from, senderId, reason);
+        await reply(`Nn... Status AFK aktif: *${reason}*`);
+        return true;
+    }
+    if (isGroup && textLower === '!back') {
+        if (afkService.get(from, senderId)) {
+            afkService.clear(ctx.from, senderId);
+            await reply('Nn... Selamat datang kembali. Status AFK dihapus.');
+        } else await reply('Nn... Kamu tidak sedang AFK.');
+        return true;
+    }
 
     // ==========================================
     // CEK ID
@@ -95,6 +119,9 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ !limit (Cek Sisa Limit)
 *║* ➸ !ping (Cek Status Bot)
 *║* ➸ !cekid (Cek ID WA & Role)
+*║* ➸ !bini / !mybini / !gantiwaifu (Pilih karakter waifu)
+*║* ➸ !waifustatus / !stopwaifu
+*║* ➸ !afk [alasan] / !back / !afklist (Grup)
 ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset Mood Shiroko)\n` : ''}*║*
 *╠═══「 LMS & EVALUASI 」*
 *║* ➸ !reg_guru
@@ -134,6 +161,8 @@ ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset M
 *║* ➸ \`!tts / !suara [teks]\` (Ubah Teks ke Suara/VN)
 *║* ➸ \`!pdf2jpg\` (Reply PDF)
 *║* ➸ \`!stiker\` (Kirim Gambar)
+*║* ➸ \`!wm [teks]\` (Reply Foto/Stiker)
+*║* ➸ \`!hd [2x/4x]\` (Reply Foto)
 *║* ➸ \`!toimg\` (Reply Stiker)
 *║* ➸ \`!meme [teks]\` (Reply Gambar)
 *║* ➸ \`!tiktok [link]\` (Download Video/Audio)
@@ -151,6 +180,12 @@ ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset M
 *║* ➸ !bukti (Upload Struk Topup)
 *║* ➸ !jadibot (Sewa Bot Waifu)
 *║* ➸ !stopbot (Hentikan Jadibot)
+*║* ➸ !chat [pesan] (Waifu di Grup)
+*║* ➸ !antilink on/off (Admin Grup)
+*║* ➸ !welcome on/off / !goodbye on/off (Admin Grup)
+*║* ➸ !setwelcome / !setgoodbye [teks]
+*║* ➸ !tagall / !hidetag [pesan] (Admin Grup)
+*║* ➸ !infogc / !listadmin / !closegc / !opengc
 *║* ➸ \`!kepo\` (Ghost Mode Messages VIP)
 *║*
 *╠═══「 KHUSUS OWNER 」*

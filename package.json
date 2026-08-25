@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node tests/smoke.test.js",
     "start": "node index.js"
   },
   "keywords": [],
@@ -15,6 +15,7 @@
     "@bochilteam/scraper": "^5.0.1",
     "@google/generative-ai": "^0.24.1",
     "@huggingface/inference": "^4.13.22",
+    "@img/sharp-wasm32": "^0.35.3",
     "@whiskeysockets/baileys": "^7.0.0-rc13",
     "adm-zip": "^0.6.0",
     "axios": "^1.16.1",
@@ -36,7 +37,7 @@
     "pixiv-api-client": "^0.27.0",
     "sharp": "^0.35.3",
     "socket.io": "^4.8.3",
-    "sql.js": "^1.14.1",
+    "sql.js": "^1.14.2",
     "vec3": "^0.2.0"
   }
 }

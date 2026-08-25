@@ -117,6 +117,13 @@ async function startBot() {
     });
 
     // ==========================================
+    // GROUP PARTICIPANT EVENTS (WELCOME / GOODBYE)
+    // ==========================================
+    sock.ev.on('group-participants.update', update => {
+        require('./services/group.service').handleParticipants(sock, update).catch(error => console.error('[GROUP EVENT] Gagal diproses:', error.message));
+    });
+
+    // ==========================================
     // REGISTER MESSAGE HANDLER
     // ==========================================
     registerMessageHandler(sock);

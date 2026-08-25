@@ -15,6 +15,30 @@ const pixaiService = require('../services/pixai.service');
 const AIProvider = require('../services/ai/AIProvider');
 const { getCoreNumber } = require('../utils/helpers');
 
+function escapeSvgText(value) {
+    return String(value || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[ch]));
+}
+
+function parseWatermark(value) {
+    const raw = value.trim().slice(0, 100);
+    const positions = ['kiri atas', 'kanan atas', 'kiri bawah', 'kanan bawah', 'tengah'];
+    const sizes = { kecil: 24, normal: 40, besar: 64 };
+    let position = 'kanan bawah';
+    let fontSize = sizes.normal;
+    let text = raw;
+    for (const item of positions) if (text.toLowerCase().includes(item)) { position = item; text = text.replace(new RegExp(item, 'ig'), '').trim(); }
+    for (const [name, size] of Object.entries(sizes)) if (text.toLowerCase().includes(name)) { fontSize = size; text = text.replace(new RegExp(name, 'ig'), '').trim(); }
+    return { text: text || 'Shiroko Bot', position, fontSize };
+}
+
+function watermarkSvg(width, height, options) {
+    const margin = Math.max(16, Math.round(Math.min(width, height) * 0.03));
+    const anchor = options.position.includes('kanan') ? 'end' : options.position.includes('tengah') ? 'middle' : 'start';
+    const x = anchor === 'end' ? width - margin : anchor === 'middle' ? width / 2 : margin;
+    const y = options.position.includes('atas') ? margin + options.fontSize : options.position.includes('tengah') ? height / 2 : height - margin;
+    return Buffer.from(`<svg width="${width}" height="${height}"><text x="${x}" y="${y}" text-anchor="${anchor}" font-family="sans-serif" font-size="${options.fontSize}" font-weight="bold" fill="white" stroke="black" stroke-width="${Math.max(1, Math.round(options.fontSize / 12))}" paint-order="stroke" opacity="0.85">${escapeSvgText(options.text)}</text></svg>`);
+}
+
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, textClean, textLower, msgType,
             isQuoted, quotedMsg, quotedType, reply, downloadMediaBaileys } = ctx;
@@ -749,6 +773,53 @@ async function handle(ctx) {
         } else {
             await reply('Nn... Sensei harus me-reply sebuah pesan suara sambil mengetik perintah ini.');
         }
+        return true;
+    }
+
+    // ==========================================
+    // WATERMARK FOTO / STIKER
+    // ==========================================
+    if (textLower.startsWith('!wm ') || textLower.startsWith('!watermark ')) {
+        const commandLength = textLower.startsWith('!wm ') ? 4 : 11;
+        const targetImage = msgType === 'imageMessage' || (isQuoted && quotedType === 'imageMessage');
+        const targetSticker = isQuoted && quotedType === 'stickerMessage';
+        if (!targetImage && !targetSticker) { await reply('Nn... Kirim atau reply foto/stiker dengan format *!wm teks watermark*.'); return true; }
+        if (!cekDanPotongLimit(senderId)) { await reply('Nn... Token habis.'); return true; }
+        try {
+            const options = parseWatermark(textClean.substring(commandLength));
+            const source = targetSticker ? quotedMsg.stickerMessage : (isQuoted ? quotedMsg.imageMessage : normalizedMessage.imageMessage);
+            const input = await downloadMediaBaileys(source, targetSticker ? 'sticker' : 'image');
+            const meta = await sharp(input).metadata();
+            if (!meta.width || !meta.height || meta.width * meta.height > 16000000) { kembalikanLimit(senderId); await reply('Nn... Resolusi foto terlalu besar untuk diproses.'); return true; }
+            if (targetSticker && meta.pages && meta.pages > 1) { kembalikanLimit(senderId); await reply('Nn... Versi awal WM belum mendukung stiker animasi.'); return true; }
+            const width = Math.min(meta.width || 512, targetSticker ? 512 : 2048);
+            const height = Math.min(meta.height || 512, targetSticker ? 512 : 2048);
+            const output = await sharp(input).resize({ width, height, fit: 'inside' }).composite([{ input: watermarkSvg(width, height, options) }]).toFormat(targetSticker ? 'webp' : 'jpeg', targetSticker ? { quality: 82 } : { quality: 92 }).toBuffer();
+            if (targetSticker) {
+                const finalSticker = await tambahMetadataStiker(output, 'Watermark Shiroko', options.text);
+                await sock.sendMessage(from, { sticker: finalSticker }, { quoted: msg });
+            } else await sock.sendMessage(from, { image: output, caption: `Nn... Watermark *${options.text}* sudah ditambahkan.` }, { quoted: msg });
+        } catch (error) { kembalikanLimit(senderId); console.error('ERROR WM:', error.message); await reply('Nn... Gagal menambahkan watermark.'); }
+        return true;
+    }
+
+    // ==========================================
+    // HD / ENHANCE FOTO
+    // ==========================================
+    if (textLower === '!hd' || textLower.startsWith('!hd ')) {
+        const targetImage = msgType === 'imageMessage' || (isQuoted && quotedType === 'imageMessage');
+        if (!targetImage) { await reply('Nn... Kirim atau reply foto dengan perintah *!hd*.'); return true; }
+        if (!cekDanPotongLimit(senderId)) { await reply('Nn... Token habis.'); return true; }
+        try {
+            const source = isQuoted ? quotedMsg.imageMessage : normalizedMessage.imageMessage;
+            const input = await downloadMediaBaileys(source, 'image');
+            if (input.length > 8 * 1024 * 1024) { kembalikanLimit(senderId); await reply('Nn... Ukuran foto terlalu besar (maksimal 8MB).'); return true; }
+            const meta = await sharp(input).metadata();
+            if (!meta.width || !meta.height || meta.width * meta.height > 16000000) { kembalikanLimit(senderId); await reply('Nn... Resolusi foto terlalu besar untuk diproses.'); return true; }
+            const scale = textLower.includes('4x') ? 4 : 2;
+            const output = await sharp(input).resize({ width: Math.min((meta.width || 1000) * scale, 2048), height: Math.min((meta.height || 1000) * scale, 2048), fit: 'inside', withoutEnlargement: false }).sharpen({ sigma: 0.8 }).jpeg({ quality: 92, chromaSubsampling: '4:4:4' }).toBuffer();
+            await sock.sendMessage(from, { image: output, caption: `Nn... Foto sudah diproses HD ${scale}x.` }, { quoted: msg });
+        } catch (error) { kembalikanLimit(senderId); console.error('ERROR HD:', error.message); await reply('Nn... Gagal meningkatkan kualitas foto.'); }
         return true;
     }
 

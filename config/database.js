@@ -114,6 +114,18 @@ async function initDatabase() {
             data TEXT
         )
     `);
+    db.run(`
+        CREATE TABLE IF NOT EXISTS afk_status (
+            id TEXT PRIMARY KEY,
+            data TEXT
+        )
+    `);
+    db.run(`
+        CREATE TABLE IF NOT EXISTS group_settings (
+            id TEXT PRIMARY KEY,
+            data TEXT
+        )
+    `);
 
     // Migrasi jika tabel lama terlanjur dibuat dengan kolom 'key'
     try {
@@ -142,13 +154,15 @@ async function initDatabase() {
                 else if (row.id === 'userOllamaModel' && typeof parsed === 'object') state.userOllamaModel = { ...state.userOllamaModel, ...parsed };
                  else if (row.id === 'userXKiroModel' && typeof parsed === 'object') state.userXKiroModel = { ...state.userXKiroModel, ...parsed };
                  else if (row.id === 'userArisuModel' && typeof parsed === 'object') state.userArisuModel = { ...state.userArisuModel, ...parsed };
-            } catch (err) {
+                 else if (row.id === 'userWaifuState' && typeof parsed === 'object') state.waifuState = { ...state.waifuState, ...parsed };
+             } catch (err) {
                 if (row.id === 'ownerAIMode') state.ownerAIMode = row.value;
             }
         }
     } catch (e) {
         console.warn('[DATABASE] Warning muat bot_settings ke state:', e.message);
     }
+    try { require('../services/waifu.service').restore(); } catch (e) { console.warn('[DATABASE] Warning restore waifu:', e.message); }
 
     // Pulihkan peran AI terpisah dari role LMS/aplikasi.
     try {

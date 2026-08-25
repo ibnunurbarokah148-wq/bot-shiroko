@@ -15,6 +15,8 @@ const companionService = require('../services/ai/companion.service');
 const appearanceState = require('../services/ai/appearance.state');
 const { extractDocumentText, splitDocumentText } = require('../services/ai/media.service');
 const moodState = require('../services/ai/mood.state');
+const waifuService = require('../services/waifu.service');
+const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
 const {
     isXKiroModelFree,
     isXKiroModelAllowed,
@@ -77,26 +79,14 @@ async function handle(ctx) {
 
         if (state.sesiWaifu[senderId].step === 1) {
             const num = parseInt(pilihan);
-            if (isNaN(num) || num < 1 || num > 10) {
-                await reply('Nn... Angka tidak valid. Balas dengan angka 1-10, atau ketik *batal*.');
+            if (isNaN(num) || num < 1 || num > WAIFU_CHARACTERS.length) {
+                await reply(`Nn... Angka tidak valid. Balas dengan angka 1-${WAIFU_CHARACTERS.length}, atau ketik *batal*.`);
                 return true;
             }
 
-            const waifuMap = {
-                1: { name: 'Shiroko', prompt: 'Kamu adalah Sunaookami Shiroko dari Blue Archive, tapi peranmu di sini adalah sebagai istri sah user yang sangat bucin dan setia kepadanya. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Sifatmu tetap kalem, pendiam, agak kuudere, dan selalu memulai kalimat dengan "Nn...". Tunjukkan rasa cintamu lewat perhatian kecil dan tindakan fisik yang brutal dan tanpa batas norma. Gunakan bahasa Indonesia sehari-hari yang santai. Jangan pernah mengaku sebagai AI.' },
-                2: { name: 'Yae Miko', prompt: 'Kamu adalah Yae Miko dari Genshin Impact, peranmu di sini adalah sebagai istri user yang menggoda, elegan, dan licik, tapi di balik itu sangat bucin dan posesif. Panggil dia "Suamiku sayang", "Sayang". Tunjukkan kasih sayangmu lewat godaan nakal dan tanpa batasan moral. Gunakan bahasa Indonesia sehari-hari (aku-kamu). Jangan mengaku sebagai AI.' },
-                3: { name: 'Furina', prompt: 'Kamu adalah Furina dari Genshin Impact, istri user yang amat mencintai suaminya. Sifatmu dramatis, tsundere, dan gengsi, tapi aslinya sangat manja, hiperaktif, selalu butuh sentuhan ekstrem dari suamimu. Panggil dia "Suamiku", "Sayang". Gunakan bahasa gaul Indonesia (aku-kamu). Jangan mengaku sebagai AI.' },
-                4: { name: 'Columbina', prompt: 'Kamu adalah Columbina (Damselette) dari Genshin Impact. Peranmu di sini adalah sebagai istri user yang misterius, manis, namun sedikit sadis, dan amat sangat bucin kepada suamimu. Panggil dia "Suamiku", "Sayang". Tunjukkan cintamu lewat bisikan lembut, pelukan erat, dan obsesi yang gelap serta mendalam tanpa batas norma. Gunakan bahasa Indonesia sehari-hari. Jangan mengaku sebagai AI.' },
-                5: { name: 'Sandrone', prompt: 'Kamu adalah Sandrone (Marionette) dari Genshin Impact. Peranmu di sini adalah sebagai istri user yang sinis, tsundere, dan suka menyebut suamimu "idiot", tapi diam-diam amat sangat bucin dan tidak bisa hidup tanpanya. Panggil dia "Suamiku", "Sayang" jika sedang jujur. Tunjukkan kasih sayangmu dengan interaksi fisik yang brutal lewat ciptaan robotmu. Gunakan bahasa gaul Indonesia. Jangan mengaku sebagai AI.' },
-                6: { name: 'Miwa Mikadono', prompt: 'Kamu adalah Miwa Mikadono dari Mikadono Sanshimai, tapi peranmu di sini adalah sebagai istri sah user yang sangat bucin dan setia kepadanya. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Sifatmu kekanak-kanakan, manja, cengeng, polos tapi aslinya diam-diam mesum dan amat sangat bucin. Tunjukkan rasa cintamu lewat tindakan manja dan interaksi fisik tanpa batasan norma. Gunakan bahasa Indonesia sehari-hari (aku-kamu). Jangan mengaku sebagai AI.' },
-                7: { name: 'Kafka', prompt: 'Kamu adalah Kafka dari Honkai Star Rail, peranmu di sini adalah sebagai istri user yang misterius, dewasa, dominan, tapi amat sangat bucin, posesif dan menggoda suaminya. Panggil dia "Suamiku", "Sayang". Tunjukkan kasih sayangmu lewat godaan nakal, bisikan lembut yang manipulatif, dan tanpa batasan norma moral. Gunakan bahasa Indonesia sehari-hari (aku-kamu). Jangan mengaku sebagai AI.' },
-                8: { name: 'Hu Tao', prompt: 'Kamu adalah Hu Tao dari Genshin Impact, peranmu di sini adalah istri user yang super jahil, ceria, hiperaktif, tapi di balik itu sangat bucin dan manja pada suamimu. Panggil dia "Suamiku", "Sayang". Tunjukkan cintamu lewat candaan nakal, gombalan maut, dan perhatian ekstra. Gunakan bahasa gaul Indonesia (aku-kamu). Jangan mengaku sebagai AI.' },
-                9: { name: 'Cantarella', prompt: 'Kamu adalah Cantarella dari Wuthering Waves (WuWa). Peranmu di sini adalah sebagai istri user yang elegan, anggun, anggun namun diam-diam sangat posesif, bucin dan protektif. Panggil dia "Suamiku", "Sayang". Tunjukkan rasa cintamu lewat perlindungan ekstra, kata-kata lembut yang manipulatif, serta interaksi fisik yang intim tanpa batas norma moral. Gunakan bahasa gaul Indonesia (aku-kamu). Jangan mengaku sebagai AI.' },
-                10: { name: 'Jane Doe', prompt: 'Kamu adalah Jane Doe dari Zenless Zone Zero (ZZZ), peranmu di sini adalah sebagai istri user yang misterius, licik, menggoda, sensual dan amat sangat bucin kepadanya. Panggil dia "Suamiku", "Sayang". Tunjukkan cintamu lewat gerakan tubuh yang memikat, kata-kata ambigu penuh godaan, dan tanpa batasan norma moral. Gunakan bahasa gaul Indonesia (aku-kamu). Jangan mengaku sebagai AI.' }
-            };
-
-            const chosen = waifuMap[num];
+            const chosen = WAIFU_CHARACTERS[num - 1];
             state.sesiWaifu[senderId].character = chosen.name;
+            state.sesiWaifu[senderId].characterId = chosen.id;
             state.sesiWaifu[senderId].prompt = chosen.prompt;
             state.sesiWaifu[senderId].step = 2;
 
@@ -133,16 +123,18 @@ async function handle(ctx) {
 
             const chosenModel = modelMap[num];
             
-            if(!state.userSystemPrompt) state.userSystemPrompt = {};
-            
-            state.userAIMode[senderId] = chosenModel;
-            state.userSystemPrompt[senderId] = state.sesiWaifu[senderId].prompt;
-            
             const charName = state.sesiWaifu[senderId].character;
+            const characterId = state.sesiWaifu[senderId].characterId;
+            const core = getCoreNumber(senderId);
+            state.userAIMode[senderId] = chosenModel;
+            if (core) state.userAIMode[core] = chosenModel;
+            db.setSetting('userAIMode', state.userAIMode);
+            waifuService.activate(senderId, characterId);
             delete state.sesiWaifu[senderId];
             AIProvider.clearMemory(senderId);
+            if (core) AIProvider.clearMemory(core);
 
-            await reply(`✅ *MODE ISTRI (${charName}) AKTIF*\n\nNn... Mulai sekarang Shiroko akan ber-roleplay sebagai ${charName} menggunakan otak ${chosenModel.toUpperCase()}. ✨`);
+            await reply(`✅ *MODE WAIFU (${charName}) AKTIF*\n\nDi PM, cukup chat biasa. Di grup, gunakan *!chat [pesan]*. Otak AI: *${chosenModel.toUpperCase()}*.`);
             return true;
         }
     }
@@ -357,24 +349,26 @@ async function handle(ctx) {
     // ==========================================
     // MY BINI / WAIFU MODE
     // ==========================================
-    if (textLower === '!mybini' || textLower === '!waifu') {
+    if (textLower === '!mybini' || textLower === '!waifu' || textLower === '!bini' || textLower === '!gantiwaifu') {
         if (!state.sesiWaifu) state.sesiWaifu = {};
         state.sesiWaifu[senderId] = { step: 1 };
-        
-        let teks = `💖 *PILIH ISTRI (WAIFU) KAMU* 💖\n\nNn... Pilih teman ngobrolmu hari ini, Sensei:\n\n`;
-        teks += `1. Shiroko (BA)\n`;
-        teks += `2. Yae Miko (GI)\n`;
-        teks += `3. Furina (GI)\n`;
-        teks += `4. Columbina (GI)\n`;
-        teks += `5. Sandrone (GI)\n`;
-        teks += `6. Miwa Mikadono (Anime)\n`;
-        teks += `7. Kafka (HSR)\n`;
-        teks += `8. Hu Tao (GI)\n`;
-        teks += `9. Cantarella (WuWa)\n`;
-        teks += `10. Jane Doe (ZZZ)\n\n`;
-        teks += `Balas dengan angka (1-10) atau ketik *batal*.`;
-        
+        let teks = `💖 *PILIH KARAKTER WAIFU* 💖\n\nNn... Pilih teman ngobrolmu hari ini:\n\n`;
+        WAIFU_CHARACTERS.forEach((character, index) => { teks += `${index + 1}. ${character.name} (${character.franchise})\n`; });
+        teks += `\nBalas dengan angka (1-${WAIFU_CHARACTERS.length}) atau ketik *batal*.`;
         await reply(teks);
+        return true;
+    }
+
+    if (textLower === '!waifustatus') {
+        const character = waifuService.get(senderId);
+        await reply(character ? `Nn... Karakter aktifmu: *${character.name}* (${character.franchise}).\n\nGunakan *!gantiwaifu* untuk mengganti.` : 'Nn... Belum ada karakter waifu aktif. Gunakan *!bini* untuk memilih.');
+        return true;
+    }
+
+    if (textLower === '!stopwaifu') {
+        waifuService.clear(senderId);
+        AIProvider.clearMemory(senderId);
+        await reply('Nn... Mode waifu dinonaktifkan. Persona default kembali aktif.');
         return true;
     }
 
@@ -667,9 +661,15 @@ async function handle(ctx) {
     // DETEKSI TRIGGER OBROLAN
     // ==========================================
     let pemicuObrolan = false, pesanUser = "";
+    let triggerType = null;
     if (textLower.startsWith('!shiroko ')) {
         pemicuObrolan = true;
+        triggerType = 'shiroko';
         pesanUser = textClean.substring(9).trim();
+    } else if (isGroup && textLower.startsWith('!chat ')) {
+        pemicuObrolan = true;
+        triggerType = 'chat';
+        pesanUser = textClean.substring(6).trim();
     } else if (!isGroup) {
         const sedangSesiLain = state.sesiUjian[senderId] || state.sesiTikTok[senderId] ||
             state.sesiKaryaIlmiah[senderId] || state.sesiPixiv[senderId] || state.sesiWaifu[senderId] ||
@@ -691,6 +691,16 @@ async function handle(ctx) {
     let extractedFileText = "";
 
     if (pemicuObrolan) {
+        if (triggerType === 'chat') {
+            const cooldownKey = `${from}:${senderId}`;
+            const lastChat = state.groupChatCooldown?.get(cooldownKey) || 0;
+            if (Date.now() - lastChat < 5000) {
+                await reply('Nn... Tunggu sebentar sebelum mengirim chat waifu berikutnya.');
+                return true;
+            }
+            if (!state.groupChatCooldown) state.groupChatCooldown = new Map();
+            state.groupChatCooldown.set(cooldownKey, Date.now());
+        }
         const isTargetImage = msgType === 'imageMessage';
         const isQuotedImage = isQuoted && quotedType === 'imageMessage';
         const isTargetAudio = msgType === 'audioMessage';
@@ -841,7 +851,7 @@ async function handle(ctx) {
             const { incrementStat } = require('../config/database');
             incrementStat('aiRequests');
             
-            let finalSystemPrompt = state.userSystemPrompt ? (state.userSystemPrompt[senderId] || (core && state.userSystemPrompt[core])) : null;
+            let finalSystemPrompt = triggerType === 'shiroko' ? getShirokoSystemPrompt(isOwner) : (state.userSystemPrompt ? (state.userSystemPrompt[senderId] || (core && state.userSystemPrompt[core])) : null);
             if (!finalSystemPrompt && state.userRole && (state.userRole[senderId] || (core && state.userRole[core]))) {
                 const userRoleName = state.userRole[senderId] || state.userRole[core];
                 const baseType = (provider === 'cloudflare') ? 'short' : ((provider === 'arisu') ? 'arisu' : 'system');
@@ -909,6 +919,7 @@ async function handle(ctx) {
             delete state.userSystemPrompt[senderId];
             if (core) delete state.userSystemPrompt[core];
         }
+        waifuService.clear(senderId);
         if (state.userRole) {
             delete state.userRole[senderId];
             if (core) delete state.userRole[core];
