@@ -9,6 +9,20 @@ const { getShirokoArisuPrompt } = require('../prompts');
 
 const PROVIDER_NAME = 'arisu';
 
+const ARISU_MODELS = [
+    { id: 'deepseek-v3', name: 'DeepSeek V3.2', limitCost: 2 },
+    { id: 'deepseek-v4', name: 'DeepSeek V4 Pro', limitCost: 4 },
+    { id: 'glm', name: 'GLM AI', limitCost: 2 },
+    { id: 'qwen', name: 'Qwen AI', limitCost: 2 },
+    { id: 'gemini', name: 'Gemini via Arisu', limitCost: 2 },
+    { id: 'gpt', name: 'GPT via Arisu', limitCost: 2 },
+    { id: 'grok', name: 'Grok via Arisu', limitCost: 2 }
+];
+
+function fetchModels() {
+    return ARISU_MODELS.map(model => ({ ...model }));
+}
+
 /**
  * Generate chat via ArisuSoft API.
  * @param {object} options
@@ -133,5 +147,6 @@ function fetchTTSModels() {
 module.exports = {
     generate,
     textToSpeech,
+    fetchModels,
     fetchTTSModels
 };

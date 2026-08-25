@@ -134,12 +134,14 @@ async function initDatabase() {
                 else if (row.id === 'ownerCloudflareModel') state.ownerCloudflareModel = parsed;
                  else if (row.id === 'ownerOllamaModel') state.ownerOllamaModel = parsed;
                  else if (row.id === 'ownerXKiroModel') state.ownerXKiroModel = parsed;
+                 else if (row.id === 'ownerArisuModel') state.ownerArisuModel = parsed;
                  else if (row.id === 'ownerMood' && parsed && typeof parsed === 'object') state.ownerMood = parsed;
                 else if (row.id === 'userAIMode' && typeof parsed === 'object') state.userAIMode = { ...state.userAIMode, ...parsed };
                 else if (row.id === 'userOpenRouterModel' && typeof parsed === 'object') state.userOpenRouterModel = { ...state.userOpenRouterModel, ...parsed };
                 else if (row.id === 'userCloudflareModel' && typeof parsed === 'object') state.userCloudflareModel = { ...state.userCloudflareModel, ...parsed };
                 else if (row.id === 'userOllamaModel' && typeof parsed === 'object') state.userOllamaModel = { ...state.userOllamaModel, ...parsed };
-                else if (row.id === 'userXKiroModel' && typeof parsed === 'object') state.userXKiroModel = { ...state.userXKiroModel, ...parsed };
+                 else if (row.id === 'userXKiroModel' && typeof parsed === 'object') state.userXKiroModel = { ...state.userXKiroModel, ...parsed };
+                 else if (row.id === 'userArisuModel' && typeof parsed === 'object') state.userArisuModel = { ...state.userArisuModel, ...parsed };
             } catch (err) {
                 if (row.id === 'ownerAIMode') state.ownerAIMode = row.value;
             }

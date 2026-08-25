@@ -19,6 +19,17 @@ const { getCoreNumber } = require('../../utils/helpers');
  * @param {string} senderId - Untuk ambil model pilihan user
  * @returns {{ provider: string, model: string }}
  */
+function getModelCost(provider, model) {
+    if (provider === 'ollama') return 0;
+    if (provider === 'openrouter' || provider === 'cloudflare') return 1;
+    if (provider === 'xkiro') return 1;
+    if (provider === 'arisu') {
+        const arisuModel = arisuProvider.fetchModels().find(item => item.id === model);
+        return arisuModel?.limitCost || (model === 'deepseek-v4' ? 4 : 2);
+    }
+    return 2;
+}
+
 function resolveMode(mode, senderId) {
     const core = getCoreNumber(senderId);
     const modeMap = {
@@ -28,8 +39,9 @@ function resolveMode(mode, senderId) {
         'or':           { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || 'deepseek/deepseek-r1:free' },
         'cloudflare':   { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
         'cf':           { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
-        'xkiro':        { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'google/gemini-2.5-flash' },
-        'xk':           { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'google/gemini-2.5-flash' },
+        'xkiro':        { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'deepseek/deepseek-v4-flash' },
+        'xk':           { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'deepseek/deepseek-v4-flash' },
+        'arisu':        { provider: 'arisu',       model: state.userArisuModel[senderId] || (core && state.userArisuModel[core]) || state.ownerArisuModel || 'deepseek-v3' },
         'ds3':          { provider: 'arisu',       model: 'deepseek-v3' },
         'ds4':          { provider: 'arisu',       model: 'deepseek-v4' },
         'glm':          { provider: 'arisu',       model: 'glm' },
@@ -139,6 +151,8 @@ async function fetchModels(provider) {
             return cloudflareProvider.fetchModels();
         case 'xkiro':
             return xkiroProvider.fetchModels();
+        case 'arisu':
+            return arisuProvider.fetchModels();
         default:
             throw new Error(`fetchModels tidak tersedia untuk provider: ${provider}`);
     }
@@ -212,6 +226,7 @@ module.exports = {
     generate,
     transcribe,
     resolveMode,
+    getModelCost,
     clearMemory,
     fetchModels,
     generateImage,

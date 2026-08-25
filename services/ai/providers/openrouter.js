@@ -128,16 +128,20 @@ async function fetchModels() {
         headers: { 'Authorization': `Bearer ${apiKey}` }
     });
 
-    let allModels = res.data.data || [];
-    let freeModels = allModels.filter(m => m.id && m.id.includes(':free'));
-    if (freeModels.length === 0) freeModels = allModels;
+    const allModels = res.data.data || [];
+    const freeModels = allModels.filter(m => m.id && m.id.includes(':free'));
 
     return freeModels.map(m => {
-        let cleanName = m.id;
+        let cleanName = m.name || m.id;
         if (m.id && m.id.includes('/')) {
-            cleanName = m.id.split('/')[1];
+            cleanName = m.name || m.id.split('/')[1];
         }
-        return { id: m.id, name: cleanName };
+        return {
+            id: m.id,
+            name: cleanName,
+            limitCost: 1,
+            billingType: 'free'
+        };
     }).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 

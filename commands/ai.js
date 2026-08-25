@@ -250,6 +250,41 @@ async function handle(ctx) {
     }
 
     // ==========================================
+    // HANDLER SESI MILIH MODEL ARISU
+    // ==========================================
+    if (state.sesiArisuMode && state.sesiArisuMode[senderId]) {
+        const pilihan = textLower;
+        if (pilihan === 'batal' || pilihan === 'cancel') {
+            delete state.sesiArisuMode[senderId];
+            await reply('Nn... Pemilihan otak ArisuSoft dibatalkan.');
+            return true;
+        }
+        const num = parseInt(pilihan) - 1;
+        const listModels = state.sesiArisuMode[senderId].list;
+        if (isNaN(num) || num < 0 || num >= listModels.length) {
+            await reply('Nn... Angka tidak valid, Sensei. Balas dengan angka yang ada di daftar atau ketik *batal*.');
+            return true;
+        }
+        const chosenModel = listModels[num];
+        const core = getCoreNumber(senderId);
+        state.userArisuModel[senderId] = chosenModel.id;
+        if (core) state.userArisuModel[core] = chosenModel.id;
+        state.userAIMode[senderId] = 'arisu';
+        if (core) state.userAIMode[core] = 'arisu';
+        if (isOwner) {
+            state.ownerAIMode = 'arisu';
+            db.setSetting('ownerAIMode', 'arisu');
+        }
+        db.setSetting('userAIMode', state.userAIMode);
+        db.setSetting('userArisuModel', state.userArisuModel);
+        if (isOwner) db.setSetting('ownerArisuModel', chosenModel.id);
+        delete state.sesiArisuMode[senderId];
+        AIProvider.clearMemory(senderId);
+        await reply(`✅ *MODE ARISUSOFT AKTIF*\\n\\nModel: *${chosenModel.name}*\\nBiaya: *${chosenModel.limitCost} limit/request*. ✨`);
+        return true;
+    }
+
+    // ==========================================
     // HANDLER SESI MILIH MODEL XKIRO
     // ==========================================
     if (state.sesiXKiroMode && state.sesiXKiroMode[senderId]) {
@@ -398,7 +433,7 @@ async function handle(ctx) {
 
     if (textLower.startsWith('!aimode')) {
         const args = textClean.split(' ')[1];
-        const allowedModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'xkiro', 'xk', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
+        const allowedModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'xkiro', 'xk', 'arisu', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
         
         const core = getCoreNumber(senderId);
         const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
@@ -406,13 +441,13 @@ async function handle(ctx) {
         const currentOllama = state.userOllamaModel[senderId] || (core && state.userOllamaModel[core]) || state.ownerOllamaModel || 'gemma3:4b';
         const currentOR = state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || state.ownerOpenRouterModel || 'deepseek/deepseek-r1:free';
         const currentCF = state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || state.ownerCloudflareModel || '@cf/meta/llama-3-8b-instruct';
-        const currentXK = state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'openai/gpt-4o';
+        const currentXK = state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'deepseek/deepseek-v4-flash';
 
         if (!args || !allowedModes.includes(args)) {
             let listModes = isOwner 
                 ? `🔹 *!aimode gemini* (Gemini Cloud)\n🔹 *!aimode ollama* (Lokal Offline)\n` 
                 : ``;
-            listModes += `🔹 *!aimode xkiro* (Live xKiro Multi-Model Gateway)\n🔹 *!aimode openrouter* (Live OpenRouter Scanner)\n🔹 *!aimode cloudflare* (Live Cloudflare AI Scanner)\n🔹 *!aimode ds3* (Deepseek V3.2)\n🔹 *!aimode ds4* (Deepseek V4 Pro)\n🔹 *!aimode glm* (GLM AI)\n🔹 *!aimode qwen* (Qwen AI)\n🔹 *!aimode arisu-gemini* (Gemini via Arisu)\n🔹 *!aimode gpt* (GPT 5 Nano)\n🔹 *!aimode grok* (Grok 4.1)`;
+            listModes += `🔹 *!aimode xkiro* (Live xKiro Multi-Model Gateway)\n🔹 *!aimode arisu* (Pilih model ArisuSoft)\n🔹 *!aimode openrouter* (Live OpenRouter Scanner)\n🔹 *!aimode cloudflare* (Live Cloudflare AI Scanner)\n🔹 *!aimode ds3* (Deepseek V3.2)\n🔹 *!aimode ds4* (Deepseek V4 Pro)\n🔹 *!aimode glm* (GLM AI)\n🔹 *!aimode qwen* (Qwen AI)\n🔹 *!aimode arisu-gemini* (Gemini via Arisu)\n🔹 *!aimode gpt* (GPT 5 Nano)\n🔹 *!aimode grok* (Grok 4.1)`;
             
             await reply(`Nn... Format salah, Sensei. Pilih salah satu mode di bawah ini:\n\n${listModes}\n\nMode saat ini: *${currentMode.toUpperCase()}*\nxKiro Aktif: *${currentXK}*\nOpenRouter Aktif: *${currentOR}*\nCloudflare Aktif: *${currentCF}*`);
             return true;
@@ -439,6 +474,18 @@ async function handle(ctx) {
                 console.error('Error cek Ollama:', err.message);
                 await reply('Nn... Gagal nyambung ke Ollama. Pastikan aplikasi Ollama di laptop udah nyala.');
             }
+        } else if (args === 'arisu') {
+            try {
+                const models = await AIProvider.fetchModels('arisu');
+                state.sesiArisuMode[senderId] = { list: models };
+                let teksList = `🛰️ *DAFTAR MODEL ARISUSOFT*\n\nNn... Pilih model ArisuSoft (biaya per request):\n\n`;
+                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name} — *${m.limitCost} limit*\n`; });
+                teksList += `\n_Ketik *batal* untuk membatalkan._`;
+                await reply(teksList);
+            } catch (err) {
+                console.error('Error daftar Arisu:', err.message);
+                await reply(`Nn... Gagal memuat model ArisuSoft: ${err.message}`);
+            }
         } else if (args === 'xkiro' || args === 'xk') {
             try {
                 await reply('Nn... Men-scan daftar model live dari xKiro Multi-Model Gateway...');
@@ -447,13 +494,14 @@ async function handle(ctx) {
                 if (!models || models.length === 0) { await reply('Nn... Tidak ada model xKiro yang ditemukan.'); return true; }
 
                 const userRole = state.userRole ? (state.userRole[senderId] || (core && state.userRole[core])) : null;
-                models = filterModelsByRole(models, userRole, 'openrouter');
+                models = filterModelsByRole(models, userRole, 'xkiro')
+                    .filter(m => m.billingType === 'free' || m.accessTier === 'free');
 
                 state.sesiXKiroMode[senderId] = { list: models };
 
                 let roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
-                let teksList = `🚀 *DAFTAR MODEL XKIRO GATEWAY LIVE*${roleNotice}\n\nNn... Sensei, pilih otak xKiro yang mau dipakai dengan membalas angkanya:\n\n`;
-                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name}\n`; });
+                let teksList = `🚀 *DAFTAR MODEL XKIRO GATEWAY LIVE*${roleNotice}\n\nNn... Sensei, pilih otak xKiro yang mau dipakai (model FREE, 1 limit):\n\n`;
+                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name} — *${m.limitCost || 1} limit*\n`; });
                 teksList += `\n_Ketik *batal* untuk membatalkan._`;
 
                 await reply(teksList);
@@ -474,8 +522,8 @@ async function handle(ctx) {
                 state.sesiOpenRouterMode[senderId] = { list: models };
 
                 let roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
-                let teksList = `🌐 *DAFTAR MODEL OPENROUTER LIVE*${roleNotice}\n\nNn... Sensei, pilih otak OpenRouter yang mau dipakai dengan membalas angkanya:\n\n`;
-                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name}\n`; });
+                let teksList = `🌐 *DAFTAR MODEL OPENROUTER LIVE*${roleNotice}\n\nNn... Sensei, pilih model FREE OpenRouter (1 limit/request):\n\n`;
+                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name} — *1 limit*\n`; });
                 teksList += `\n_Ketik *batal* untuk membatalkan._`;
 
                 await reply(teksList);
@@ -496,8 +544,8 @@ async function handle(ctx) {
                 state.sesiCloudflareMode[senderId] = { list: models };
 
                 let roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
-                let teksList = `☁️ *DAFTAR MODEL CLOUDFLARE AI LIVE*${roleNotice}\n\nNn... Sensei, pilih otak Cloudflare AI yang mau dipakai dengan membalas angkanya:\n\n`;
-                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name}\n`; });
+                let teksList = `☁️ *DAFTAR MODEL CLOUDFLARE AI LIVE*${roleNotice}\n\nNn... Sensei, pilih model Cloudflare (1 limit/request):\n\n`;
+                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name} — *1 limit*\n`; });
                 teksList += `\n_Ketik *batal* untuk membatalkan._`;
 
                 await reply(teksList);
@@ -517,16 +565,6 @@ async function handle(ctx) {
             await reply(`✅ *MODE OPERASIONAL DIUBAH*\n\nNn... Mulai sekarang, khusus untuk chat dari Sensei, Shiroko akan berpikir menggunakan otak *${args.toUpperCase()}*. ✨`);
         }
         return true;
-    }
-
-    // Fungsi helper untuk menghitung limit
-    function getAiCost(mode) {
-        const costMap = {
-            'ds3': 2, 'ds4': 4, 'glm': 2, 'qwen': 2,
-            'arisu-gemini': 2, 'gpt': 2, 'grok': 2,
-            'gemini': 2, 'ollama': 0, 'openrouter': 2, 'cloudflare': 2, 'xkiro': 2, 'xk': 2
-        };
-        return costMap[mode] || 2;
     }
 
     // ==========================================
@@ -681,7 +719,8 @@ async function handle(ctx) {
         const core = getCoreNumber(senderId);
         const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
         const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
-        const cost = getAiCost(userMode);
+        const { provider: costProvider, model: costModel } = AIProvider.resolveMode(userMode, senderId);
+        const cost = AIProvider.getModelCost(costProvider, costModel);
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
         try {

@@ -174,8 +174,20 @@ async function fetchModels() {
 
         const mapped = allModels.map(m => {
             const modelId = m.id || m.name || String(m);
-            let cleanName = m.display_name || modelId;
-            return { id: modelId, name: cleanName };
+            const cleanName = m.display_name || modelId;
+            const accessTier = m.access_tier || 'unknown';
+            const pricing = m.pricing || {};
+            const inputPrice = Number(pricing.input || 0);
+            const outputPrice = Number(pricing.output || 0);
+            const isFree = accessTier === 'free' && inputPrice === 0 && outputPrice === 0;
+            return {
+                id: modelId,
+                name: cleanName,
+                accessTier,
+                pricing,
+                billingType: isFree ? 'free' : accessTier,
+                limitCost: isFree ? 1 : null
+            };
         });
 
         return (mapped.length > 0 ? mapped : getFallbackModels())
@@ -188,14 +200,10 @@ async function fetchModels() {
 
 function getFallbackModels() {
     return [
-        { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-        { id: 'google/gemini-3-flash', name: 'Gemini 3 Flash' },
-        { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini' },
-        { id: 'openai/gpt-5.4', name: 'GPT-5.4' },
-        { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6' },
-        { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
-        { id: 'qwen/qwen3.5-omni-flash', name: 'Qwen 3.5 Omni Flash' },
-        { id: 'z-ai/glm-5', name: 'GLM-5' }
+        { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', accessTier: 'free', billingType: 'free', limitCost: 1 },
+        { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', accessTier: 'free', billingType: 'free', limitCost: 1 },
+        { id: 'qwen/qwen3.5-flash', name: 'Qwen 3.5 Flash', accessTier: 'free', billingType: 'free', limitCost: 1 },
+        { id: 'mistralai/devstral-medium', name: 'Devstral 2', accessTier: 'free', billingType: 'free', limitCost: 1 }
     ].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 

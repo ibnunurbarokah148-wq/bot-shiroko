@@ -325,7 +325,7 @@ async function fetchModels() {
     return textModels.map(m => {
         let parts = m.name.replace(/^@cf\//i, '').split('/');
         let cleanName = parts[parts.length - 1];
-        return { id: m.name, name: cleanName };
+        return { id: m.name, name: cleanName, limitCost: 1, billingType: 'free' };
     }).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 
