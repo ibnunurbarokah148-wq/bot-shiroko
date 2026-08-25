@@ -5,7 +5,7 @@
 // ==========================================
 const axios = require('axios');
 const state = require('../config/state');
-const { cekDanPotongLimit, kembalikanLimit, dbAIRole } = require('../config/db');
+const { cekDanPotongLimit, kembalikanLimit, dbAIRole, dbPremium } = require('../config/db');
 const AIProvider = require('../services/ai/AIProvider');
 const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const { ROLE_PROMPTS, getRolePrompt, getShirokoSystemPrompt } = require('../services/ai/prompts');
@@ -15,6 +15,29 @@ const companionService = require('../services/ai/companion.service');
 const appearanceState = require('../services/ai/appearance.state');
 const { extractDocumentText, splitDocumentText } = require('../services/ai/media.service');
 const moodState = require('../services/ai/mood.state');
+const {
+    isXKiroModelFree,
+    isXKiroModelAllowed,
+    getXKiroModelCost,
+    formatXKiroPricing
+} = require('../services/ai/providers/xkiro');
+
+function hasActivePremium(senderId) {
+    const entry = dbPremium[senderId];
+    return !!entry && (entry === true || entry > Date.now());
+}
+
+function formatXKiroModelLine(model, { isOwner, isPremium }) {
+    const limitCost = getXKiroModelCost(model.id, { isOwner, isPremium, model });
+    if (isXKiroModelFree(model)) {
+        return `*${model.name}*\n   └ FREE • 1 limit/request`;
+    }
+    if (isOwner) {
+        const tier = (model.accessTier || model.billingType || 'paid').toUpperCase();
+        return `*${model.name}*\n   └ ${tier}/WALLET • ${formatXKiroPricing(model.pricing)} • limit bot unlimited`;
+    }
+    return `*${model.name}*\n   └ PREMIUM/WALLET • ${limitCost} limit/request`;
+}
 
 async function handle(ctx) {
     const { sock, msg, normalizedMessage, from, senderId, isOwner, isGroup, textClean, textLower,
@@ -304,6 +327,12 @@ async function handle(ctx) {
         }
 
         const chosenModel = listModels[num];
+        const chosenIsPremium = hasActivePremium(senderId);
+        if (!isOwner && !isXKiroModelFree(chosenModel) && !isXKiroModelAllowed(chosenModel.id, { isPremium: chosenIsPremium })) {
+            delete state.sesiXKiroMode[senderId];
+            await reply('Nn... Model ini tidak termasuk akses akunmu. Gunakan model FREE atau aktifkan VIP Premium.');
+            return true;
+        }
         const core = getCoreNumber(senderId);
         state.userXKiroModel[senderId] = chosenModel.id;
         if (core) state.userXKiroModel[core] = chosenModel.id;
@@ -494,14 +523,27 @@ async function handle(ctx) {
                 if (!models || models.length === 0) { await reply('Nn... Tidak ada model xKiro yang ditemukan.'); return true; }
 
                 const userRole = state.userRole ? (state.userRole[senderId] || (core && state.userRole[core])) : null;
-                models = filterModelsByRole(models, userRole, 'xkiro')
-                    .filter(m => m.billingType === 'free' || m.accessTier === 'free');
+                const isPremium = hasActivePremium(senderId);
+                models = filterModelsByRole(models, userRole, 'xkiro').filter(model => {
+                    if (isOwner) return true;
+                    if (isXKiroModelFree(model)) return true;
+                    return isXKiroModelAllowed(model.id, { isPremium });
+                });
+
+                if (models.length === 0) {
+                    await reply('Nn... Tidak ada model xKiro yang sesuai dengan akses akun ini.');
+                    return true;
+                }
 
                 state.sesiXKiroMode[senderId] = { list: models };
 
-                let roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
-                let teksList = `🚀 *DAFTAR MODEL XKIRO GATEWAY LIVE*${roleNotice}\n\nNn... Sensei, pilih otak xKiro yang mau dipakai (model FREE, 1 limit):\n\n`;
-                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name} — *${m.limitCost || 1} limit*\n`; });
+                const roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
+                const audience = isOwner ? 'OWNER' : (isPremium ? 'VIP PREMIUM' : 'FREE');
+                let teksList = `🚀 *DAFTAR MODEL XKIRO ${audience}*${roleNotice}\n\nNn... Pilih model dengan membalas angkanya:\n\n`;
+                models.forEach((m, i) => { teksList += `*${i + 1}.* ${formatXKiroModelLine(m, { isOwner, isPremium })}\n`; });
+                if (!isOwner && isPremium) {
+                    teksList += `\n_Catatan: akses VIP tidak mencakup saldo wallet Xkiro. Model PREMIUM/WALLET tetap membutuhkan saldo provider._\n`;
+                }
                 teksList += `\n_Ketik *batal* untuk membatalkan._`;
 
                 await reply(teksList);
@@ -720,7 +762,29 @@ async function handle(ctx) {
         const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
         const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
         const { provider: costProvider, model: costModel } = AIProvider.resolveMode(userMode, senderId);
-        const cost = AIProvider.getModelCost(costProvider, costModel);
+        const isPremium = hasActivePremium(senderId);
+        let xkiroMetadata = null;
+        if (costProvider === 'xkiro') {
+            try {
+                xkiroMetadata = (await AIProvider.fetchModels('xkiro')).find(item => item.id === costModel) || null;
+            } catch (err) {
+                console.warn(`[XKIRO] Gagal memvalidasi katalog model: ${err.message}`);
+            }
+        }
+        const access = AIProvider.validateModelAccess(costProvider, costModel, {
+            isOwner,
+            isPremium,
+            metadata: xkiroMetadata
+        });
+        if (!access.allowed) {
+            await reply(`Nn... ${access.reason}`);
+            return true;
+        }
+        const cost = access.cost;
+        if (!Number.isInteger(cost) || cost < 0) {
+            await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model Xkiro dari *!aimode xkiro*.');
+            return true;
+        }
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
         try {

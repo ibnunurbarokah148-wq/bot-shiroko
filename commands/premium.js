@@ -13,7 +13,7 @@ async function handle(ctx) {
             ? `🟢 *Status:* AKTIF\n⏳ *Berakhir Pada:* ${new Date(dbEntry).toLocaleString('id-ID')}`
             : `🔴 *Status:* NON-AKTIF`;
 
-        const teks = `👑 *LAYANAN SHIROKO PREMIUM* 👑\n\n${statusTeks}\n\nNn... Jadilah Sensei VIP untuk mendapatkan fitur eksklusif!\n\n💳 *Biaya:* Rp 15.000 / Bulan\n\n✨ *Keuntungan Premium:*\n1. Limit Harian Ekstra Besar (1.000 Token / Hari)\n2. Akses ke mesin ComfyUI (Tanpa antrean / VIP)\n3. Akses mode NSFW untuk semua visual (Waifu, Pixiv, Gacha)\n4. Fitur *!kepo* (Snipe / melihat pesan yang baru saja dihapus di grup)\n\nKetik:\n*!premium beli* -> Untuk mulai berlangganan.`;
+        const teks = `👑 *LAYANAN SHIROKO PREMIUM* 👑\n\n${statusTeks}\n\nNn... Jadilah Sensei VIP untuk mendapatkan fitur eksklusif!\n\n💳 *Biaya:* Rp 15.000 / Bulan\n\n✨ *Keuntungan Premium:*\n1. Limit Harian Ekstra Besar (1.000 Token / Hari)\n2. Akses terbatas ke model Premium Xkiro (biaya limit per request)\n3. Akses ke mesin ComfyUI (Tanpa antrean / VIP)\n4. Akses mode NSFW untuk semua visual (Waifu, Pixiv, Gacha)\n5. Fitur *!kepo* (Snipe / melihat pesan yang baru saja dihapus di grup)\n\nKetik:\n*!premium beli* -> Untuk mulai berlangganan.`;
         
         await reply(teks);
         return true;

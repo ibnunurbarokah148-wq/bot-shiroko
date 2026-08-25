@@ -13,6 +13,40 @@ const { getCoreNumber } = require('../../../utils/helpers');
 
 const PROVIDER_NAME = 'xkiro';
 
+// Model premium yang boleh dipakai VIP Premium Shiroko.
+// Model lain tetap hanya tersedia untuk Owner karena saldo wallet Xkiro terpisah.
+const XKIRO_PREMIUM_MODELS = Object.freeze({
+    'google/gemini-2.5-flash': { limitCost: 25 },
+    'google/gemini-3-flash': { limitCost: 50 },
+    'deepseek/deepseek-v4-flash-0731': { limitCost: 25 },
+    'deepseek/deepseek-v4-pro-0813': { limitCost: 50 },
+    'google/gemini-2.5-pro': { limitCost: 100 }
+});
+
+function isXKiroModelFree(model) {
+    return model?.billingType === 'free' || model?.accessTier === 'free';
+}
+
+function isXKiroModelAllowed(modelId, { isOwner = false, isPremium = false } = {}) {
+    if (isOwner) return true;
+    if (isPremium && Object.prototype.hasOwnProperty.call(XKIRO_PREMIUM_MODELS, modelId)) return true;
+    return false;
+}
+
+function getXKiroModelCost(modelId, { isOwner = false, isPremium = false, model = null } = {}) {
+    if (isOwner) return 0;
+    if (isPremium && XKIRO_PREMIUM_MODELS[modelId]) return XKIRO_PREMIUM_MODELS[modelId].limitCost;
+    if (isXKiroModelFree(model) || !model) return 1;
+    return null;
+}
+
+function formatXKiroPricing(pricing = {}) {
+    const input = Number(pricing.input || 0);
+    const output = Number(pricing.output || 0);
+    if (input === 0 && output === 0) return 'FREE';
+    return `input $${input}/1M • output $${output}/1M`;
+}
+
 // Multi-key rotation support
 const XKIRO_API_KEYS = (process.env.XKIRO_API_KEY || process.env.XKIRO_KEY || '')
     .split(',')
@@ -212,5 +246,10 @@ module.exports = {
     transcribe,
     fetchModels,
     resolveXKiroModel,
+    XKIRO_PREMIUM_MODELS,
+    isXKiroModelFree,
+    isXKiroModelAllowed,
+    getXKiroModelCost,
+    formatXKiroPricing,
     XKIRO_API_KEYS
 };

@@ -19,15 +19,28 @@ const { getCoreNumber } = require('../../utils/helpers');
  * @param {string} senderId - Untuk ambil model pilihan user
  * @returns {{ provider: string, model: string }}
  */
-function getModelCost(provider, model) {
+function getModelCost(provider, model, context = {}) {
     if (provider === 'ollama') return 0;
     if (provider === 'openrouter' || provider === 'cloudflare') return 1;
-    if (provider === 'xkiro') return 1;
+    if (provider === 'xkiro') {
+        return xkiroProvider.getXKiroModelCost(model, context);
+    }
     if (provider === 'arisu') {
         const arisuModel = arisuProvider.fetchModels().find(item => item.id === model);
         return arisuModel?.limitCost || (model === 'deepseek-v4' ? 4 : 2);
     }
     return 2;
+}
+
+function validateModelAccess(provider, model, context = {}) {
+    if (provider !== 'xkiro') return { allowed: true, cost: getModelCost(provider, model, context) };
+    const metadata = context.metadata || null;
+    const allowed = xkiroProvider.isXKiroModelAllowed(model, {
+        isOwner: context.isOwner,
+        isPremium: context.isPremium
+    }) || xkiroProvider.isXKiroModelFree(metadata);
+    if (!allowed) return { allowed: false, cost: null, reason: 'Model Xkiro ini hanya tersedia untuk Owner atau VIP Premium yang diizinkan.' };
+    return { allowed: true, cost: getModelCost(provider, model, { ...context, model: metadata }) };
 }
 
 function resolveMode(mode, senderId) {
@@ -227,6 +240,7 @@ module.exports = {
     transcribe,
     resolveMode,
     getModelCost,
+    validateModelAccess,
     clearMemory,
     fetchModels,
     generateImage,
