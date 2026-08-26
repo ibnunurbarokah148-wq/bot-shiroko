@@ -5,6 +5,49 @@ async function handle(ctx) {
     if (!isGroup) return false;
     const adminOnly = async () => !isOwner && !(await groupService.isAdmin(sock, from, senderId).catch(() => false));
 
+    if (textLower.startsWith('!warn') || textLower.startsWith('!warnings') || textLower.startsWith('!unwarn') || textLower.startsWith('!resetwarn') || textLower.startsWith('!setwarnlimit') || textLower.startsWith('!autokickwarn')) {
+        if (await adminOnly()) { await reply('Nn... Perintah ini hanya untuk admin grup.'); return true; }
+        const metadata = await groupService.getMetadata(sock, from);
+        const target = ctx.mentionedJid?.[0] || metadata.participants.find(participant => participant.id === ctx.quotedParticipant)?.id;
+        const settings = groupService.getSettings(from);
+        if (textLower.startsWith('!setwarnlimit')) {
+            const value = Number(textClean.split(/\s+/)[1]);
+            if (!Number.isInteger(value) || value < 1 || value > 20) { await reply('Format: !setwarnlimit [1-20]'); return true; }
+            groupService.saveSettings(from, { warnLimit: value });
+            await reply(`Nn... Batas warning grup diatur menjadi *${value}*.`); return true;
+        }
+        if (textLower.startsWith('!autokickwarn')) {
+            const value = textLower.split(/\s+/)[1];
+            if (!['on', 'off'].includes(value)) { await reply(`Status autokick warning: *${settings.autokickWarn ? 'ON' : 'OFF'}*`); return true; }
+            groupService.saveSettings(from, { autokickWarn: value === 'on' });
+            await reply(`Nn... Autokick warning sekarang *${value.toUpperCase()}*.`); return true;
+        }
+        if (!target) { await reply('Nn... Mention atau reply pesan user yang dituju.'); return true; }
+        if (target === senderId || target === sock.user?.id || (await groupService.isAdmin(sock, from, target).catch(() => false))) { await reply('Nn... Target tidak valid atau merupakan admin grup.'); return true; }
+        const current = groupService.getWarning(from, target);
+        if (textLower.startsWith('!warnings')) {
+            await reply(`@${target.split('@')[0]} memiliki *${current.count}* warning.`, { mentions: [target] }); return true;
+        }
+        if (textLower.startsWith('!unwarn')) {
+            const next = groupService.removeWarning(from, target);
+            await reply(`Nn... Satu warning @${target.split('@')[0]} dihapus. Sisa: *${next.count}*`, { mentions: [target] }); return true;
+        }
+        if (textLower.startsWith('!resetwarn')) {
+            groupService.resetWarnings(from, target);
+            await reply(`Nn... Semua warning @${target.split('@')[0]} dihapus.`, { mentions: [target] }); return true;
+        }
+        const reason = textClean.replace(/^!warn\s*/i, '').replace(/^@\S+\s*/, '').trim() || 'Tidak ada alasan';
+        const warning = groupService.addWarning(from, target, reason, senderId);
+        const limit = settings.warnLimit || 3;
+        let action = `Warning *${warning.count}/${limit}* untuk @${target.split('@')[0]}: ${reason}`;
+        if (warning.count >= limit && settings.autokickWarn && await groupService.isBotAdmin(sock, from).catch(() => false)) {
+            await sock.groupParticipantsUpdate(from, [target], 'remove').catch(() => {});
+            action += '\nBatas warning tercapai. User dikeluarkan otomatis.';
+            groupService.resetWarnings(from, target);
+        }
+        await sock.sendMessage(from, { text: action, mentions: [target] }, { quoted: msg }); return true;
+    }
+
     if (textLower.startsWith('!antilink')) {
         if (await adminOnly()) { await reply('Nn... Perintah ini hanya untuk admin grup.'); return true; }
         const value = textLower.split(/\s+/)[1];

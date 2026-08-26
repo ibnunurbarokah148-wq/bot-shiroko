@@ -132,6 +132,7 @@ function registerMessageHandler(sock, isJadibot = false) {
             text: textClean, textClean, textLower, msgType,
             isQuoted, quotedMsg, quotedType, quotedText, quotedTextLower,
             quotedStanzaId: contextInfo?.stanzaId || null,
+             quotedParticipant: contextInfo?.participant || null,
              mentionedJid, reply, downloadMediaBaileys
         };
 

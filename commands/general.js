@@ -122,6 +122,8 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ !bini / !mybini / !gantiwaifu (Pilih karakter waifu)
 *║* ➸ !waifustatus / !stopwaifu
 *║* ➸ !afk [alasan] / !back / !afklist (Grup)
+*║* ➸ !warn / !warnings / !unwarn / !resetwarn (Admin Grup)
+*║* ➸ !setwarnlimit [angka] / !autokickwarn on/off
 ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset Mood Shiroko)\n` : ''}*║*
 *╠═══「 LMS & EVALUASI 」*
 *║* ➸ !reg_guru

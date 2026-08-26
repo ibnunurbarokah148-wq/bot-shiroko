@@ -126,6 +126,12 @@ async function initDatabase() {
             data TEXT
         )
     `);
+    db.run(`
+        CREATE TABLE IF NOT EXISTS group_warnings (
+            id TEXT PRIMARY KEY,
+            data TEXT
+        )
+    `);
 
     // Migrasi jika tabel lama terlanjur dibuat dengan kolom 'key'
     try {
