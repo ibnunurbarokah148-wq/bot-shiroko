@@ -7,11 +7,10 @@ const { fetchModels: fetchXKiroModels } = require('../services/ai/providers/xkir
 const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
 const axios = require('axios');
 
-async function chooseModelPaginated(promptMsg, initialInteraction, models, prefix, label, userId) {
+async function chooseModelPaginated(promptMsg, models, prefix, label, userId) {
     let page = 0;
     const pageSize = 25;
     const totalPages = Math.max(1, Math.ceil(models.length / pageSize));
-    let interaction = initialInteraction;
 
     while (true) {
         const pageModels = models.slice(page * pageSize, (page + 1) * pageSize);
@@ -27,14 +26,24 @@ async function chooseModelPaginated(promptMsg, initialInteraction, models, prefi
             new ButtonBuilder().setCustomId(`${prefix}_next`).setLabel('Berikutnya').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
         );
         const rows = [new ActionRowBuilder().addComponents(select), nav];
-        await interaction.update({ content: `${label}\nHalaman **${page + 1}/${totalPages}** — total **${models.length}** model:`, components: rows });
-        interaction = await promptMsg.awaitMessageComponent({
+        await promptMsg.edit({ content: `${label}\nHalaman **${page + 1}/${totalPages}** — total **${models.length}** model:`, components: rows });
+        const interaction = await promptMsg.awaitMessageComponent({
             filter: component => component.user.id === userId && (component.customId.startsWith(`${prefix}_select_`) || component.customId === `${prefix}_prev` || component.customId === `${prefix}_next`),
             time: 60000
         });
-        if (interaction.customId === `${prefix}_prev`) { page--; continue; }
-        if (interaction.customId === `${prefix}_next`) { page++; continue; }
-        return { value: interaction.values[0], interaction };
+        if (interaction.customId === `${prefix}_prev`) {
+            await interaction.deferUpdate().catch(() => {});
+            page--;
+            continue;
+        }
+        if (interaction.customId === `${prefix}_next`) {
+            await interaction.deferUpdate().catch(() => {});
+            page++;
+            continue;
+        }
+        const value = interaction.values[0];
+        await interaction.deferUpdate().catch(() => {});
+        return value;
     }
 }
 
@@ -133,14 +142,13 @@ module.exports = {
                     
                     const result = await chooseModelPaginated(
                         promptMsg,
-                        interactionModel,
                         models.map(model => ({ id: model.name, name: model.name })),
                         'ollama',
                         'Pilih model Ollama',
                         message.author.id
                     );
-                    ollamaModelName = result.value;
-                    await result.interaction.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan otak **${ollamaModelName}**...`, components: [] }).catch(()=>{});
+                    ollamaModelName = result;
+                    await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan otak **${ollamaModelName}**...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: 'Nn... Gagal nyambung ke Ollama. Pastikan aplikasi Ollama di laptop udah nyala. Dibatalkan.', components: [] });
                 }
@@ -151,9 +159,9 @@ module.exports = {
                     if (!models || models.length === 0) {
                         return promptMsg.edit({ content: 'Nn... Tidak ada model OpenRouter yang tersedia. Pembuatan ruangan dibatalkan.' });
                     }
-                    const result = await chooseModelPaginated(promptMsg, interactionModel, models, 'openrouter', 'Pilih model OpenRouter (filter FREE tetap aktif)', message.author.id);
-                    openrouterModelName = result.value;
-                    await result.interaction.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan OpenRouter (**${openrouterModelName}**)...`, components: [] }).catch(()=>{});
+                    const result = await chooseModelPaginated(promptMsg, models, 'openrouter', 'Pilih model OpenRouter (filter FREE tetap aktif)', message.author.id);
+                    openrouterModelName = result;
+                    await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan OpenRouter (**${openrouterModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: `Nn... Gagal mengambil model OpenRouter: ${e.message}`, components: [] });
                 }
@@ -164,9 +172,9 @@ module.exports = {
                     if (!models || models.length === 0) {
                         return promptMsg.edit({ content: 'Nn... Tidak ada model xKiro yang tersedia. Pembuatan ruangan dibatalkan.' });
                     }
-                    const result = await chooseModelPaginated(promptMsg, interactionModel, models, 'xkiro', 'Pilih model xKiro (semua model tersedia gratis di Discord)', message.author.id);
-                    xkiroModelName = result.value;
-                    await result.interaction.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan xKiro Gateway (**${xkiroModelName}**)...`, components: [] }).catch(()=>{});
+                    const result = await chooseModelPaginated(promptMsg, models, 'xkiro', 'Pilih model xKiro (semua model tersedia gratis di Discord)', message.author.id);
+                    xkiroModelName = result;
+                    await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan xKiro Gateway (**${xkiroModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: `Nn... Gagal mengambil model xKiro: ${e.message}`, components: [] });
                 }
@@ -177,9 +185,9 @@ module.exports = {
                     if (!models || models.length === 0) {
                         return promptMsg.edit({ content: 'Nn... Tidak ada model Cloudflare yang tersedia. Pembuatan ruangan dibatalkan.' });
                     }
-                    const result = await chooseModelPaginated(promptMsg, interactionModel, models, 'cloudflare', 'Pilih model Cloudflare (filter Text Generation tetap aktif)', message.author.id);
-                    cloudflareModelName = result.value;
-                    await result.interaction.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan Cloudflare (**${cloudflareModelName}**)...`, components: [] }).catch(()=>{});
+                    const result = await chooseModelPaginated(promptMsg, models, 'cloudflare', 'Pilih model Cloudflare (filter Text Generation tetap aktif)', message.author.id);
+                    cloudflareModelName = result;
+                    await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan Cloudflare (**${cloudflareModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: `Nn... Gagal mengambil model Cloudflare: ${e.message}`, components: [] });
                 }
