@@ -8,7 +8,7 @@ async function handle(ctx) {
     if (textLower.startsWith('!warn') || textLower.startsWith('!warnings') || textLower.startsWith('!unwarn') || textLower.startsWith('!resetwarn') || textLower.startsWith('!setwarnlimit') || textLower.startsWith('!autokickwarn')) {
         if (await adminOnly()) { await reply('Nn... Perintah ini hanya untuk admin grup.'); return true; }
         const metadata = await groupService.getMetadata(sock, from);
-        const target = ctx.mentionedJid?.[0] || metadata.participants.find(participant => participant.id === ctx.quotedParticipant)?.id;
+        const target = ctx.mentionedJid?.[0] || metadata.participants.find(participant => [participant.id, participant.jid, participant.lid, participant.phoneNumber].includes(ctx.quotedParticipant))?.id;
         const settings = groupService.getSettings(from);
         if (textLower.startsWith('!setwarnlimit')) {
             const value = Number(textClean.split(/\s+/)[1]);
@@ -48,14 +48,45 @@ async function handle(ctx) {
         await sock.sendMessage(from, { text: action, mentions: [target] }, { quoted: msg }); return true;
     }
 
+    if (textLower.startsWith('!antispam')) {
+        if (await adminOnly()) { await reply('Nn... Perintah ini hanya untuk admin grup.'); return true; }
+        const args = textClean.split(/\s+/).slice(1);
+        const settings = groupService.getSettings(from);
+        if (!args.length || args[0] === 'status') { await reply(`Status antispam: *${settings.spamEnabled ? 'ON' : 'OFF'}*\nBatas: *${settings.spamLimit} pesan/${settings.spamWindowSeconds} detik*\nAksi: *${settings.spamAction}*`); return true; }
+        if (['on', 'off'].includes(args[0])) groupService.saveSettings(from, { spamEnabled: args[0] === 'on' });
+        else if (args[0] === 'limit' && Number.isInteger(Number(args[1])) && Number(args[1]) >= 3 && Number(args[1]) <= 30) groupService.saveSettings(from, { spamLimit: Number(args[1]) });
+        else if (args[0] === 'window' && Number.isInteger(Number(args[1])) && Number(args[1]) >= 3 && Number(args[1]) <= 60) groupService.saveSettings(from, { spamWindowSeconds: Number(args[1]) });
+        else if (args[0] === 'action' && ['delete', 'warn', 'kick'].includes(args[1])) groupService.saveSettings(from, { spamAction: args[1] });
+        else { await reply('Format: !antispam on/off/status, !antispam limit 5, !antispam window 10, !antispam action delete/warn/kick'); return true; }
+        await reply('Nn... Konfigurasi antispam grup diperbarui.'); return true;
+    }
+    if (textLower.startsWith('!antilink whitelist')) {
+        if (await adminOnly()) { await reply('Nn... Perintah ini hanya untuk admin grup.'); return true; }
+        const args = textClean.split(/\s+/).slice(2);
+        const settings = groupService.getSettings(from);
+        const whitelist = [...(settings.linkWhitelist || [])];
+        if (!args.length || args[0] === 'list') { await reply(whitelist.length ? `Whitelist link:\n${whitelist.map(domain => `- ${domain}`).join('\n')}` : 'Nn... Whitelist link masih kosong.'); return true; }
+        const domain = args[1]?.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+        if (!domain || !domain.includes('.')) { await reply('Format: !antilink whitelist add/del domain.com'); return true; }
+        if (args[0] === 'add' && !whitelist.includes(domain)) whitelist.push(domain);
+        else if (args[0] === 'del') { const index = whitelist.indexOf(domain); if (index >= 0) whitelist.splice(index, 1); }
+        else { await reply('Format: !antilink whitelist add/del domain.com'); return true; }
+        groupService.saveSettings(from, { linkWhitelist: whitelist }); await reply('Nn... Whitelist link diperbarui.'); return true;
+    }
     if (textLower.startsWith('!antilink')) {
         if (await adminOnly()) { await reply('Nn... Perintah ini hanya untuk admin grup.'); return true; }
         const value = textLower.split(/\s+/)[1];
-        if (!['on', 'off'].includes(value)) { await reply(`Status antilink: *${groupService.getSettings(from).antilink ? 'ON' : 'OFF'}*\nFormat: !antilink on/off`); return true; }
+        if (value === 'status' || !value) { await reply(`Status antilink: *${groupService.getSettings(from).antilink ? 'ON' : 'OFF'}*\nWhitelist: *${(groupService.getSettings(from).linkWhitelist || []).length} domain*`); return true; }
+        if (!['on', 'off'].includes(value)) { await reply('Format: !antilink on/off/status'); return true; }
         try { await groupService.saveSettings(from, { antilink: value === 'on' }, sock); }
         catch (error) { if (error.message === 'BOT_NOT_ADMIN') { await reply('Nn... Bot harus menjadi admin sebelum antilink diaktifkan.'); return true; } throw error; }
         await reply(`Nn... Antilink grup sekarang *${value.toUpperCase()}*.`);
         return true;
+    }
+    if (textLower === '!welcome card' || textLower === '!welcome text') {
+        if (await adminOnly()) { await reply('Nn... Perintah ini hanya untuk admin grup.'); return true; }
+        groupService.saveSettings(from, { welcomeCard: textLower.endsWith('card') });
+        await reply(`Nn... Mode welcome sekarang *${textLower.endsWith('card') ? 'CARD' : 'TEXT'}*.`); return true;
     }
     if (textLower.startsWith('!welcome') || textLower.startsWith('!goodbye') || textLower.startsWith('!setwelcome') || textLower.startsWith('!setgoodbye')) {
         if (await adminOnly()) { await reply('Nn... Perintah ini hanya untuk admin grup.'); return true; }

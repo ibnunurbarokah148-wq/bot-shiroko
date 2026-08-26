@@ -121,9 +121,6 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ !cekid (Cek ID WA & Role)
 *║* ➸ !bini / !mybini / !gantiwaifu (Pilih karakter waifu)
 *║* ➸ !waifustatus / !stopwaifu
-*║* ➸ !afk [alasan] / !back / !afklist (Grup)
-*║* ➸ !warn / !warnings / !unwarn / !resetwarn (Admin Grup)
-*║* ➸ !setwarnlimit [angka] / !autokickwarn on/off
 ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset Mood Shiroko)\n` : ''}*║*
 *╠═══「 LMS & EVALUASI 」*
 *║* ➸ !reg_guru
@@ -182,13 +179,24 @@ ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset M
 *║* ➸ !bukti (Upload Struk Topup)
 *║* ➸ !jadibot (Sewa Bot Waifu)
 *║* ➸ !stopbot (Hentikan Jadibot)
-*║* ➸ !chat [pesan] (Waifu di Grup)
-*║* ➸ !antilink on/off (Admin Grup)
-*║* ➸ !welcome on/off / !goodbye on/off (Admin Grup)
-*║* ➸ !setwelcome / !setgoodbye [teks]
-*║* ➸ !tagall / !hidetag [pesan] (Admin Grup)
-*║* ➸ !infogc / !listadmin / !closegc / !opengc
 *║* ➸ \`!kepo\` (Ghost Mode Messages VIP)
+*║*
+*╠═══「 FITUR GRUP 」*
+*║* ➸ !chat [pesan] (Chat waifu di grup)
+*║* ➸ !afk [alasan] / !back / !afklist
+*║* ➸ !warn / !warnings / !unwarn / !resetwarn
+*║* ➸ !setwarnlimit [angka]
+*║* ➸ !autokickwarn on/off
+*║* ➸ !antispam on/off/status
+*║* ➸ !antispam limit/window/action
+*║* ➸ !antilink on/off/status
+*║* ➸ !antilink whitelist add/del/list
+*║* ➸ !welcome on/off / !goodbye on/off
+*║* ➸ !welcome card/text
+*║* ➸ !setwelcome / !setgoodbye [teks]
+*║* ➸ !tagall / !hidetag [pesan]
+*║* ➸ !infogc / !listadmin
+*║* ➸ !closegc / !opengc
 *║*
 *╠═══「 KHUSUS OWNER 」*
 *║* ➸ !setpixai [token] (Set Token PixAI Manual)

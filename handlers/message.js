@@ -159,11 +159,29 @@ function registerMessageHandler(sock, isJadibot = false) {
             }
         }
 
-        // Moderasi antilink: admin dan owner dikecualikan.
+        // Moderasi antispam dan antilink: admin dan owner dikecualikan.
         if (isGroup && textClean && !textClean.startsWith('!')) {
             const groupService = require('../services/group.service');
             const settings = groupService.getSettings(from);
-            if (settings.antilink && groupService.hasLink(textClean) && !isOwner && !(await groupService.isAdmin(sock, from, senderId).catch(() => false))) {
+            const senderIsAdmin = isOwner || await groupService.isAdmin(sock, from, senderId).catch(() => false);
+            if (settings.spamEnabled && !senderIsAdmin) {
+                const fingerprint = textClean.toLowerCase().replace(/\s+/g, ' ').trim();
+                const spam = groupService.recordSpam(from, senderId, fingerprint, settings);
+                if (spam.triggered) {
+                    if (await groupService.isBotAdmin(sock, from).catch(() => false)) await sock.sendMessage(from, { delete: msg.key });
+                    if (settings.spamAction === 'warn' || settings.spamAction === 'kick') {
+                        const warning = groupService.addWarning(from, senderId, 'Antispam: terlalu banyak pesan berulang.', sock.user?.id);
+                        if (settings.spamAction === 'kick' && settings.autokickWarn && warning.count >= (settings.warnLimit || 3) && await groupService.isBotAdmin(sock, from).catch(() => false)) {
+                            await sock.groupParticipantsUpdate(from, [senderId], 'remove').catch(() => {});
+                            groupService.resetWarnings(from, senderId);
+                        }
+                    }
+                    await reply('Nn... Aktivitas spam terdeteksi. Kurangi frekuensi pesan.');
+                    groupService.clearSpam(from, senderId);
+                    return;
+                }
+            }
+            if (settings.antilink && groupService.hasLink(textClean) && !groupService.isWhitelistedLink(textClean, from) && !senderIsAdmin) {
                 if (await groupService.isBotAdmin(sock, from).catch(() => false)) {
                     await sock.sendMessage(from, { delete: msg.key });
                     await reply('Nn... Link tidak diizinkan di grup ini.');

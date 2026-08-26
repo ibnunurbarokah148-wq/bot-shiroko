@@ -28,7 +28,14 @@ for (const file of files) {
 }
 
 const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
+const mediaQueue = require('../services/media-queue.service');
 assert.strictEqual(WAIFU_CHARACTERS.length, 10, 'Roster waifu harus berisi 10 karakter.');
 assert.strictEqual(new Set(WAIFU_CHARACTERS.map(character => character.id)).size, 10, 'ID karakter waifu harus unik.');
+for (const character of WAIFU_CHARACTERS) {
+    assert(/istri|suami|pasangan/i.test(character.prompt), `Persona ${character.id} belum memiliki konteks pasangan.`);
+    assert(/sayang|suamiku/i.test(character.prompt), `Persona ${character.id} belum memiliki sapaan pasangan.`);
+}
 
-console.log(`Smoke test lulus: ${files.length} file JavaScript valid, roster 10 waifu valid.`);
+assert.deepStrictEqual(mediaQueue.getStatus(), { active: 0, queued: 0, maxActive: 2 }, 'Queue media harus kosong saat test dimulai.');
+
+console.log(`Smoke test lulus: ${files.length} file JavaScript valid, roster 10 waifu dan persona pasangan valid.`);

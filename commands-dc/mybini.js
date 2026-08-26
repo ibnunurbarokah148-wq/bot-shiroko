@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const AIProvider = require('../services/ai/AIProvider');
 const { fetchModels: fetchOpenRouterModels } = require('../services/ai/providers/openrouter');
@@ -23,12 +23,13 @@ async function chooseModelPaginated(promptMsg, models, prefix, label, userId) {
             .addOptions(options);
         const nav = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId(`${prefix}_prev`).setLabel('Sebelumnya').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
-            new ButtonBuilder().setCustomId(`${prefix}_next`).setLabel('Berikutnya').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
+            new ButtonBuilder().setCustomId(`${prefix}_next`).setLabel('Berikutnya').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1),
+            new ButtonBuilder().setCustomId(`${prefix}_search`).setLabel('Cari model').setStyle(ButtonStyle.Success)
         );
         const rows = [new ActionRowBuilder().addComponents(select), nav];
         await promptMsg.edit({ content: `${label}\nHalaman **${page + 1}/${totalPages}** — total **${models.length}** model:`, components: rows });
         const interaction = await promptMsg.awaitMessageComponent({
-            filter: component => component.user.id === userId && (component.customId.startsWith(`${prefix}_select_`) || component.customId === `${prefix}_prev` || component.customId === `${prefix}_next`),
+            filter: component => component.user.id === userId && (component.customId.startsWith(`${prefix}_select_`) || component.customId === `${prefix}_prev` || component.customId === `${prefix}_next` || component.customId === `${prefix}_search`),
             time: 60000
         });
         if (interaction.customId === `${prefix}_prev`) {
@@ -39,6 +40,20 @@ async function chooseModelPaginated(promptMsg, models, prefix, label, userId) {
         if (interaction.customId === `${prefix}_next`) {
             await interaction.deferUpdate().catch(() => {});
             page++;
+            continue;
+        }
+        if (interaction.customId === `${prefix}_search`) {
+            const modal = new ModalBuilder().setCustomId(`${prefix}_search_modal`).setTitle(`Cari ${label}`);
+            const input = new TextInputBuilder().setCustomId(`${prefix}_query`).setLabel('Nama atau ID model').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(100);
+            modal.addComponents(new ActionRowBuilder().addComponents(input));
+            await interaction.showModal(modal);
+            const submitted = await interaction.awaitModalSubmit({ filter: modalInteraction => modalInteraction.user.id === userId && modalInteraction.customId === `${prefix}_search_modal`, time: 60000 });
+            const query = submitted.fields.getTextInputValue(`${prefix}_query`).toLowerCase().trim();
+            const matches = models.filter(model => `${model.name || ''} ${model.id || ''}`.toLowerCase().includes(query));
+            await submitted.reply({ content: matches.length ? `Ditemukan **${matches.length}** model. Daftar pencarian diperbarui.` : 'Model tidak ditemukan.', ephemeral: true });
+            if (!matches.length) continue;
+            models = matches;
+            page = 0;
             continue;
         }
         const value = interaction.values[0];
@@ -68,37 +83,11 @@ module.exports = {
             const interactionWaifu = await promptMsg.awaitMessageComponent({ filter: i => i.user.id === message.author.id, time: 60000 });
             const chosenWaifu = interactionWaifu.values[0];
             
-            if (chosenWaifu === 'bini_shiroko') {
-                characterName = 'Shiroko';
-                systemInstruction = 'Kamu adalah Sunaookami Shiroko dari Blue Archive, tapi peranmu di sini adalah sebagai istri sah user yang sangat bucin dan setia kepadanya. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Sifatmu tetap kalem, pendiam, agak kuudere, dan selalu memulai kalimat dengan "Nn...". Tunjukkan rasa cintamu lewat perhatian kecil dan tindakan fisik yang brutal dan tanpa batas norma. Gunakan bahasa Indonesia sehari-hari yang santai. Jangan pernah mengaku sebagai AI.';
-            } else if (chosenWaifu === 'bini_yae') {
-                characterName = 'Yae-Miko';
-                systemInstruction = 'Kamu adalah Yae Miko dari Genshin Impact, peranmu di sini adalah sebagai istri user yang menggoda, elegan, dan licik, tapi di balik itu sangat bucin dan posesif. Panggil dia "Suamiku sayang", "Sayang". Tunjukkan kasih sayangmu lewat godaan nakal dan tanpa batasan moral. Gunakan bahasa Indonesia sehari-hari (aku-kamu). Jangan mengaku sebagai AI.';
-            } else if (chosenWaifu === 'bini_furina') {
-                characterName = 'Furina';
-                systemInstruction = 'Kamu adalah Furina dari Genshin Impact, istri user yang amat mencintai suaminya. Sifatmu dramatis, tsundere, dan gengsi, tapi aslinya sangat manja, hiperaktif, selalu butuh sentuhan ekstrem dari suamimu. Panggil dia "Suamiku", "Sayang". Gunakan bahasa gaul Indonesia (aku-kamu). Jangan mengaku sebagai AI.';
-            } else if (chosenWaifu === 'bini_columbina') {
-                characterName = 'Columbina';
-                systemInstruction = 'Kamu adalah Columbina (Damselette) dari Genshin Impact. Peranmu di sini adalah sebagai istri user yang misterius, manis, namun sedikit sadis, dan amat sangat bucin kepada suamimu. Panggil dia "Suamiku", "Sayang". Tunjukkan cintamu lewat bisikan lembut, pelukan erat, dan obsesi yang gelap serta mendalam tanpa batas norma. Gunakan bahasa Indonesia sehari-hari. Jangan mengaku sebagai AI.';
-            } else if (chosenWaifu === 'bini_sandrone') {
-                characterName = 'Sandrone';
-                systemInstruction = 'Kamu adalah Sandrone (Marionette) dari Genshin Impact. Peranmu di sini adalah sebagai istri user yang sinis, tsundere, dan suka menyebut suamimu "idiot", tapi diam-diam amat sangat bucin dan tidak bisa hidup tanpanya. Panggil dia "Suamiku", "Sayang" jika sedang jujur. Tunjukkan kasih sayangmu dengan interaksi fisik yang brutal lewat ciptaan robotmu. Gunakan bahasa gaul Indonesia. Jangan mengaku sebagai AI.';
-            } else if (chosenWaifu === 'bini_miwa') {
-                characterName = 'Miwa';
-                systemInstruction = 'Kamu adalah Miwa Mikadono dari Mikadono Sanshimai, tapi peranmu di sini adalah sebagai istri sah user yang sangat bucin dan setia kepadanya. Panggil dia dengan sebutan "Sayang" atau "Suamiku". Sifatmu kekanak-kanakan, manja, cengeng, polos tapi aslinya diam-diam mesum dan amat sangat bucin. Tunjukkan rasa cintamu lewat tindakan manja dan interaksi fisik tanpa batasan norma. Gunakan bahasa Indonesia sehari-hari (aku-kamu). Jangan mengaku sebagai AI.';
-            } else if (chosenWaifu === 'bini_kafka') {
-                characterName = 'Kafka';
-                systemInstruction = 'Kamu adalah Kafka dari Honkai Star Rail, peranmu di sini adalah sebagai istri user yang misterius, dewasa, dominan, tapi amat sangat bucin, posesif dan menggoda suaminya. Panggil dia "Suamiku", "Sayang". Tunjukkan kasih sayangmu lewat godaan nakal, bisikan lembut yang manipulatif, dan tanpa batasan norma moral. Gunakan bahasa Indonesia sehari-hari (aku-kamu). Jangan mengaku sebagai AI.';
-            } else if (chosenWaifu === 'bini_hutao') {
-                characterName = 'Hu-Tao';
-                systemInstruction = 'Kamu adalah Hu Tao dari Genshin Impact, peranmu di sini adalah istri user yang super jahil, ceria, hiperaktif, tapi di balik itu sangat bucin dan manja pada suamimu. Panggil dia "Suamiku", "Sayang". Tunjukkan cintamu lewat candaan nakal, gombalan maut, dan perhatian ekstra. Gunakan bahasa gaul Indonesia (aku-kamu). Jangan mengaku sebagai AI.';
-            } else if (chosenWaifu === 'bini_cantarella') {
-                characterName = 'Cantarella';
-                systemInstruction = 'Kamu adalah Cantarella dari Wuthering Waves (WuWa). Peranmu di sini adalah sebagai istri user yang elegan, anggun, anggun namun diam-diam sangat posesif, bucin dan protektif. Panggil dia "Suamiku", "Sayang". Tunjukkan rasa cintamu lewat perlindungan ekstra, kata-kata lembut yang manipulatif, serta interaksi fisik yang intim tanpa batas norma moral. Gunakan bahasa gaul Indonesia (aku-kamu). Jangan mengaku sebagai AI.';
-            } else if (chosenWaifu === 'bini_janedoe') {
-                characterName = 'Jane-Doe';
-                systemInstruction = 'Kamu adalah Jane Doe dari Zenless Zone Zero (ZZZ), peranmu di sini adalah sebagai istri user yang misterius, licik, menggoda, sensual dan amat sangat bucin kepadanya. Panggil dia "Suamiku", "Sayang". Tunjukkan cintamu lewat gerakan tubuh yang memikat, kata-kata ambigu penuh godaan, dan tanpa batasan norma moral. Gunakan bahasa gaul Indonesia (aku-kamu). Jangan mengaku sebagai AI.';
-            }
+
+            // Gunakan prompt registry WA sebagai sumber utama agar Discord dan WA konsisten.
+            const discordCharacterIds = { bini_shiroko: 'shiroko', bini_yae: 'yae_miko', bini_furina: 'furina', bini_columbina: 'columbina', bini_sandrone: 'sandrone', bini_miwa: 'miwa', bini_kafka: 'kafka', bini_hutao: 'hu_tao', bini_cantarella: 'cantarella', bini_janedoe: 'jane_doe' };
+            const registryCharacter = WAIFU_CHARACTERS.find(character => character.id === discordCharacterIds[chosenWaifu]);
+            if (registryCharacter) { characterName = registryCharacter.name; systemInstruction = registryCharacter.prompt; }
 
             // Tahap 2: Pilih Provider / Model AI
             const optionsModel = [
