@@ -1,25 +1,49 @@
-const { ActionRowBuilder, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const AIProvider = require('../services/ai/AIProvider');
 const { fetchModels: fetchOpenRouterModels } = require('../services/ai/providers/openrouter');
 const { fetchModels: fetchCloudflareModels } = require('../services/ai/providers/cloudflare');
 const { fetchModels: fetchXKiroModels } = require('../services/ai/providers/xkiro');
+const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
 const axios = require('axios');
+
+async function chooseModelPaginated(promptMsg, initialInteraction, models, prefix, label, userId) {
+    let page = 0;
+    const pageSize = 25;
+    const totalPages = Math.max(1, Math.ceil(models.length / pageSize));
+    let interaction = initialInteraction;
+
+    while (true) {
+        const pageModels = models.slice(page * pageSize, (page + 1) * pageSize);
+        const options = pageModels.map(model => new StringSelectMenuOptionBuilder()
+            .setLabel(String(model.name || model.id).substring(0, 100))
+            .setValue(String(model.id)));
+        const select = new StringSelectMenuBuilder()
+            .setCustomId(`${prefix}_select_${page}`)
+            .setPlaceholder(`${label} — halaman ${page + 1}/${totalPages}`)
+            .addOptions(options);
+        const nav = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`${prefix}_prev`).setLabel('Sebelumnya').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+            new ButtonBuilder().setCustomId(`${prefix}_next`).setLabel('Berikutnya').setStyle(ButtonStyle.Primary).setDisabled(page >= totalPages - 1)
+        );
+        const rows = [new ActionRowBuilder().addComponents(select), nav];
+        await interaction.update({ content: `${label}\nHalaman **${page + 1}/${totalPages}** — total **${models.length}** model:`, components: rows });
+        interaction = await promptMsg.awaitMessageComponent({
+            filter: component => component.user.id === userId && (component.customId.startsWith(`${prefix}_select_`) || component.customId === `${prefix}_prev` || component.customId === `${prefix}_next`),
+            time: 60000
+        });
+        if (interaction.customId === `${prefix}_prev`) { page--; continue; }
+        if (interaction.customId === `${prefix}_next`) { page++; continue; }
+        return { value: interaction.values[0], interaction };
+    }
+}
 
 module.exports = {
     handle: async (message, { client }) => {
-        const optionsWaifu = [
-            new StringSelectMenuOptionBuilder().setLabel('Shiroko (BA)').setValue('bini_shiroko'),
-            new StringSelectMenuOptionBuilder().setLabel('Yae Miko (GI)').setValue('bini_yae'),
-            new StringSelectMenuOptionBuilder().setLabel('Furina (GI)').setValue('bini_furina'),
-            new StringSelectMenuOptionBuilder().setLabel('Columbina (GI)').setValue('bini_columbina'),
-            new StringSelectMenuOptionBuilder().setLabel('Sandrone (GI)').setValue('bini_sandrone'),
-            new StringSelectMenuOptionBuilder().setLabel('Miwa Mikadono (Anime)').setValue('bini_miwa'),
-            new StringSelectMenuOptionBuilder().setLabel('Kafka (HSR)').setValue('bini_kafka'),
-            new StringSelectMenuOptionBuilder().setLabel('Hu Tao (GI)').setValue('bini_hutao'),
-            new StringSelectMenuOptionBuilder().setLabel('Cantarella (WuWa)').setValue('bini_cantarella'),
-            new StringSelectMenuOptionBuilder().setLabel('Jane Doe (ZZZ)').setValue('bini_janedoe')
-        ];
+        const discordWaifuIds = ['shiroko', 'yae', 'furina', 'columbina', 'sandrone', 'miwa', 'kafka', 'hutao', 'cantarella', 'janedoe'];
+        const optionsWaifu = WAIFU_CHARACTERS.map((character, index) => new StringSelectMenuOptionBuilder()
+            .setLabel(`${character.name} (${character.franchise})`)
+            .setValue(`bini_${discordWaifuIds[index]}`));
 
         const rowWaifu = new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder().setCustomId('select_waifu').setPlaceholder('Pilih karakter...').addOptions(optionsWaifu)
@@ -107,16 +131,16 @@ module.exports = {
                         return promptMsg.edit({ content: 'Nn... Tidak ada model Ollama yang terinstall di laptop lokal. Pembuatan ruangan dibatalkan.' });
                     }
                     
-                    const options = models.map(m => new StringSelectMenuOptionBuilder().setLabel(m.name).setValue(m.name));
-                    const rowSelect = new ActionRowBuilder().addComponents(
-                        new StringSelectMenuBuilder().setCustomId('select_ollama').setPlaceholder('Pilih model Ollama...').addOptions(options.slice(0, 25))
+                    const result = await chooseModelPaginated(
+                        promptMsg,
+                        interactionModel,
+                        models.map(model => ({ id: model.name, name: model.name })),
+                        'ollama',
+                        'Pilih model Ollama',
+                        message.author.id
                     );
-                    
-                    await promptMsg.edit({ content: 'Nn... Model Ollama terdeteksi! Silakan pilih dari daftar berikut:', components: [rowSelect] });
-                    const interactionSelect = await promptMsg.awaitMessageComponent({ filter: i => i.user.id === message.author.id, time: 60000 });
-                    
-                    ollamaModelName = interactionSelect.values[0];
-                    await interactionSelect.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan otak **${ollamaModelName}**...`, components: [] }).catch(()=>{});
+                    ollamaModelName = result.value;
+                    await result.interaction.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan otak **${ollamaModelName}**...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: 'Nn... Gagal nyambung ke Ollama. Pastikan aplikasi Ollama di laptop udah nyala. Dibatalkan.', components: [] });
                 }
@@ -127,14 +151,9 @@ module.exports = {
                     if (!models || models.length === 0) {
                         return promptMsg.edit({ content: 'Nn... Tidak ada model OpenRouter yang tersedia. Pembuatan ruangan dibatalkan.' });
                     }
-                    const options = models.slice(0, 25).map(m => new StringSelectMenuOptionBuilder().setLabel(m.name.substring(0, 25)).setValue(m.id));
-                    const rowSelect = new ActionRowBuilder().addComponents(
-                        new StringSelectMenuBuilder().setCustomId('select_openrouter').setPlaceholder('Pilih model OpenRouter...').addOptions(options)
-                    );
-                    await promptMsg.edit({ content: 'Nn... Pilih model OpenRouter yang ingin kamu gunakan:', components: [rowSelect] });
-                    const interactionSelect = await promptMsg.awaitMessageComponent({ filter: i => i.user.id === message.author.id, time: 60000 });
-                    openrouterModelName = interactionSelect.values[0];
-                    await interactionSelect.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan OpenRouter (**${openrouterModelName}**)...`, components: [] }).catch(()=>{});
+                    const result = await chooseModelPaginated(promptMsg, interactionModel, models, 'openrouter', 'Pilih model OpenRouter (filter FREE tetap aktif)', message.author.id);
+                    openrouterModelName = result.value;
+                    await result.interaction.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan OpenRouter (**${openrouterModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: `Nn... Gagal mengambil model OpenRouter: ${e.message}`, components: [] });
                 }
@@ -145,14 +164,9 @@ module.exports = {
                     if (!models || models.length === 0) {
                         return promptMsg.edit({ content: 'Nn... Tidak ada model xKiro yang tersedia. Pembuatan ruangan dibatalkan.' });
                     }
-                    const options = models.slice(0, 25).map(m => new StringSelectMenuOptionBuilder().setLabel((m.name || m.id).substring(0, 25)).setValue(m.id));
-                    const rowSelect = new ActionRowBuilder().addComponents(
-                        new StringSelectMenuBuilder().setCustomId('select_xkiro').setPlaceholder('Pilih model xKiro...').addOptions(options)
-                    );
-                    await promptMsg.edit({ content: 'Nn... Pilih model xKiro AI yang ingin kamu gunakan:', components: [rowSelect] });
-                    const interactionSelect = await promptMsg.awaitMessageComponent({ filter: i => i.user.id === message.author.id, time: 60000 });
-                    xkiroModelName = interactionSelect.values[0];
-                    await interactionSelect.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan xKiro Gateway (**${xkiroModelName}**)...`, components: [] }).catch(()=>{});
+                    const result = await chooseModelPaginated(promptMsg, interactionModel, models, 'xkiro', 'Pilih model xKiro (semua model tersedia gratis di Discord)', message.author.id);
+                    xkiroModelName = result.value;
+                    await result.interaction.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan xKiro Gateway (**${xkiroModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: `Nn... Gagal mengambil model xKiro: ${e.message}`, components: [] });
                 }
@@ -163,14 +177,9 @@ module.exports = {
                     if (!models || models.length === 0) {
                         return promptMsg.edit({ content: 'Nn... Tidak ada model Cloudflare yang tersedia. Pembuatan ruangan dibatalkan.' });
                     }
-                    const options = models.slice(0, 25).map(m => new StringSelectMenuOptionBuilder().setLabel(m.name.substring(0, 25)).setValue(m.id));
-                    const rowSelect = new ActionRowBuilder().addComponents(
-                        new StringSelectMenuBuilder().setCustomId('select_cloudflare').setPlaceholder('Pilih model Cloudflare...').addOptions(options)
-                    );
-                    await promptMsg.edit({ content: 'Nn... Pilih model Cloudflare AI yang ingin kamu gunakan:', components: [rowSelect] });
-                    const interactionSelect = await promptMsg.awaitMessageComponent({ filter: i => i.user.id === message.author.id, time: 60000 });
-                    cloudflareModelName = interactionSelect.values[0];
-                    await interactionSelect.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan Cloudflare (**${cloudflareModelName}**)...`, components: [] }).catch(()=>{});
+                    const result = await chooseModelPaginated(promptMsg, interactionModel, models, 'cloudflare', 'Pilih model Cloudflare (filter Text Generation tetap aktif)', message.author.id);
+                    cloudflareModelName = result.value;
+                    await result.interaction.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan Cloudflare (**${cloudflareModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: `Nn... Gagal mengambil model Cloudflare: ${e.message}`, components: [] });
                 }
