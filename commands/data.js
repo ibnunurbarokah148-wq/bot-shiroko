@@ -61,7 +61,7 @@ async function handle(ctx) {
     // ==========================================
     // HANDLER SESI WAIFU (INTERAKTIF)
     // ==========================================
-    if (state.sesiWaifu[senderId]) {
+    if (state.sesiWaifu[senderId]?.query) {
         const pilihan = textLower;
         if (pilihan.startsWith('!')) {
             delete state.sesiWaifu[senderId];
@@ -88,7 +88,8 @@ async function handle(ctx) {
                 delete state.sesiWaifu[senderId];
 
                 if (results.length === 0) { await reply('Nn... Visual tidak ditemukan.'); return true; }
-                const imageUrl = results[Math.floor(Math.random() * results.length)].file_url || results[Math.floor(Math.random() * results.length)].large_file_url;
+                const selectedPost = results[Math.floor(Math.random() * results.length)];
+                const imageUrl = selectedPost.file_url || selectedPost.large_file_url;
                 await sock.sendMessage(from, { image: { url: imageUrl }, caption: `*Target:* ${queryTersimpan.replace(/_/g, ' ')}` });
             } catch (error) { delete state.sesiWaifu[senderId]; await reply('Nn... Terjadi malfungsi Danbooru.'); }
             return true;

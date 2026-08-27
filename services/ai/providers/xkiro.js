@@ -16,11 +16,10 @@ const PROVIDER_NAME = 'xkiro';
 // Model premium yang boleh dipakai VIP Premium Shiroko.
 // Model lain tetap hanya tersedia untuk Owner karena saldo wallet Xkiro terpisah.
 const XKIRO_PREMIUM_MODELS = Object.freeze({
-    'google/gemini-2.5-flash': { limitCost: 25 },
-    'google/gemini-3-flash': { limitCost: 50 },
-    'deepseek/deepseek-v4-flash-0731': { limitCost: 25 },
-    'deepseek/deepseek-v4-pro-0813': { limitCost: 50 },
-    'google/gemini-2.5-pro': { limitCost: 100 }
+    'openai/gpt-5.6-luna': { limitCost: 25 },
+    'z-ai/glm-5.3-flash': { limitCost: 25 },
+    'moonshotai/kimi-k2.6': { limitCost: 125 },
+    'x-ai/grok-4.6': { limitCost: 200 }
 });
 
 function isXKiroModelFree(model) {
