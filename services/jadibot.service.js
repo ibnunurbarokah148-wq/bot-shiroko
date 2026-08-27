@@ -3,9 +3,14 @@ const pino = require('pino');
 const fs = require('fs');
 const path = require('path');
 const { getSocket } = require('../utils/socket');
-const { dbJadibot } = require('../config/db');
+const { dbJadibot, getCoreNumber } = require('../config/db');
 
 const jadibotSockets = new Map();
+
+function toWhatsAppJid(identifier) {
+    const value = String(identifier || '').trim();
+    return value.includes('@') ? value : `${value}@s.whatsapp.net`;
+}
 
 async function startJadibot(sessionName, phoneNumber, replyFn) {
     const { registerMessageHandler } = require('../handlers/message');
@@ -48,7 +53,7 @@ async function startJadibot(sessionName, phoneNumber, replyFn) {
                 } catch (err) {
                     console.error('Jadibot Pairing Error:', err);
                     if (replyFn) await replyFn('Nn... Gagal meminta kode pairing. Pastikan nomor benar.');
-                    sock.end(undefined);
+                    await sock.end(undefined);
                     jadibotSockets.delete(sessionName);
                 }
             }, 3000);
@@ -74,14 +79,14 @@ async function startJadibot(sessionName, phoneNumber, replyFn) {
                 }
                 const mainSock = getSocket();
                 if (mainSock) {
-                    mainSock.sendMessage(sessionName + '@s.whatsapp.net', { text: 'Nn... Sesi Jadibot-mu telah berakhir atau dilogout.' }).catch(()=>{});
+                    mainSock.sendMessage(toWhatsAppJid(sessionName), { text: 'Nn... Sesi Jadibot-mu telah berakhir atau dilogout.' }).catch(()=>{});
                 }
             }
         } else if (connection === 'open') {
             console.log(`Jadibot ${sessionName} connected!`);
             const mainSock = getSocket();
             if (mainSock) {
-                mainSock.sendMessage(sessionName + '@s.whatsapp.net', { text: 'Nn... Jadibot berhasil terhubung dan siap digunakan! ✨' }).catch(()=>{});
+                mainSock.sendMessage(toWhatsAppJid(sessionName), { text: 'Nn... Jadibot berhasil terhubung dan siap digunakan! ✨' }).catch(()=>{});
             }
         }
     });
@@ -103,10 +108,10 @@ function resumeAllJadibots() {
         const isPremium = dbEntry && (typeof dbEntry === 'boolean' || dbEntry > Date.now());
         
         if (isPremium) {
-            const sessionDir = path.join(__dirname, `../session_${targetNomor}`);
+            const sessionDir = path.join(__dirname, `../session_${getCoreNumber(targetNomor)}`);
             if (fs.existsSync(sessionDir)) {
                 console.log(`Resuming Jadibot for ${targetNomor}...`);
-                startJadibot(targetNomor);
+                startJadibot(getCoreNumber(targetNomor));
             }
         } else if (dbEntry) {
             console.log(`Jadibot expired for ${targetNomor}. Not resuming.`);

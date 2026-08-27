@@ -43,7 +43,7 @@ function watermarkSvg(width, height, options) {
 }
 
 async function handle(ctx) {
-    const { sock, msg, from, senderId, isOwner, textClean, textLower, msgType,
+    const { sock, msg, normalizedMessage, from, senderId, isOwner, textClean, textLower, msgType,
             isQuoted, quotedMsg, quotedType, reply, downloadMediaBaileys } = ctx;
 
     // ==========================================
@@ -812,6 +812,8 @@ async function handle(ctx) {
 
     // ==========================================
     // WATERMARK FOTO / STIKER
+    // Menggunakan FFmpeg drawtext seperti !meme agar teks
+    // benar-benar dirender ke pixel output.
     // ==========================================
     if (textLower.startsWith('!wm ') || textLower.startsWith('!watermark ')) {
         const commandLength = textLower.startsWith('!wm ') ? 4 : 11;
@@ -824,19 +826,41 @@ async function handle(ctx) {
             await reply(`Nn... Watermark masuk antrean. Posisi: *${queueStatus.queued + 1}*.`);
             return await mediaQueue.enqueue(async () => {
             const options = parseWatermark(textClean.substring(commandLength));
-            const source = targetSticker ? quotedMsg.stickerMessage : (isQuoted ? quotedMsg.imageMessage : normalizedMessage.imageMessage);
+            const source = targetSticker ? quotedMsg : (isQuoted ? quotedMsg : normalizedMessage);
             const input = await downloadMediaBaileys(source, targetSticker ? 'sticker' : 'image');
             const meta = await sharp(input).metadata();
-            if (!meta.width || !meta.height || meta.width * meta.height > 16000000) { kembalikanLimit(senderId); await reply('Nn... Resolusi foto terlalu besar untuk diproses.'); return true; }
-            if (targetSticker && meta.pages && meta.pages > 1) { kembalikanLimit(senderId); await reply('Nn... Versi awal WM belum mendukung stiker animasi.'); return true; }
-            const width = targetSticker ? 512 : Math.min(meta.width || 512, 2048);
-            const height = targetSticker ? 512 : Math.min(meta.height || 512, 2048);
-            const base = await sharp(input).resize({ width, height, fit: targetSticker ? 'contain' : 'inside', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
-            const output = await sharp(base).composite([{ input: watermarkSvg(width, height, options) }]).toFormat(targetSticker ? 'webp' : 'jpeg', targetSticker ? { quality: 90, lossless: false } : { quality: 92 }).toBuffer();
-            if (targetSticker) {
-                const finalSticker = await tambahMetadataStiker(output, 'Watermark Shiroko', options.text);
-                await sock.sendMessage(from, { sticker: finalSticker }, { quoted: msg });
-            } else await sock.sendMessage(from, { image: output, caption: `Nn... Watermark *${options.text}* sudah ditambahkan.` }, { quoted: msg });
+            if (!meta.width || !meta.height || meta.width * meta.height > 16000000) throw new Error('Resolusi foto terlalu besar untuk diproses.');
+            if (targetSticker && meta.pages && meta.pages > 1) throw new Error('Stiker animasi belum didukung.');
+
+            const tempDir = path.join(__dirname, '..', 'temp');
+            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+            const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const inputPath = path.join(tempDir, `wm_in_${id}.${targetSticker ? 'webp' : 'jpg'}`);
+            const textPath = path.join(tempDir, `wm_text_${id}.txt`);
+            const outputPath = path.join(tempDir, `wm_out_${id}.${targetSticker ? 'webp' : 'jpg'}`);
+            fs.writeFileSync(inputPath, input);
+            fs.writeFileSync(textPath, options.text.replace(/\r?\n/g, ' '));
+
+            const fontPath = path.join(__dirname, '..', 'impact.ttf').replace(/\\/g, '/').replace(/:/g, '\\:');
+            const escapedTextPath = textPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+            const drawText = `drawtext=fontfile='${fontPath}':textfile='${escapedTextPath}':fontcolor=white@0.52:bordercolor=black@0.32:borderw=1:fontsize=min(w\\,h)/18:x=20:y=h-text_h-20`;
+            const videoFilter = targetSticker
+                ? `scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000,${drawText}`
+                : drawText;
+            const command = targetSticker
+                ? `ffmpeg -y -i "${inputPath}" -vf "${videoFilter}" -vcodec libwebp -lossless 0 -qscale 50 -preset default -loop 0 -an -vsync 0 "${outputPath}"`
+                : `ffmpeg -y -i "${inputPath}" -vf "${videoFilter}" -q:v 3 "${outputPath}"`;
+
+            try {
+                await new Promise((resolve, reject) => exec(command, (error, stdout, stderr) => error ? reject(new Error(stderr || error.message)) : resolve()));
+                const output = fs.readFileSync(outputPath);
+                if (targetSticker) {
+                    const finalSticker = await tambahMetadataStiker(output, 'Watermark Shiroko', options.text);
+                    await sock.sendMessage(from, { sticker: finalSticker }, { quoted: msg });
+                } else await sock.sendMessage(from, { image: output }, { quoted: msg });
+            } finally {
+                for (const file of [inputPath, textPath, outputPath]) if (fs.existsSync(file)) fs.unlinkSync(file);
+            }
         }, { senderId }).catch(async error => { kembalikanLimit(senderId); console.error('ERROR WM:', error.message); await reply('Nn... Gagal menambahkan watermark.'); });
         } catch (error) { kembalikanLimit(senderId); console.error('ERROR WM:', error.message); await reply('Nn... Gagal menambahkan watermark.'); }
         return true;

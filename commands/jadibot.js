@@ -1,10 +1,23 @@
-const { dbJadibot } = require('../config/db');
+const { dbJadibot, getCoreNumber } = require('../config/db');
 const { startJadibot, stopJadibot } = require('../services/jadibot.service');
+const { ID_OWNER } = require('../config/constants');
 const state = require('../config/state');
-const fs = require('fs');
+
+function isOwnerId(senderId) {
+    const coreSender = getCoreNumber(senderId);
+    return ID_OWNER.some(owner => getCoreNumber(owner) === coreSender);
+}
+
+function hasActiveLicense(senderId) {
+    const senderCore = getCoreNumber(senderId);
+    const licenseKey = Object.keys(dbJadibot).find(key => getCoreNumber(key) === senderCore);
+    const dbEntry = licenseKey ? dbJadibot[licenseKey] : undefined;
+    return !!dbEntry && (typeof dbEntry === 'boolean' || dbEntry > Date.now());
+}
 
 async function handle(ctx) {
-    const { textLower, textClean, reply, senderId, sock, from } = ctx;
+    const { textLower, textClean, reply, senderId, sock, from, isOwner } = ctx;
+    const ownerAccess = isOwner || isOwnerId(senderId);
 
     if (textLower === '!jadibot') {
         const teks = `🤖 *LAYANAN JADIBOT SHIROKO* 🤖\n\nNn... Sensei ingin punya bot WhatsApp sendiri dengan kemampuan Shiroko? Bisa!\n\n💳 *Biaya:* Rp 20.000 (Sewa 30 Hari)\n\nKetik:\n*!jadibot beli* -> Untuk membayar via QRIS\n*!jadibot [nomor_wa]* -> Untuk menyambungkan nomor jika sudah membayar (contoh: *!jadibot 6281234567890*)\n*!stopbot* -> Untuk mematikan bot-mu`;
@@ -13,9 +26,8 @@ async function handle(ctx) {
     }
 
     if (textLower === '!jadibot beli') {
-        const dbEntry = dbJadibot[senderId];
-        const isPremium = dbEntry && (typeof dbEntry === 'boolean' || dbEntry > Date.now());
-        if (isPremium) {
+        const isPremium = hasActiveLicense(senderId);
+        if (isPremium || ownerAccess) {
             await reply('Nn... Sensei masih memiliki masa aktif Jadibot. Silakan langsung ketik *!jadibot [nomormu]*');
             return true;
         }
@@ -40,33 +52,31 @@ async function handle(ctx) {
     }
 
     if (textLower.startsWith('!jadibot ')) {
-        const dbEntry = dbJadibot[senderId];
-        const isPremium = dbEntry && (typeof dbEntry === 'boolean' || dbEntry > Date.now());
-        if (!isPremium) {
+        const isPremium = hasActiveLicense(senderId);
+        if (!isPremium && !ownerAccess) {
             await reply('Nn... Sensei belum membeli atau masa aktif lisensi Jadibot sudah habis. Ketik *!jadibot beli* dulu.');
             return true;
         }
 
-        const nomorTelepon = textClean.split(' ')[1];
+        const nomorTelepon = textClean.split(/\s+/)[1]?.replace(/[^0-9]/g, '');
         if (!nomorTelepon || nomorTelepon.length < 10) {
             await reply('Nn... Format nomor salah. Contoh: *!jadibot 6281234567890*');
             return true;
         }
 
         await reply(`Nn... Menyiapkan sistem untuk nomor ${nomorTelepon}. Mohon tunggu sebentar...`);
-        startJadibot(senderId, nomorTelepon, reply);
+        await startJadibot(getCoreNumber(senderId), nomorTelepon, reply);
         return true;
     }
 
     if (textLower === '!stopbot') {
-        const dbEntry = dbJadibot[senderId];
-        const isPremium = dbEntry && (typeof dbEntry === 'boolean' || dbEntry > Date.now());
-        if (!isPremium) {
+        const isPremium = hasActiveLicense(senderId);
+        if (!isPremium && !ownerAccess) {
             await reply('Nn... Sensei belum punya jadibot.');
             return true;
         }
 
-        const stopped = stopJadibot(senderId);
+        const stopped = stopJadibot(getCoreNumber(senderId));
         if (stopped) {
             await reply('Nn... Bot-mu sudah dimatikan dan logout.');
         } else {

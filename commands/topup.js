@@ -4,8 +4,13 @@
 // ==========================================
 const fs = require('fs');
 const { ID_OWNER, DAFTAR_PAKET, JATAH_HARIAN } = require('../config/constants');
-const { dbLimit, dbRole, simpanDB, simpanRole } = require('../config/db');
+const { dbLimit, dbRole, simpanDB, simpanRole, getCoreNumber } = require('../config/db');
 const state = require('../config/state');
+
+function toWhatsAppJid(identifier) {
+    const value = String(identifier || '').trim();
+    return value.includes('@') ? value : `${value}@s.whatsapp.net`;
+}
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, textClean, textLower, msgType,
@@ -63,7 +68,7 @@ async function handle(ctx) {
                 if (!messageToDownload) throw new Error("Media tidak ditemukan");
 
                 const mediaBuffer = await downloadMediaBaileys(messageToDownload, 'image');
-                const idOwnerUtama = ID_OWNER[0] + '@s.whatsapp.net';
+                const idOwnerUtama = toWhatsAppJid(ID_OWNER[0]);
 
                 let laporan = '';
                 if (state.sesiPremium[senderId]) {
@@ -115,10 +120,10 @@ async function handle(ctx) {
                 simpanDB();
 
                 await reply(`✅ *TRANSAKSI BERHASIL*\nNn... Top-up disetujui.\n*Target:* ${targetNomor}\n*Jumlah:* +${jumlahToken} Token`);
-                try { await sock.sendMessage(targetNomor, { text: `🏦 *PEMBAYARAN DITERIMA*\n\nNn... Logistik amunisi sebesar *+${jumlahToken} Token* sudah ditambahkan. Saldo: *${dbLimit[targetNomor]}*` }); } catch (err) { }
+                try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `🏦 *PEMBAYARAN DITERIMA*\n\nNn... Logistik amunisi sebesar *+${jumlahToken} Token* sudah ditambahkan. Saldo: *${dbLimit[targetNomor]}*` }); } catch (err) { }
             } else {
                 await reply(`❌ *TRANSAKSI DITOLAK*\nNn... Laporan dikirim ke target.`);
-                try { await sock.sendMessage(targetNomor, { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
+                try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
             }
         } else if (teksLaporan.includes('PENDAFTARAN USER BARU')) {
             const matchId = teksLaporan.match(/\*ID Pendaftar:\*\s*([^\n]+)/);
@@ -135,31 +140,32 @@ async function handle(ctx) {
                 dbRole[targetNomor] = { role: targetRole, nama: targetNama, bank_soal: [] };
                 simpanRole();
                 await reply(`✅ *REGISTRASI BERHASIL*\nNn... Otoritas diberikan.\n*Target:* ${targetNomor}`);
-                try { await sock.sendMessage(targetNomor, { text: `🎓 *AKSES DIBERIKAN* 🎓\n\nNn... Halo ${targetNama}, Komando Pusat menyetujui aksesmu sebagai *${targetRole.toUpperCase()}*.` }); } catch (err) { }
+                try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `🎓 *AKSES DIBERIKAN* 🎓\n\nNn... Halo ${targetNama}, Komando Pusat menyetujui aksesmu sebagai *${targetRole.toUpperCase()}*.` }); } catch (err) { }
             } else {
                 await reply(`❌ *REGISTRASI DITOLAK*`);
-                try { await sock.sendMessage(targetNomor, { text: `⚠️ *REGISTRASI DITOLAK*\n\nNn... Maaf, permohonan akses LMS ditolak.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
+                try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `⚠️ *REGISTRASI DITOLAK*\n\nNn... Maaf, permohonan akses LMS ditolak.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
             }
         } else if (teksLaporan.includes('LAPORAN TRANSAKSI JADIBOT')) {
             const matchId = teksLaporan.match(/\*ID Pembeli:\*\s*([^\n]+)/);
             if (!matchId) { await reply('Nn... Format laporan jadibot tidak dikenali.'); return true; }
             const targetNomor = matchId[1].trim();
+            const targetKey = getCoreNumber(targetNomor);
 
             if (isAcc) {
                 const { dbJadibot, simpanJadibot } = require('../config/db');
                 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
-                if (!dbJadibot[targetNomor] || dbJadibot[targetNomor] < Date.now()) {
-                    dbJadibot[targetNomor] = Date.now() + THIRTY_DAYS;
+                if (!dbJadibot[targetKey] || dbJadibot[targetKey] < Date.now()) {
+                    dbJadibot[targetKey] = Date.now() + THIRTY_DAYS;
                 } else {
-                    dbJadibot[targetNomor] += THIRTY_DAYS;
+                    dbJadibot[targetKey] += THIRTY_DAYS;
                 }
                 simpanJadibot();
                 
                 await reply(`✅ *TRANSAKSI BERHASIL*\nNn... Pembayaran Jadibot disetujui (Aktif 30 Hari).\n*Target:* ${targetNomor}`);
-                try { await sock.sendMessage(targetNomor, { text: `🎉 *PEMBAYARAN DITERIMA*\n\nNn... Fitur Jadibot milikmu sudah aktif selama 30 hari ke depan! Silakan ketik *!jadibot* lalu ikuti instruksi untuk meminta kode pairing dari pusat.` }); } catch (err) { }
+                try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `🎉 *PEMBAYARAN DITERIMA*\n\nNn... Fitur Jadibot milikmu sudah aktif selama 30 hari ke depan! Silakan ketik *!jadibot* lalu ikuti instruksi untuk meminta kode pairing dari pusat.` }); } catch (err) { }
             } else {
                 await reply(`❌ *TRANSAKSI DITOLAK*\nNn... Laporan dikirim ke target.`);
-                try { await sock.sendMessage(targetNomor, { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana Jadibot tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
+                try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana Jadibot tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
             }
         } else if (teksLaporan.includes('LAPORAN TRANSAKSI PREMIUM')) {
             const matchId = teksLaporan.match(/\*ID Pembeli:\*\s*([^\n]+)/);
@@ -181,10 +187,10 @@ async function handle(ctx) {
                 simpanDB();
                 
                 await reply(`✅ *TRANSAKSI BERHASIL*\nNn... Pembayaran Premium disetujui (Aktif 30 Hari).\n*Target:* ${targetNomor}`);
-                try { await sock.sendMessage(targetNomor, { text: `🎉 *PEMBAYARAN DITERIMA*\n\nNn... Statusmu sekarang menjadi **VIP Premium** selama 30 hari ke depan! Token harianmu telah ditingkatkan ke 1000/hari, dan kamu bisa menikmati akses NSFW & ComfyUI.\nKetik *!premium* untuk info lebih lanjut.` }); } catch (err) { }
+                try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `🎉 *PEMBAYARAN DITERIMA*\n\nNn... Statusmu sekarang menjadi **VIP Premium** selama 30 hari ke depan! Token harianmu telah ditingkatkan ke 1000/hari, dan kamu bisa menikmati akses NSFW & ComfyUI.\nKetik *!premium* untuk info lebih lanjut.` }); } catch (err) { }
             } else {
                 await reply(`❌ *TRANSAKSI DITOLAK*\nNn... Laporan dikirim ke target.`);
-                try { await sock.sendMessage(targetNomor, { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana Premium tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
+                try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana Premium tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
             }
         } else {
             await reply('Nn... Laporan apa ini Komandan? Format tidak sesuai protokol.');
