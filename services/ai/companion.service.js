@@ -26,7 +26,7 @@ const VALID_COMPANION_INTENTS = new Set([
  * Deteksi Intent secara Heuristic (Tier 1)
  */
 function hasVisualRequest(text, conversationContext = '') {
-    const visualPattern = /\b(kirim\s+(?:foto|gambar)|buat\s+(?:foto|gambar)|generate\s+(?:foto|gambar)|tunjukkan|lihat(?:kan)?|pap(?:kan)?|mana\s+foto|foto\s+kamu|lihat\s+kamu)\b/i;
+    const visualPattern = /\b(kirim\s+(?:foto|gambar)|buat(?:kan)?\s+(?:foto|gambar)|generate\s+(?:foto|gambar)|minta(?:kan)?\s+(?:foto|gambar)|tunjukkan|lihat(?:kan)?|pap(?:kan)?|mana\s+(?:foto|gambar)|foto\s+kamu|gambar\s+kamu|lihat\s+kamu)\b/i;
     return visualPattern.test(`${text || ''} ${conversationContext || ''}`);
 }
 
@@ -49,19 +49,120 @@ function detectHeuristicIntent(textLower, hasImage) {
             return { intent: 'APPEARANCE_RESET', renderRequested: false };
         }
         if (/pakai\s+(baju\s+biasanya|pakaian\s+biasanya|seragam\s+abydos|seragam\s+sekolah|baju\s+itu|seragam\s+itu|baju\s+yang\s+biasa)|nah\s+pakai|pakai\s+yang\s+biasa|kembali\s+ke\s+seragam/i.test(textLower)) {
-            const wantsRender = /kirim\s+foto|lihat|tunjukkan|mana|pap/i.test(textLower);
+            const wantsRender = /kirim\s+(?:foto|gambar)|buat(?:kan)?\s+(?:foto|gambar)|generate\s+(?:foto|gambar)|lihat|tunjukkan|mana|pap/i.test(textLower);
             return { intent: 'OUTFIT_CANONICAL_PRESET', renderRequested: wantsRender };
         }
-        if (/sekarang\s+kamu\s+(pakai|pake)|lagi\s+(pakai|pake)\s+apa|kamu\s+(pakai|pake)\s+baju\s+apa|kirim\s+foto|mana\s+foto|pap\s+dong|lihat\s+foto|foto\s+kamu|lihat\s+kamu/i.test(textLower)) {
+        if (/sekarang\s+kamu\s+(pakai|pake)|lagi\s+(pakai|pake)\s+apa|kamu\s+(pakai|pake)\s+baju\s+apa|kirim\s+(foto|gambar)|minta(?:kan)?\s+(?:foto|gambar)|mana\s+(?:foto|gambar)|pap\s+dong|lihat\s+(?:foto|gambar)|foto\s+kamu|gambar\s+kamu|lihat\s+kamu/i.test(textLower)) {
             return { intent: 'CHARACTER_VISUAL_REQUEST', renderRequested: true };
         }
         if (/ganti\s+(baju|pakaian|rambut)|pakai\s+(hoodie|gaun|kaos|jaket|kemeja|rok|seragam|celana|jepit)|rambut.*(kuncir|potong|gerai|ponytail|twintail)|(senyum|cemberut|blush|melambai|duduk|berdiri)|coba\s+di\s+(taman|pantai|kamar|sekolah)|baju\s+itu|seragam\s+itu/i.test(textLower)) {
-            const wantsRender = /kirim\s+foto|lihat|tunjukkan|mana|pap/i.test(textLower);
+            const wantsRender = /kirim\s+(?:foto|gambar)|buat(?:kan)?\s+(?:foto|gambar)|generate\s+(?:foto|gambar)|lihat|tunjukkan|mana|pap/i.test(textLower);
             return { intent: 'APPEARANCE_CHANGE', renderRequested: wantsRender };
         }
     }
 
     return null;
+}
+
+const XKIRO_COMPANION_TOOLS = Object.freeze([
+    {
+        type: 'function',
+        function: {
+            name: 'get_current_appearance',
+            description: 'Membaca penampilan Shiroko saat ini dari database sebelum menjawab atau membuat gambar.',
+            parameters: { type: 'object', properties: {}, additionalProperties: false }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'update_appearance',
+            description: 'Mengubah pakaian, rambut, ekspresi, pose, atau lokasi penampilan Shiroko sesuai permintaan pengguna. Tidak membuat gambar.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    hair: { type: 'object' },
+                    expression: { type: 'string' },
+                    pose: { type: 'string' },
+                    scene: { type: 'object' },
+                    outfit: { type: 'object' },
+                    description: { type: 'string' }
+                },
+                additionalProperties: false
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'reset_appearance',
+            description: 'Mengembalikan penampilan Shiroko ke penampilan default.',
+            parameters: { type: 'object', properties: {}, additionalProperties: false }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'generate_character_image',
+            description: 'Membuat dan mengirim gambar Shiroko menggunakan penampilan terbaru dari database. Gunakan jika pengguna meminta melihat atau membuat visual.',
+            parameters: {
+                type: 'object',
+                properties: { reason: { type: 'string' } },
+                required: ['reason'],
+                additionalProperties: false
+            }
+        }
+    }
+]);
+
+function createXkiroToolExecutor(ctx) {
+    return async (name, args = {}) => {
+        const { senderId, isOwner } = ctx;
+        if (name === 'get_current_appearance') {
+            return { ok: true, appearance: appearanceState.getAppearance(senderId) };
+        }
+        if (name === 'update_appearance') {
+            const updated = appearanceState.setAppearance(senderId, args, { mode: 'merge' });
+            return { ok: true, appearance: updated };
+        }
+        if (name === 'reset_appearance') {
+            appearanceState.resetAppearance(senderId);
+            return { ok: true, appearance: appearanceState.getAppearance(senderId) };
+        }
+        if (name === 'generate_character_image') {
+            const appearance = appearanceState.getAppearance(senderId);
+            const queued = await renderAndSendCharacter({ ...ctx, provider: 'xkiro' }, appearance, args.reason || ctx.textClean);
+            return { ok: queued, status: queued ? 'image_queued' : 'image_not_queued', reason: args.reason || null };
+        }
+        return { ok: false, error: `Tool tidak dikenal: ${name}` };
+    };
+}
+
+async function handleXkiroCompanionFlow(ctx) {
+    const { provider, model, senderId, isOwner, textClean } = ctx;
+    if (provider !== 'xkiro') return false;
+    const appearanceContext = appearanceState.buildAppearanceContext(appearanceState.getAppearance(senderId));
+    const systemPrompt = `${getShirokoSystemPrompt(isOwner)}
+
+[NATIVE BOT TOOLS]
+Kamu terhubung langsung ke tool bot. Jangan menulis prompt gambar atau berpura-pura sudah mengirim gambar.
+Jika pengguna meminta melihat/membuat visual, panggil generate_character_image.
+Jika pengguna meminta perubahan penampilan, panggil update_appearance. Jika sekaligus meminta visual, panggil update_appearance lalu generate_character_image.
+Gunakan get_current_appearance jika perlu mengetahui state penampilan saat ini.
+Gunakan reset_appearance jika pengguna meminta kembali ke penampilan default.
+Penampilan saat ini (referensi awal):
+${appearanceContext}`;
+    const result = await require('./providers/xkiro').generateWithTools({
+        prompt: textClean,
+        senderId,
+        isOwner,
+        model,
+        systemPrompt,
+        tools: XKIRO_COMPANION_TOOLS,
+        executeTool: createXkiroToolExecutor(ctx)
+    });
+    await ctx.reply(result);
+    return true;
 }
 
 /**
@@ -102,37 +203,40 @@ Berikan respons JSON murni dengan format:
         systemPrompt: 'Anda adalah parser JSON intent murni. Kembalikan JSON valid tanpa tag markdown.'
     };
 
-    try {
-        let res;
-        try {
-            res = await AIProvider.generate({ ...classifierOptions, provider });
-        } catch (primaryError) {
-            if (provider !== 'arisu') throw primaryError;
-            console.warn(`[COMPANION] Classifier Arisu gagal (${primaryError.message}). Fallback ke Gemini.`);
-            res = await AIProvider.generate({
-                ...classifierOptions,
-                provider: 'gemini',
-                model: 'gemini-2.5-flash-lite'
-            });
-        }
-
-        const parsed = parseJsonObject(res, 'respons intent classifier');
+    async function classify(options) {
+        const resultText = await AIProvider.generate(options);
+        const parsed = parseJsonObject(resultText, 'respons intent classifier');
         const intent = typeof parsed.intent === 'string' ? parsed.intent.toUpperCase() : 'NORMAL_CHAT';
         if (!VALID_COMPANION_INTENTS.has(intent)) {
             throw new Error(`intent classifier tidak dikenal: ${intent}`);
         }
-        return {
-            intent,
-            renderRequested: parsed.renderRequested === true
-        };
-    } catch (e) {
-        console.warn(`[COMPANION] Intent classifier dilewati: ${e.message}`);
+        return { intent, renderRequested: parsed.renderRequested === true };
+    }
+
+    try {
+        return await classify({ ...classifierOptions, provider });
+    } catch (primaryError) {
+        if (provider !== 'gemini') {
+            console.warn(`[COMPANION] Classifier ${provider} gagal (${primaryError.message}). Fallback ke Gemini.`);
+            try {
+                return await classify({
+                    ...classifierOptions,
+                    provider: 'gemini',
+                    model: 'gemini-2.5-flash-lite'
+                });
+            } catch (fallbackError) {
+                console.warn(`[COMPANION] Classifier Gemini juga gagal: ${fallbackError.message}`);
+            }
+        } else {
+            console.warn(`[COMPANION] Intent classifier dilewati: ${primaryError.message}`);
+        }
         return null;
     }
 }
 
 /**
- * Ekstraksi Atribut Outfit/Appearance dari Gambar via Vision AI (Gemini) - TANPA MEMORY
+ * Ekstraksi atribut outfit dari gambar via Vision AI - TANPA MEMORY.
+ * Analisis vision tetap memakai Gemini karena tidak semua gateway/model mendukung vision.
  */
 async function extractOutfitFromVision(imageBuffer, senderId, isOwner, provider = 'gemini', model = 'gemini-2.5-flash-lite') {
     const prompt = `Anda adalah pakar fashion anime & analis vision.
@@ -171,7 +275,8 @@ Kembalikan respons JSON murni tanpa markdown dengan skema berikut:
 }
 
 /**
- * Ekstraksi Atribut Appearance (Hair, Expression, Pose, Scene, Outfit) dari Teks - TANPA MEMORY
+ * Ekstraksi atribut appearance (hair, expression, pose, scene, outfit) dari teks.
+ * Provider aktif dipakai terlebih dahulu agar konteks model tetap konsisten.
  */
 async function extractAppearanceFromText(userText, senderId, isOwner, provider = 'gemini', model = 'gemini-2.5-flash-lite') {
     const prompt = `Pengguna meminta karakter Shiroko mengubah penampilannya dengan instruksi: "${userText}".
@@ -214,9 +319,9 @@ Kembalikan respons JSON murni tanpa markdown:
 
         return parseJsonObject(resultText, 'respons ekstraksi appearance');
     } catch (e) {
-        return {
-            description: userText
-        };
+        // Fallback dilakukan oleh caller agar kegagalan JSON tidak mengubah state
+        // appearance dengan data kosong atau hanya mengulang instruksi pengguna.
+        return null;
     }
 }
 
@@ -247,15 +352,10 @@ async function generateShirokoRoleplayReply(promptContext, senderId, isOwner, us
 async function renderAndSendCharacter(ctx, appearanceData, sceneContextText) {
     const { sock, from, msg, senderId, isOwner, reply, userMode, provider } = ctx;
 
-    if (provider !== 'arisu') {
-        console.warn(`[COMPANION] Image flow dilewati karena provider aktif bukan Arisu: ${provider || 'unknown'}`);
-        return false;
-    }
-
     // Memotong limit 1 kali sebelum antrean gambar dibuat
     if (!cekDanPotongLimit(senderId, COMPANION_IMAGE_COST)) {
         await reply(`Nn... Token limit Sensei tidak cukup. Diperlukan *${COMPANION_IMAGE_COST} limit* untuk membuat gambar karakter.`);
-        return;
+        return false;
     }
 
     let limitRefunded = false;
@@ -293,10 +393,12 @@ async function renderAndSendCharacter(ctx, appearanceData, sceneContextText) {
         });
 
         console.log(`[COMPANION RENDER] Task PixAI terdaftar untuk User: ${senderId} (Posisi Antrean: ${pos})`);
+        return true;
     } catch (err) {
         console.error('🚨 [COMPANION] Gagal memproses render/queue PixAI:', err.message);
         safeRefund();
         await reply(`❌ Nn... Terjadi kesalahan saat menyiapkan kamera render: _${err.message}_. Limit telah dikembalikan.`);
+        return false;
     }
 }
 
@@ -305,12 +407,12 @@ async function renderAndSendCharacter(ctx, appearanceData, sceneContextText) {
  */
 async function handleCompanionFlow(ctx) {
     const { textClean, textLower, chatImageBuffer, senderId, isOwner, reply, provider, model, userMode } = ctx;
+    // Arisu memakai flow legacy berbasis trigger/classifier. xKiro diproses
+    // setelah validasi dan pemotongan biaya model di commands/ai.js.
+    if (provider !== 'arisu') return false;
     const hasImage = !!chatImageBuffer;
 
-    // Auto-companion/image flow hanya khusus provider Arisu.
-    if (provider !== 'arisu') return false;
-
-    // Gunakan konteks provider Arisu agar follow-up seperti "tunjukkan" tetap dipahami.
+    // Gunakan konteks provider aktif agar follow-up seperti "tunjukkan" tetap dipahami.
     const recentMessages = memory.getMessages(senderId, provider)
         .slice(-6)
         .map(message => `${message.role}: ${message.content}`)
@@ -319,8 +421,8 @@ async function handleCompanionFlow(ctx) {
     // 1. Cek heuristic intent
     let intentInfo = detectHeuristicIntent(textLower, hasImage);
 
-    // 2. Fallback classifier Arisu untuk pesan yang relevan/ambigu.
-    if (!intentInfo && (hasImage || /baju|pakaian|rambut|foto|pap|penampilan|senyum|pose|tunjukkan|lihat/i.test(textLower))) {
+    // 2. Fallback classifier provider aktif untuk pesan yang relevan/ambigu.
+    if (!intentInfo && (hasImage || /baju|pakaian|rambut|foto|gambar|pap|penampilan|senyum|pose|tunjukkan|lihat|buat|generate|kirim|minta/i.test(textLower))) {
         intentInfo = await detectLlmIntent(textClean, hasImage, senderId, isOwner, provider, model, recentMessages);
     }
 
@@ -399,7 +501,21 @@ async function handleCompanionFlow(ctx) {
         case 'APPEARANCE_CHANGE':
         case 'OUTFIT_CHANGE': {
             console.log(`[COMPANION] Memproses perubahan appearance dari teks untuk User: ${senderId}...`);
-            const extractedAppearance = await extractAppearanceFromText(textClean, senderId, isOwner, provider, model);
+            let extractedAppearance = await extractAppearanceFromText(textClean, senderId, isOwner, provider, model);
+            if (!extractedAppearance && provider !== 'gemini') {
+                console.warn(`[COMPANION] Extractor ${provider} gagal menghasilkan JSON; fallback ke Gemini.`);
+                extractedAppearance = await extractAppearanceFromText(
+                    textClean,
+                    senderId,
+                    isOwner,
+                    'gemini',
+                    'gemini-2.5-flash-lite'
+                );
+            }
+            if (!extractedAppearance) {
+                await reply('Nn... Maaf Sensei, Shiroko belum bisa memahami perubahan penampilan itu. Coba jelaskan lagi dengan lebih spesifik.');
+                return true;
+            }
 
             const isCanonicalReference = /baju\s+biasanya|pakaian\s+biasanya|seragam\s+abydos|seragam\s+sekolah|baju\s+itu|seragam\s+itu|pakai\s+yang\s+biasa/i.test(textClean);
 
@@ -473,5 +589,6 @@ module.exports = {
     extractAppearanceFromText,
     generateShirokoRoleplayReply,
     renderAndSendCharacter,
+    handleXkiroCompanionFlow,
     handleCompanionFlow
 };

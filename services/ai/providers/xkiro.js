@@ -163,6 +163,75 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
     throw new Error(`Respons xKiro (${modelName}) tidak valid atau kosong`);
 }
 
+async function generateWithTools({ prompt, senderId, isOwner, model, systemPrompt = null, tools = [], executeTool, maxToolRounds = 3 }) {
+    if (!Array.isArray(tools) || tools.length === 0) throw new Error('Tool xKiro belum dikonfigurasi.');
+    if (typeof executeTool !== 'function') throw new TypeError('Executor tool xKiro wajib berupa function.');
+
+    const apiKey = getRandomKey();
+    const modelName = resolveXKiroModel({ model, senderId });
+    const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
+    if (!memory.get(senderId, PROVIDER_NAME)) memory.init(senderId, PROVIDER_NAME);
+
+    const historyMessages = memory.getMessages(senderId, PROVIDER_NAME);
+    const messages = [
+        { role: 'system', content: instruction },
+        ...historyMessages,
+        { role: 'user', content: prompt || '' }
+    ];
+
+    for (let round = 0; round <= maxToolRounds; round++) {
+        let response;
+        try {
+            response = await axios.post('https://api.xkiro.com/v1/chat/completions', {
+                model: modelName,
+                max_tokens: 4096,
+                messages,
+                tools,
+                tool_choice: 'auto'
+            }, {
+                headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                timeout: 120000
+            });
+        } catch (error) {
+            throw new Error(`xKiro Tool Error (${modelName}): ${error.response?.data?.error?.message || error.message}`);
+        }
+
+        const message = response.data?.choices?.[0]?.message;
+        const toolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+        if (!toolCalls.length) {
+            const text = cleanThinkingLogs(extractOpenRouterText(response.data));
+            if (!text) throw new Error(`Respons xKiro (${modelName}) kosong setelah tool execution`);
+            memory.push(senderId, PROVIDER_NAME, 'user', prompt || '');
+            memory.push(senderId, PROVIDER_NAME, 'assistant', text);
+            return text;
+        }
+
+        if (round === maxToolRounds) throw new Error('xKiro melewati batas maksimal tool call.');
+        messages.push({ role: 'assistant', content: message.content ?? null, tool_calls: toolCalls });
+
+        for (const call of toolCalls) {
+            const name = call.function?.name;
+            let args;
+            try {
+                args = JSON.parse(call.function?.arguments || '{}');
+            } catch (error) {
+                args = { _parseError: error.message };
+            }
+            let result;
+            try {
+                result = await executeTool(name, args, { senderId, isOwner, model: modelName });
+            } catch (error) {
+                result = { ok: false, error: error.message };
+            }
+            messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content: JSON.stringify(result ?? { ok: true })
+            });
+        }
+    }
+}
+
 async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId }) {
     const apiKey = getRandomKey();
     const modelName = resolveXKiroModel({ model, senderId });
@@ -218,6 +287,7 @@ async function fetchModels() {
                 name: cleanName,
                 accessTier,
                 pricing,
+                capabilities: m.capabilities || {},
                 billingType: isFree ? 'free' : accessTier,
                 limitCost: isFree ? 1 : null
             };
@@ -233,15 +303,16 @@ async function fetchModels() {
 
 function getFallbackModels() {
     return [
-        { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', accessTier: 'free', billingType: 'free', limitCost: 1 },
-        { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', accessTier: 'free', billingType: 'free', limitCost: 1 },
-        { id: 'qwen/qwen3.5-flash', name: 'Qwen 3.5 Flash', accessTier: 'free', billingType: 'free', limitCost: 1 },
-        { id: 'mistralai/devstral-medium', name: 'Devstral 2', accessTier: 'free', billingType: 'free', limitCost: 1 }
+        { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', accessTier: 'free', billingType: 'free', limitCost: 1, capabilities: { tools: true } },
+        { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', accessTier: 'free', billingType: 'free', limitCost: 1, capabilities: { tools: true } },
+        { id: 'qwen/qwen3.5-flash', name: 'Qwen 3.5 Flash', accessTier: 'free', billingType: 'free', limitCost: 1, capabilities: { tools: true } },
+        { id: 'mistralai/devstral-medium', name: 'Devstral 2', accessTier: 'free', billingType: 'free', limitCost: 1, capabilities: { tools: true } }
     ].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 
 module.exports = {
     generate,
+    generateWithTools,
     transcribe,
     fetchModels,
     resolveXKiroModel,

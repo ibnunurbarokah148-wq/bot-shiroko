@@ -754,7 +754,8 @@ async function handle(ctx) {
         const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
         const resolvedMode = AIProvider.resolveMode(userMode, senderId);
 
-        // Companion auto-image hanya aktif untuk provider Arisu.
+        // Companion legacy hanya untuk Arisu. xKiro memakai native tools
+        // setelah biaya dan capability model divalidasi di bawah.
         const companionHandled = await companionService.handleCompanionFlow({
             ...ctx,
             chatImageBuffer,
@@ -790,12 +791,32 @@ async function handle(ctx) {
             await reply(`Nn... ${access.reason}`);
             return true;
         }
+        if (costProvider === 'xkiro' && xkiroMetadata && xkiroMetadata.capabilities?.tools !== true) {
+            await reply('Nn... Model xKiro ini belum mendukung native tool calling. Pilih model lain yang memiliki capability tools.');
+            return true;
+        }
         const cost = access.cost;
         if (!Number.isInteger(cost) || cost < 0) {
             await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model Xkiro dari *!aimode xkiro*.');
             return true;
         }
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
+
+        if (costProvider === 'xkiro') {
+            try {
+                return await companionService.handleXkiroCompanionFlow({
+                    ...ctx,
+                    userMode,
+                    provider: costProvider,
+                    model: costModel
+                });
+            } catch (error) {
+                kembalikanLimit(senderId, cost);
+                console.error('🚨 xKiro Native Tool Error:', error);
+                await reply(`Nn... Terjadi kesalahan saat menjalankan aksi native xKiro:\n_${error.message}_`);
+                return true;
+            }
+        }
 
         try {
             await sock.sendPresenceUpdate('composing', from);
