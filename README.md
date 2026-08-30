@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Bot Asisten & Roleplay AI Multifungsi</b> yang mengadaptasi persona <b>Sunaookami Shiroko</b> dari <i>Blue Archive</i>.<br>
-  Mendukung integrasi <b>WhatsApp (Baileys Engine)</b> & <b>Discord Bot (Discord.js v14)</b> dengan multi-provider AI Engine, Cloud GPU Image Rendering (ComfyUI/Vast.ai), serta sistem ekonomi & top-up QRIS.
+  Mendukung integrasi <b>WhatsApp (Baileys Engine)</b> & <b>Discord Bot (Discord.js v14)</b> dengan multi-provider AI Engine, generator gambar, bot Minecraft, dashboard web, serta sistem ekonomi & top-up QRIS.
 </p>
 
 <p align="center">
@@ -21,13 +21,14 @@
 ## ✨ Fitur-Fitur Utama
 
 ### 🤖 1. Multi-Provider AI Engine (WhatsApp & Discord)
-Bot ini dilengkapi dengan 5 penyedia AI utama yang terintegrasi penuh:
-- **Google Gemini 2.5 Flash Lite**: Diotaki rotasi Multi-API Key untuk performa cepat dan bebas *rate limit*.
-- **OpenRouter AI (Cloud)**: Bebas memilih ratusan model AI terkemuka (*DeepSeek R1, Llama 3.3 70B, Qwen 2.5 Coder, Mixtral, dll*).
-- **Cloudflare Workers AI**: Dukungan *Multi-Account & Token Rotation* (`ACCOUNT_ID:TOKEN`) untuk 26+ model AI (*Llama 3, DeepSeek R1 Distill 32B, GPT-OSS 120B, Gemma 2, dll*).
-- **Ollama (Lokal)**: Jalankan LLM secara lokal (*Llama 3, DeepSeek R1, Qwen, Gemma*).
-- **ArisuSoft Satelit AI**: Pilihan model alternatif (*DeepSeek V3/V4, GLM, Qwen, GPT, Grok*).
-- **3-Tier Automatic Payload Fallback**: Penanganan otomatis jika model menolak `role: 'system'` atau menggunakan format pilihan berlainan.
+Bot ini mendukung beberapa provider AI yang dapat dipilih melalui mode AI:
+- **Google Gemini**: Mendukung rotasi beberapa API key.
+- **OpenRouter AI**: Pemindaian model dan pemilihan model dari gateway OpenRouter.
+- **Cloudflare Workers AI**: Mendukung beberapa account/token.
+- **Ollama (Lokal)**: Menjalankan model LLM dari komputer/server lokal.
+- **ArisuSoft**: Provider satelit dengan beberapa pilihan model.
+- **xKiro**: Gateway multi-model dengan akses model berdasarkan status Premium.
+- **Fallback payload otomatis**: Menangani perbedaan format provider dan membersihkan output thinking seperti `<think>...</think>`.
 - **Auto Thinking Log Stripper**: Menyaring tag pemikiran (`<think>...</think>`) secara otomatis agar jawaban AI bersih dan langsung ke poin.
 - **Unified Memory Reset (`!lupa`)**: Mereset riwayat memori percakapan di seluruh 5 provider AI dengan 1 perintah.
 
@@ -36,9 +37,10 @@ Bot ini dilengkapi dengan 5 penyedia AI utama yang terintegrasi penuh:
 - Interactive Select Menu di Discord untuk memilih penyedia & model AI spesifik.
 - Sistem auto-delete channel saat AFK / tidak ada aktivitas selama 3 menit.
 
-### 🎨 3. Multi-Provider Image Rendering (ComfyUI, Cloudflare AI & ArisuSoft)
+### 🎨 3. Multi-Provider Image Rendering (PixAI, ComfyUI, Cloudflare AI & ArisuSoft)
 - **Interactive 2-Step Menu (`!gambar`)**: Alur menu interaktif 2 tahap (Pilihan Provider/Server ➔ Pilihan Model Spesifik).
-- **Vast.ai Cloud GPU Integration**: Render gambar SDXL/Illustrious XL kualitas tinggi via ComfyUI di server cloud GPU dengan auto-start & **Auto-Stop 1-Minute Idle**.
+- **PixAI.art (`!pixai`)**: Generator gambar anime dengan antrean, dukungan multi-token, auto-refresh credential, dan fallback GraphQL/REST.
+- **Vast.ai Cloud GPU Integration**: Render gambar melalui ComfyUI di server cloud GPU dengan auto-start dan auto-stop saat idle.
 - **Cloudflare Workers AI Image Generation**: Pemindaian dinamis (*Live Scanning*) untuk model gambar (*FLUX.1 Schnell, SDXL Lightning, DreamShaper 8 Anime, Leonardo Phoenix 1.0, SDXL Base 1.0, Leonardo Lucid Origin*).
 - **Automatic Magic-Bytes & Base64 Decoder**: Penanganan otomatis MIME type (PNG/JPEG/WEBP) & decoder payload Base64 JSON agar gambar dipastikan 100% bisa di-download dan dibuka di WhatsApp.
 - **Satelit ArisuSoft Fallback**: Pengalihan otomatis ke server ArisuSoft (*SDXL Turbo, Agnes 2.0, Agnes 2.1*) jika server utama sedang offline.
@@ -50,10 +52,17 @@ Bot ini dilengkapi dengan 5 penyedia AI utama yang terintegrasi penuh:
 - **Parafrase & Ringkas Teks**: Pengolah teks anti-plagiasi dan pembuat intisari *bullet points*.
 
 ### 🏦 5. Sistem Ekonomi, Limit & Top-Up QRIS Dynamic
-- **Limit Token Daily & Status Premium**: Pembatasan penggunaan harian untuk user gratisan (reset pukul 00:00 WIB).
+- **Limit Token Daily & Status Premium**: User gratis mengikuti `JATAH_HARIAN`, sedangkan Premium mendapat **300 token/hari**. Limit direset pukul 00:00 WIB.
+- **Satu sistem limit untuk seluruh fitur**: PixAI, AI, akademik, dan fitur berbayar lain menggunakan saldo limit utama, bukan kuota gambar terpisah.
 - **QRIS Dynamic Decoder**: Fitur `!topup` yang secara otomatis mengurai QRIS Static DANA menjadi QRIS Dynamic sesuai nominal pesanan token limit.
 
-### 🛠️ 6. Utilitas Media & Intel
+### ⛏️ 6. Bot Minecraft & Dashboard Web
+- **Minecraft/Mineflayer**: Bot dapat terhubung ke server Minecraft remote maupun lokal, dengan dukungan koordinat rumah, radius aman, AuthMe, dan pemilik bot.
+- **Pelaporan Minecraft**: Server Minecraft dapat mengirim laporan ke endpoint API bot.
+- **Dashboard API**: Menyediakan statistik bot, status provider, kontrol ComfyUI, restart bot, dan helper autentikasi token PixAI.
+- **Cloudflared tunnel**: Konfigurasi PM2 tersedia melalui `ecosystem.config.example.js`. File `ecosystem.config.js` lokal sengaja di-ignore karena berisi path/token mesin masing-masing.
+
+### 🛠️ 7. Utilitas Media & Intel
 - **Multi-Provider Text-to-Speech (TTS) (`!tts` / `!suara`)**: Mengubah teks menjadi audio/suara jernih via **ArisuSoft API** (*Basic Bahasa Indonesia & Voicevox Anime Jepang*) serta **Cloudflare Workers AI** (*MeloTTS, Deepgram Aura*).
 - **TikTok Downloader**: Download Video (tanpa Watermark), Audio, atau Slideshow Foto.
 - **Visual Search**: Pencarian gambar anime resolusi tinggi dari **Pixiv** (Multi-page support), **Danbooru**, dan **Nekosia**.
@@ -119,7 +128,10 @@ Jalankan perintah berikut di terminal VPS kamu secara berurutan:
    ```
 
 3. **Konfigurasi Environment (`.env`):**
-   Salin file template `.env.example` atau buat file `.env` baru di folder utama bot (baca section **Template File `.env`** di bawah).
+   Salin `.env.example` menjadi `.env`, lalu isi API key, token, ID owner, dan konfigurasi layanan yang ingin digunakan. Jangan commit `.env` karena berisi secret.
+   ```bash
+   cp .env.example .env
+   ```
 
 4. **Jalankan Bot WhatsApp:**
    ```bash
@@ -146,61 +158,60 @@ Jalankan perintah berikut di terminal VPS kamu secara berurutan:
    - Buka WhatsApp di HP bot > **Perangkat Tertaut (Linked Devices)** > **Tautkan dengan Nomor Telepon (Link with Phone Number)**.
    - Masukkan 8 digit kode angka tersebut ke WhatsApp.
 
+7. **Aktifkan Minecraft (Opsional):**
+   Integrasi Minecraft dikendalikan melalui command owner di WhatsApp:
+   ```text
+   !mc start
+   !mc lokal
+   !mc status
+   !mc chat [pesan]
+   !mc stop
+   ```
+   Isi `MC_HOST`, `MC_PORT`, `MC_USERNAME`, dan konfigurasi terkait di `.env` terlebih dahulu.
+
+8. **Menjalankan Cloudflared dengan PM2 (Opsional):**
+   ```bash
+   cp ecosystem.config.example.js ecosystem.config.js
+   # Sesuaikan path cloudflared.exe dan token-file di ecosystem.config.js
+   pm2 start ecosystem.config.js
+   pm2 save
+   ```
+   `ecosystem.config.js` masuk `.gitignore` karena path executable dan token berbeda di setiap mesin.
+
 ---
 
-## 🔑 Template File `.env`
+## 🔑 Konfigurasi Environment
 
-Buat file bernama `.env` di direktori utama repositori kamu dan isi dengan struktur berikut:
+Gunakan `.env.example` sebagai template resmi karena file tersebut mengikuti konfigurasi terbaru project:
 
-```env
-# ==========================================
-# 🤖 GOOGLE GEMINI AI CONFIGURATION
-# (Mendukung multi-key dipisahkan koma untuk rotasi)
-# ==========================================
-GEMINI_API_KEY=AIzaSyxxxxxxxxx,AIzaSyyyyyyyyyy
-
-# ==========================================
-# 🌐 OPENROUTER AI CONFIGURATION
-# (Mendukung multi-key dipisahkan koma)
-# ==========================================
-OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# ==========================================
-# ☁️ CLOUDFLARE WORKERS AI CONFIGURATION
-# Format: ACCOUNT_ID:API_TOKEN
-# (Mendukung multi-account dipisahkan koma untuk load balancing)
-# ==========================================
-CLOUDFLARE_API_TOKEN=account_id_1:token_1,account_id_2:token_2
-
-# ==========================================
-# 🛰️ ARISUSOFT & OTHER AI SERVICES
-# ==========================================
-ARISU_API_KEY=sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-HUGGINGFACE_API_KEY=hf_xxxxxxxxxxxxxxxxx
-
-# ==========================================
-# 🎮 DISCORD BOT CONFIGURATION
-# ==========================================
-DISCORD_TOKEN=MTUxNzA...........................
-
-# ==========================================
-# 🎨 COMFYUI & VAST.AI CLOUD GPU CONFIGURATION
-# ==========================================
-VAST_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-VAST_INSTANCE_ID=12345678
-
-# ==========================================
-# 🖼️ MEDIA & CONVERTER SERVICES
-# ==========================================
-PIXIV_REFRESH_TOKEN=vYlnmRWf_xxxxxxxxxxxxxxxxxxxx
-CONVERT_API_KEY=iDYQeBgxxxxxxxxxxxxxxxxxx
-
-# ==========================================
-# 📱 WHATSAPP & QRIS CONFIGURATION
-# ==========================================
-WA_PHONE_NUMBER=628xxxxxxxxx
-STATIC_QRIS=00020101021126570011ID.DANA.WWW...
+```bash
+cp .env.example .env
 ```
+
+Kelompok konfigurasi yang tersedia:
+
+- Provider AI: Gemini, OpenRouter, Cloudflare, ArisuSoft, Hugging Face, Ollama, dan xKiro.
+- Platform: `DISCORD_TOKEN`, `WA_PHONE_NUMBER`, `ID_OWNER`, dan `LOG_LEVEL`.
+- Image rendering: PixAI, Pixiv, ConvertAPI, ComfyUI/Vast.ai, dan CivitAI.
+- QRIS: `STATIC_QRIS` untuk fitur top-up.
+- Minecraft: host remote/lokal, username, versi, AuthMe, owner, koordinat rumah, dan radius aman.
+- Pterodactyl: URL panel, server ID, dan API key jika memakai kontrol server.
+- Dashboard/API: `WEB_SECRET_KEY` dan `WEB_SHIROKO_URL` jika memakai dashboard web atau Web Auth Helper.
+
+Untuk rotasi key, beberapa provider menerima beberapa nilai yang dipisahkan koma. Jangan memasukkan token asli ke README, `.env.example`, atau file yang akan di-commit.
+
+### 🌐 API Dashboard dan Webhook
+
+Proses WhatsApp bot juga menjalankan server HTTP pada port `3000` dengan endpoint utama:
+
+- `GET /`: health check sederhana.
+- `GET /api/dashboard`: statistik bot dan status layanan.
+- `POST /api/control`: kontrol restart bot dan toggle ComfyUI. Membutuhkan header `x-api-key`.
+- `POST /laporan-masuk`: menerima laporan dari server Minecraft. Membutuhkan header `x-api-key`.
+- `POST /api/save-pixai-token`: menyimpan token PixAI dari Web Auth Helper.
+- `POST /api/generate-bookmarklet`: membuat bookmarklet autentikasi PixAI berbasis OTP.
+
+Pastikan `WEB_SECRET_KEY` diisi jika endpoint yang dilindungi digunakan. Jangan membuka endpoint control ke publik tanpa proteksi jaringan/API key yang benar.
 
 ---
 
