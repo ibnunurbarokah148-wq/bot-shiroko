@@ -3,11 +3,24 @@ const appearanceState = require('./appearance.state');
 const pixaiService = require('../pixai.service');
 const { cekDanPotongLimit, kembalikanLimit } = require('../../config/db');
 const { getShirokoSystemPrompt } = require('./prompts');
+const { parseJsonObject } = require('./utils');
 const memory = require('./memory');
 
 // Base Anchor Shiroko tanpa tag "side braid" agar hairstyle dinamis dapat di-override bersih
 const SHIROKO_CHARACTER_ANCHOR = 'sunaookami shiroko, 1girl, light blue hair, blue eyes, halo, wolf ears, anime style';
 const COMPANION_IMAGE_COST = 2;
+const VALID_COMPANION_INTENTS = new Set([
+    'NORMAL_CHAT',
+    'VISION_ANALYSIS',
+    'OUTFIT_DISCUSSION',
+    'OUTFIT_APPLY',
+    'OUTFIT_CANONICAL_PRESET',
+    'APPEARANCE_CHANGE',
+    'OUTFIT_CHANGE',
+    'CHARACTER_VISUAL_REQUEST',
+    'APPEARANCE_RESET',
+    'OUTFIT_RESET'
+]);
 
 /**
  * Deteksi Intent secara Heuristic (Tier 1)
@@ -79,25 +92,41 @@ Berikan respons JSON murni dengan format:
   "renderRequested": true/false
 }`;
 
-    try {
-        const res = await AIProvider.generate({
-            provider,
-            model,
-            prompt,
-            senderId,
-            isOwner,
-            useMemory: false,
-            systemPrompt: 'Anda adalah parser JSON intent murni. Kembalikan JSON valid tanpa tag markdown.'
-        });
+    const classifierOptions = {
+        model,
+        prompt,
+        senderId,
+        isOwner,
+        useMemory: false,
+        throwOnError: true,
+        systemPrompt: 'Anda adalah parser JSON intent murni. Kembalikan JSON valid tanpa tag markdown.'
+    };
 
-        const cleanJson = res.replace(/```json|```/gi, '').trim();
-        const parsed = JSON.parse(cleanJson);
+    try {
+        let res;
+        try {
+            res = await AIProvider.generate({ ...classifierOptions, provider });
+        } catch (primaryError) {
+            if (provider !== 'arisu') throw primaryError;
+            console.warn(`[COMPANION] Classifier Arisu gagal (${primaryError.message}). Fallback ke Gemini.`);
+            res = await AIProvider.generate({
+                ...classifierOptions,
+                provider: 'gemini',
+                model: 'gemini-2.5-flash-lite'
+            });
+        }
+
+        const parsed = parseJsonObject(res, 'respons intent classifier');
+        const intent = typeof parsed.intent === 'string' ? parsed.intent.toUpperCase() : 'NORMAL_CHAT';
+        if (!VALID_COMPANION_INTENTS.has(intent)) {
+            throw new Error(`intent classifier tidak dikenal: ${intent}`);
+        }
         return {
-            intent: parsed.intent || 'NORMAL_CHAT',
-            renderRequested: !!parsed.renderRequested
+            intent,
+            renderRequested: parsed.renderRequested === true
         };
     } catch (e) {
-        console.warn(`[COMPANION] Intent classifier gagal: ${e.message}`);
+        console.warn(`[COMPANION] Intent classifier dilewati: ${e.message}`);
         return null;
     }
 }
@@ -134,8 +163,7 @@ Kembalikan respons JSON murni tanpa markdown dengan skema berikut:
             imageBuffer
         });
 
-        const cleanJson = resultText.replace(/```json|```/gi, '').trim();
-        return JSON.parse(cleanJson);
+        return parseJsonObject(resultText, 'respons ekstraksi outfit');
     } catch (err) {
         console.error('🚨 [COMPANION] Gagal ekstraksi outfit vision:', err.message);
         return null;
@@ -180,11 +208,11 @@ Kembalikan respons JSON murni tanpa markdown:
             senderId,
             isOwner,
             useMemory: false,
-            systemPrompt: 'Anda adalah parser appearance JSON murni. Output harus JSON valid.'
+            systemPrompt: 'Anda adalah parser appearance JSON murni. Output harus JSON valid.',
+            throwOnError: true
         });
 
-        const cleanJson = resultText.replace(/```json|```/gi, '').trim();
-        return JSON.parse(cleanJson);
+        return parseJsonObject(resultText, 'respons ekstraksi appearance');
     } catch (e) {
         return {
             description: userText

@@ -33,7 +33,7 @@ function fetchModels() {
  * @param {string|null} [options.systemPrompt]
  * @returns {Promise<string>}
  */
-async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, useMemory = true }) {
+async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, useMemory = true, throwOnError = false }) {
     const apiKey = process.env.ARISU_API_KEY;
     if (!apiKey) throw new Error('ARISU_API_KEY tidak ditemukan pada .env');
 
@@ -83,13 +83,23 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
             }
             return balasanAI;
         } else {
+            const apiMessage = response.data?.error || `Respons Arisu tidak valid untuk model ${modelEndpoint}`;
+            console.error('Arisu API Error:', apiMessage);
+            if (throwOnError) {
+                throw new Error(typeof apiMessage === 'string' ? apiMessage : JSON.stringify(apiMessage));
+            }
             if (shouldKeepMemory) memory.popLast(senderId, PROVIDER_NAME);
-            console.error('Arisu API Error:', response.data.error);
             return `Nn... Maaf Sayang, gagal memproses dari Arisu (${modelEndpoint}).`;
         }
     } catch (error) {
         if (shouldKeepMemory) memory.popLast(senderId, PROVIDER_NAME);
-        console.error('🚨 ERROR ARISU:', error.message);
+        const status = error.response?.status;
+        const details = error.response?.data?.error || error.response?.statusText || error.message;
+        const errorMessage = status ? `HTTP ${status}: ${typeof details === 'string' ? details : JSON.stringify(details)}` : String(details);
+        console.error(`🚨 ERROR ARISU (${modelEndpoint}):`, errorMessage);
+        if (throwOnError) {
+            throw new Error(`Arisu ${modelEndpoint} gagal: ${errorMessage}`, { cause: error });
+        }
         return 'Nn... Maaf Sayang, jalur Arisu terputus (Timeout/Error).';
     }
 }

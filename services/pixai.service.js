@@ -398,17 +398,20 @@ async function prosesAntrianPixAI() {
 
         const { incrementStat } = require('../config/database');
         incrementStat('imageGenerated');
-
-        antrianPixAI.shift(); // Hapus item yang selesai
     } catch (err) {
         console.error(`[PIXAI QUEUE ERROR]:`, err.message);
-        antrianPixAI.shift(); // Hapus item jika error agar antrean tidak macet
-        if (onError) {
-            await onError(err);
-        } else if (reply) {
-            await reply(`❌ Nn... Gagal generate gambar via PixAI:\n_${err.message}_`);
+        try {
+            if (onError) {
+                await onError(err);
+            } else if (reply) {
+                await reply(`❌ Nn... Gagal generate gambar via PixAI:\n_${err.message}_`);
+            }
+        } catch (callbackError) {
+            console.error('[PIXAI QUEUE CALLBACK ERROR]:', callbackError.message);
         }
     } finally {
+        const index = antrianPixAI.indexOf(item);
+        if (index !== -1) antrianPixAI.splice(index, 1);
         sedangRenderPixAI = false;
         if (antrianPixAI.length > 0) {
             setTimeout(() => prosesAntrianPixAI(), 1000);
@@ -416,9 +419,6 @@ async function prosesAntrianPixAI() {
     }
 }
 
-/**
- * Menambahkan pesanan baru ke dalam antrean PixAI
- */
 function tambahAntrianPixAI(pesanan) {
     antrianPixAI.push(pesanan);
     prosesAntrianPixAI();

@@ -38,4 +38,21 @@ for (const character of WAIFU_CHARACTERS) {
 
 assert.deepStrictEqual(mediaQueue.getStatus(), { active: 0, queued: 0, maxActive: 2 }, 'Queue media harus kosong saat test dimulai.');
 
-console.log(`Smoke test lulus: ${files.length} file JavaScript valid, roster 10 waifu dan persona pasangan valid.`);
+const { parseJsonObject } = require('../services/ai/utils');
+assert.deepStrictEqual(
+    parseJsonObject('```json\n{"intent":"NORMAL_CHAT","renderRequested":false}\n```', 'test classifier'),
+    { intent: 'NORMAL_CHAT', renderRequested: false },
+    'Parser Companion harus menerima JSON dalam markdown fence.'
+);
+assert.deepStrictEqual(
+    parseJsonObject('Hasil:\n{"intent":"OUTFIT_DISCUSSION","renderRequested":false}\nSelesai.', 'test classifier'),
+    { intent: 'OUTFIT_DISCUSSION', renderRequested: false },
+    'Parser Companion harus mengekstrak JSON object dari teks tambahan.'
+);
+assert.throws(
+    () => parseJsonObject('Nn... Maaf Sayang, jalur Arisu terputus (Timeout/Error).', 'test classifier'),
+    /bukan JSON object/,
+    'Parser Companion harus menolak fallback teks provider tanpa memunculkan SyntaxError mentah.'
+);
+
+console.log(`Smoke test lulus: ${files.length} file JavaScript valid, roster 10 waifu, dan parser Companion valid.`);

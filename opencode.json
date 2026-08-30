@@ -8,152 +8,14 @@
         "baseURL": "https://api.xkiro.com/v1"
       },
       "models": {
-        "openai/gpt-5.6-sol": {
-          "name": "GPT-5.6 Sol"
-        },
-        "openai/gpt-5.6-terra": {
-          "name": "GPT-5.6 Terra"
-        },
-        "openai/gpt-5.6-luna": {
-          "name": "GPT-5.6 Luna"
-        },
-        "openai/gpt-5.5": {
-          "name": "GPT-5.5"
-        },
-        "openai/gpt-5.4": {
-          "name": "GPT-5.4"
-        },
-        "openai/gpt-5.4-mini": {
-          "name": "GPT-5.4 Mini"
-        },
-        "anthropic/claude-fable-5": {
-          "name": "Fable 5"
-        },
-        "anthropic/claude-opus-5": {
-          "name": "Opus 5"
-        },
-        "anthropic/claude-opus-4.8": {
-          "name": "Opus 4.8"
-        },
-        "anthropic/claude-opus-4.7": {
-          "name": "Opus 4.7"
-        },
-        "anthropic/claude-opus-4.6": {
-          "name": "Opus 4.6"
-        },
-        "anthropic/claude-sonnet-5": {
-          "name": "Sonnet 5"
-        },
-        "anthropic/claude-sonnet-4.6": {
-          "name": "Sonnet 4.6"
-        },
-        "anthropic/claude-haiku-4.5": {
-          "name": "Haiku 4.5"
-        },
-        "google/gemini-3.6-flash": {
-          "name": "Gemini 3.6 Flash"
-        },
-        "google/gemini-3.5-flash": {
-          "name": "Gemini 3.5 Flash"
-        },
-        "google/gemini-3.1-pro": {
-          "name": "Gemini 3.1 Pro"
-        },
-        "google/gemini-3-flash": {
-          "name": "Gemini 3 Flash"
-        },
-        "google/gemini-2.5-flash": {
-          "name": "Gemini 2.5 Flash"
-        },
-        "google/gemini-2.5-pro": {
-          "name": "Gemini 2.5 Pro"
-        },
-        "google/gemini-3.7-flash": {
-          "name": "Gemini 3.7 Flash"
-        },
-        "x-ai/grok-4.6": {
-          "name": "Grok 4.6"
-        },
-        "x-ai/grok-4.5": {
-          "name": "Grok 4.5"
-        },
         "x-ai/grok-build-0.1": {
           "name": "Grok Build 0.1"
-        },
-        "moonshotai/kimi-k3": {
-          "name": "Kimi K3"
-        },
-        "moonshotai/kimi-k2.7-code": {
-          "name": "Kimi K2.7 Code"
-        },
-        "moonshotai/kimi-k2.6": {
-          "name": "Kimi K2.6"
-        },
-        "moonshotai/kimi-k2.5": {
-          "name": "Kimi K2.5"
-        },
-        "mistralai/mistral-large-2512": {
-          "name": "Mistral Large 3"
-        },
-        "mistralai/mistral-medium-3.5": {
-          "name": "Mistral Medium 3.5"
-        },
-        "mistralai/mistral-small-2603": {
-          "name": "Mistral Small 4"
         },
         "mistralai/codestral-2508": {
           "name": "Codestral"
         },
-        "mistralai/devstral-medium": {
-          "name": "Devstral 2"
-        },
-        "mistralai/ministral-14b": {
-          "name": "Ministral 3 14B"
-        },
-        "mistralai/ministral-8b": {
-          "name": "Ministral 3 8B"
-        },
-        "mistralai/ministral-3b": {
-          "name": "Ministral 3 3B"
-        },
-        "z-ai/glm-5.3-flash": {
-          "name": "GLM-5.3 Flash"
-        },
-        "z-ai/glm-5.3": {
-          "name": "GLM-5.3"
-        },
-        "z-ai/glm-5.2": {
-          "name": "GLM-5.2"
-        },
-        "z-ai/glm-5.1": {
-          "name": "GLM-5.1"
-        },
-        "z-ai/glm-5-turbo": {
-          "name": "GLM-5 Turbo"
-        },
-        "z-ai/glm-5": {
-          "name": "GLM-5"
-        },
-        "z-ai/glm-4.7": {
-          "name": "GLM-4.7"
-        },
-        "z-ai/glm-4.6": {
-          "name": "GLM-4.6"
-        },
-        "z-ai/glm-4.5": {
-          "name": "GLM-4.5"
-        },
-        "z-ai/glm-4.5-air": {
-          "name": "GLM-4.5 Air"
-        },
         "z-ai/glm-4.7-flashx": {
           "name": "GLM-4.7 FlashX"
-        },
-        "z-ai/glm-4.7-flash": {
-          "name": "GLM-4.7 Flash"
-        },
-        "z-ai/glm-4.5-x": {
-          "name": "GLM-4.5-X"
         },
         "z-ai/glm-4.5-airx": {
           "name": "GLM-4.5 AirX"
@@ -167,20 +29,20 @@
         "z-ai/glm-4.6v": {
           "name": "GLM-4.6V"
         },
-        "z-ai/glm-4.6v-flashx": {
-          "name": "GLM-4.6V FlashX"
-        },
         "z-ai/glm-4.6v-flash": {
           "name": "GLM-4.6V Flash"
         },
-        "z-ai/glm-4.5v": {
-          "name": "GLM-4.5V"
-        },
-        "minimax/minimax-m3": {
-          "name": "MiniMax M3"
-        },
         "minimax/minimax-m2.7": {
           "name": "MiniMax M2.7"
+        },
+        "openai/gpt-5.6-sol": {
+          "name": "GPT-5.6 Sol"
+        },
+        "openai/gpt-5.6-terra": {
+          "name": "GPT-5.6 Terra"
+        },
+        "openai/gpt-5.3-codex-spark": {
+          "name": "Codex 5.3 Spark"
         },
         "minimax/minimax-m2.7-highspeed": {
           "name": "MiniMax M2.7 Highspeed"
@@ -188,26 +50,56 @@
         "minimax/minimax-m2.5": {
           "name": "MiniMax M2.5"
         },
-        "minimax/minimax-m2.5-highspeed": {
-          "name": "MiniMax M2.5 Highspeed"
+        "openai/gpt-5.6-luna": {
+          "name": "GPT-5.6 Luna"
+        },
+        "z-ai/glm-5.1": {
+          "name": "GLM-5.1"
+        },
+        "google/gemini-3.6-flash": {
+          "name": "Gemini 3.6 Flash"
+        },
+        "x-ai/grok-4.6": {
+          "name": "Grok 4.6"
         },
         "minimax/minimax-m2.1": {
           "name": "MiniMax M2.1"
         },
-        "minimax/minimax-m2.1-highspeed": {
-          "name": "MiniMax M2.1 Highspeed"
-        },
         "minimax/minimax-m2": {
           "name": "MiniMax M2"
         },
-        "xiaomi/mimo-v2.5-pro": {
-          "name": "MiMo v2.5 Pro"
+        "anthropic/claude-opus-5": {
+          "name": "Opus 5"
+        },
+        "openai/gpt-5.5": {
+          "name": "GPT-5.5"
+        },
+        "z-ai/glm-4.7-flash": {
+          "name": "GLM-4.7 Flash"
+        },
+        "anthropic/claude-fable-5": {
+          "name": "Fable 5"
+        },
+        "google/gemini-3.5-flash": {
+          "name": "Gemini 3.5 Flash"
         },
         "xiaomi/mimo-v2.5": {
           "name": "MiMo v2.5"
         },
-        "deepseek/deepseek-v4-pro-0813": {
-          "name": "DeepSeek V4 Pro 0813"
+        "openai/gpt-5.4": {
+          "name": "GPT-5.4"
+        },
+        "openai/gpt-5.4-mini": {
+          "name": "GPT-5.4 Mini"
+        },
+        "minimax/minimax-m2.5-highspeed": {
+          "name": "MiniMax M2.5 Highspeed"
+        },
+        "xiaomi/mimo-v2.5-pro": {
+          "name": "MiMo v2.5 Pro"
+        },
+        "anthropic/claude-opus-4.8": {
+          "name": "Opus 4.8"
         },
         "deepseek/deepseek-v4-pro": {
           "name": "DeepSeek V4 Pro"
@@ -218,17 +110,191 @@
         "deepseek/deepseek-v3.2": {
           "name": "DeepSeek V3.2"
         },
+        "anthropic/claude-opus-4.6": {
+          "name": "Opus 4.6"
+        },
+        "tencent/hy3": {
+          "name": "Hy3"
+        },
+        "moonshotai/kimi-k2.7-code": {
+          "name": "Kimi K2.7 Code"
+        },
+        "google/gemini-3-flash": {
+          "name": "Gemini 3 Flash"
+        },
+        "moonshotai/kimi-k2.6": {
+          "name": "Kimi K2.6"
+        },
+        "nvidia/nemotron-3-nano-omni": {
+          "name": "Nemotron 3 Nano Omni"
+        },
+        "nvidia/llama-3.3-nemotron-super-49b": {
+          "name": "Llama 3.3 Nemotron Super 49B"
+        },
+        "moonshotai/kimi-k2.5": {
+          "name": "Kimi K2.5"
+        },
+        "anthropic/claude-sonnet-4.6": {
+          "name": "Sonnet 4.6"
+        },
+        "qwen/qwen3.8-max:free": {
+          "name": "Qwen3.8 Max (Free)"
+        },
+        "qwen/qwen3.7-max:free": {
+          "name": "Qwen3.7 Max (Free)"
+        },
+        "qwen/qwen3.7-plus:free": {
+          "name": "Qwen3.7 Plus (Free)"
+        },
+        "qwen/qwen3.6-max-preview:free": {
+          "name": "Qwen3.6 Max Preview (Free)"
+        },
         "deepseek/deepseek-chat-v3.1": {
           "name": "DeepSeek V3.1"
         },
         "deepseek/deepseek-v4-flash-0731": {
           "name": "DeepSeek V4 Flash 0731"
         },
+        "google/gemini-3.1-pro": {
+          "name": "Gemini 3.1 Pro"
+        },
+        "z-ai/glm-5.3-flash": {
+          "name": "GLM-5.3 Flash"
+        },
+        "google/gemini-2.5-flash": {
+          "name": "Gemini 2.5 Flash"
+        },
+        "qwen/qwen3.6-27b:free": {
+          "name": "Qwen3.6 27B (Free)"
+        },
+        "qwen/qwen3.5-plus:free": {
+          "name": "Qwen3.5 Plus (Free)"
+        },
+        "qwen/qwen3.5-flash:free": {
+          "name": "Qwen3.5 Flash (Free)"
+        },
+        "qwen/qwen3.6-plus:free": {
+          "name": "Qwen3.6 Plus (Free)"
+        },
+        "qwen/qwen3.5-397b-a17b:free": {
+          "name": "Qwen3.5 397B A17B (Free)"
+        },
+        "moonshotai/kimi-k3": {
+          "name": "Kimi K3"
+        },
+        "mistralai/mistral-large-2512": {
+          "name": "Mistral Large 3"
+        },
+        "mistralai/mistral-medium-3.5": {
+          "name": "Mistral Medium 3.5"
+        },
+        "mistralai/mistral-small-2603": {
+          "name": "Mistral Small 4"
+        },
+        "qwen/qwen3.5-omni-plus:free": {
+          "name": "Qwen3.5 Omni Plus (Free)"
+        },
+        "qwen/qwen3.6-35b-a3b:free": {
+          "name": "Qwen3.6 35B A3B (Free)"
+        },
+        "qwen/qwen3.5-omni-flash:free": {
+          "name": "Qwen3.5 Omni Flash (Free)"
+        },
+        "qwen/qwen3-max:free": {
+          "name": "Qwen3 Max (Free)"
+        },
+        "qwen/qwen-plus-2025-07-28:free": {
+          "name": "Qwen Plus 0728 (Free)"
+        },
+        "qwen/qwen3-vl-plus:free": {
+          "name": "Qwen3 VL Plus (Free)"
+        },
+        "qwen/qwen3-omni-flash:free": {
+          "name": "Qwen3 Omni Flash (Free)"
+        },
+        "mistralai/devstral-medium": {
+          "name": "Devstral 2"
+        },
+        "z-ai/glm-5-turbo": {
+          "name": "GLM-5 Turbo"
+        },
+        "z-ai/glm-4.7": {
+          "name": "GLM-4.7"
+        },
+        "anthropic/claude-haiku-4.5": {
+          "name": "Haiku 4.5"
+        },
+        "google/gemini-2.5-pro": {
+          "name": "Gemini 2.5 Pro"
+        },
+        "mistralai/ministral-8b": {
+          "name": "Ministral 3 8B"
+        },
+        "mistralai/ministral-3b": {
+          "name": "Ministral 3 3B"
+        },
+        "z-ai/glm-4.5": {
+          "name": "GLM-4.5"
+        },
+        "qwen/qwen3-coder-plus:free": {
+          "name": "Qwen3 Coder Plus (Free)"
+        },
+        "google/gemini-3.7-flash": {
+          "name": "Gemini 3.7 Flash"
+        },
+        "qwen/qwen3.7-max": {
+          "name": "Qwen3.7 Max"
+        },
+        "qwen/qwen3.7-plus": {
+          "name": "Qwen3.7 Plus"
+        },
+        "z-ai/glm-4.5-air": {
+          "name": "GLM-4.5 Air"
+        },
+        "anthropic/claude-opus-4.7": {
+          "name": "Opus 4.7"
+        },
+        "anthropic/claude-sonnet-5": {
+          "name": "Sonnet 5"
+        },
+        "x-ai/grok-4.5": {
+          "name": "Grok 4.5"
+        },
+        "z-ai/glm-4.5-x": {
+          "name": "GLM-4.5-X"
+        },
+        "mistralai/ministral-14b": {
+          "name": "Ministral 3 14B"
+        },
+        "z-ai/glm-5.3": {
+          "name": "GLM-5.3"
+        },
+        "z-ai/glm-5.2": {
+          "name": "GLM-5.2"
+        },
+        "z-ai/glm-5": {
+          "name": "GLM-5"
+        },
+        "z-ai/glm-4.6": {
+          "name": "GLM-4.6"
+        },
+        "z-ai/glm-4.6v-flashx": {
+          "name": "GLM-4.6V FlashX"
+        },
+        "z-ai/glm-4.5v": {
+          "name": "GLM-4.5V"
+        },
+        "minimax/minimax-m3": {
+          "name": "MiniMax M3"
+        },
+        "minimax/minimax-m2.1-highspeed": {
+          "name": "MiniMax M2.1 Highspeed"
+        },
+        "deepseek/deepseek-v4-pro-0813": {
+          "name": "DeepSeek V4 Pro 0813"
+        },
         "deepseek/deepseek-v4-flash-vision-exp": {
           "name": "DeepSeek V4 Flash Vision"
-        },
-        "tencent/hy3": {
-          "name": "Hy3"
         },
         "meta/muse-spark-1.2-contributor": {
           "name": "Muse Spark 1.2"
@@ -242,71 +308,8 @@
         "nvidia/nemotron-3-nano": {
           "name": "Nemotron 3 Nano"
         },
-        "nvidia/nemotron-3-nano-omni": {
-          "name": "Nemotron 3 Nano Omni"
-        },
-        "nvidia/llama-3.3-nemotron-super-49b": {
-          "name": "Llama 3.3 Nemotron Super 49B"
-        },
-        "qwen/qwen3.7-plus:free": {
-          "name": "Qwen3.7 Plus (Free)"
-        },
-        "qwen/qwen3.8-max:free": {
-          "name": "Qwen3.8 Max (Free)"
-        },
-        "qwen/qwen3.7-max:free": {
-          "name": "Qwen3.7 Max (Free)"
-        },
-        "qwen/qwen3.6-plus:free": {
-          "name": "Qwen3.6 Plus (Free)"
-        },
-        "qwen/qwen3.6-max-preview:free": {
-          "name": "Qwen3.6 Max Preview (Free)"
-        },
-        "qwen/qwen3.6-27b:free": {
-          "name": "Qwen3.6 27B (Free)"
-        },
-        "qwen/qwen3.5-plus:free": {
-          "name": "Qwen3.5 Plus (Free)"
-        },
-        "qwen/qwen3.5-omni-plus:free": {
-          "name": "Qwen3.5 Omni Plus (Free)"
-        },
-        "qwen/qwen3.6-35b-a3b:free": {
-          "name": "Qwen3.6 35B A3B (Free)"
-        },
-        "qwen/qwen3.5-flash:free": {
-          "name": "Qwen3.5 Flash (Free)"
-        },
-        "qwen/qwen3.5-397b-a17b:free": {
-          "name": "Qwen3.5 397B A17B (Free)"
-        },
-        "qwen/qwen3.5-omni-flash:free": {
-          "name": "Qwen3.5 Omni Flash (Free)"
-        },
-        "qwen/qwen3-max:free": {
-          "name": "Qwen3 Max (Free)"
-        },
-        "qwen/qwen-plus-2025-07-28:free": {
-          "name": "Qwen Plus 0728 (Free)"
-        },
-        "qwen/qwen3-coder-plus:free": {
-          "name": "Qwen3 Coder Plus (Free)"
-        },
-        "qwen/qwen3-vl-plus:free": {
-          "name": "Qwen3 VL Plus (Free)"
-        },
-        "qwen/qwen3-omni-flash:free": {
-          "name": "Qwen3 Omni Flash (Free)"
-        },
         "qwen/qwen3.8-max": {
           "name": "Qwen3.8 Max"
-        },
-        "qwen/qwen3.7-max": {
-          "name": "Qwen3.7 Max"
-        },
-        "qwen/qwen3.7-plus": {
-          "name": "Qwen3.7 Plus"
         },
         "qwen/qwen3.6-plus": {
           "name": "Qwen3.6 Plus"

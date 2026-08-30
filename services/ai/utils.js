@@ -9,6 +9,21 @@
  * @param {string} text
  * @returns {string}
  */
+function parseJsonObject(text, label = 'respons AI') {
+    if (typeof text !== 'string' || !text.trim()) {
+        throw new Error(`${label} kosong`);
+    }
+
+    const withoutFence = text.replace(/```(?:json)?|```/gi, '').trim();
+    const firstBrace = withoutFence.indexOf('{');
+    const lastBrace = withoutFence.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace < firstBrace) {
+        throw new Error(`${label} bukan JSON object`);
+    }
+
+    return JSON.parse(withoutFence.slice(firstBrace, lastBrace + 1));
+}
+
 function cleanThinkingLogs(text) {
     if (!text || typeof text !== 'string') return text;
     let original = text.trim();
@@ -120,6 +135,7 @@ function detectMimeType(buffer, type = 'image') {
 }
 
 module.exports = {
+    parseJsonObject,
     cleanThinkingLogs,
     extractCloudflareText,
     extractOpenRouterText,

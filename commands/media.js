@@ -283,7 +283,7 @@ async function handle(ctx) {
 
                 const cost = 4;
                 const { dbLimit, simpanDB } = require('../config/db');
-                if (dbLimit[senderId] !== undefined && !isOwner) {
+                if (!isOwner && dbLimit[senderId] !== undefined) {
                     if (dbLimit[senderId] < cost) {
                         await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih server lain atau ketik *batal*.`);
                         return true;
@@ -330,14 +330,9 @@ async function handle(ctx) {
 
             } else if (pilihan === '4') {
                 const cost = 2;
-                const { dbLimit, simpanDB } = require('../config/db');
-                if (dbLimit[senderId] !== undefined && !isOwner) {
-                    if (dbLimit[senderId] < cost) {
-                        await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih server lain atau ketik *batal*.`);
-                        return true;
-                    }
-                    dbLimit[senderId] -= cost;
-                    simpanDB();
+                if (!cekDanPotongLimit(senderId, cost)) {
+                    await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih server lain atau ketik *batal*.`);
+                    return true;
                 }
 
                 const promptMentah = sesi.promptMentah;
@@ -405,7 +400,7 @@ async function handle(ctx) {
             }
 
             const { dbLimit, simpanDB } = require('../config/db');
-            if (dbLimit[senderId] !== undefined && !isOwner) {
+            if (!isOwner && dbLimit[senderId] !== undefined) {
                 if (dbLimit[senderId] < cost) {
                     await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih model lain atau ketik *batal*.`);
                     return true;

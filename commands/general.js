@@ -93,7 +93,9 @@ async function handle(ctx) {
     if (textLower === '!menu' || textLower === '!fitur') {
         const namaProfilWa = msg.pushName || (isOwner ? 'Owner' : 'Sensei');
         const namaUser = dbRole[senderId] ? dbRole[senderId].nama : namaProfilWa;
-        const sisaLimit = dbLimit[senderId] !== undefined ? dbLimit[senderId] : JATAH_HARIAN;
+        const sisaLimit = isOwner
+            ? 'Unlimited'
+            : (dbLimit[senderId] !== undefined ? dbLimit[senderId] : JATAH_HARIAN);
 
         let roleUser = 'User Biasa';
         if (isOwner) {

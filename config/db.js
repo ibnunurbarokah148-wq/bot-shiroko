@@ -228,7 +228,7 @@ function cekDanPotongLimit(targetID, amount = 1) {
     // Cek apakah user adalah Premium
     const premiumVal = dbPremium[targetID];
     const isPremium = premiumVal && (premiumVal === true || premiumVal > Date.now());
-    const dailyJatah = isPremium ? 1000 : JATAH_HARIAN;
+    const dailyJatah = isPremium ? 300 : JATAH_HARIAN;
 
     let currentLimit = dbLimit[targetID];
 
@@ -236,10 +236,10 @@ function cekDanPotongLimit(targetID, amount = 1) {
         // User baru, set limit awal
         dbLimit[targetID] = dailyJatah;
         currentLimit = dailyJatah;
-    } else if (isPremium && currentLimit < 1000) {
+    } else if (isPremium && currentLimit < 300) {
         // Premium tapi limit masih rendah, naikkan
-        dbLimit[targetID] = 1000;
-        currentLimit = 1000;
+        dbLimit[targetID] = 300;
+        currentLimit = 300;
     }
 
     if (currentLimit < amount) return false;
@@ -249,6 +249,10 @@ function cekDanPotongLimit(targetID, amount = 1) {
 }
 
 function kembalikanLimit(targetID, amount = 1) {
+    const coreTarget = getCoreNumber(targetID);
+    // Owner tidak pernah dipotong, jadi refund tidak boleh membuat saldo semu.
+    if (ID_OWNER.some(owner => getCoreNumber(owner) === coreTarget)) return;
+
     const currentLimit = dbLimit[targetID];
     if (currentLimit !== undefined) {
         dbLimit[targetID] = currentLimit + amount;

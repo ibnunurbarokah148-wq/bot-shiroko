@@ -139,7 +139,7 @@ cron.schedule('0 0 * * *', () => {
         const premiumValue = dbPremium[id];
         const isPremium = premiumValue && (premiumValue === true || premiumValue > Date.now());
         if (isPremium) {
-            dbLimit[id] = 1000;
+            dbLimit[id] = 300;
         } else if (amount < JATAH_HARIAN) {
             dbLimit[id] = JATAH_HARIAN;
         }

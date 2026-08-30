@@ -182,12 +182,12 @@ async function handle(ctx) {
                 }
                 simpanPremium();
                 
-                // Beri full 1000 limit pertama kali
-                dbLimit[targetNomor] = 1000;
+                // Beri limit Premium pertama kali
+                dbLimit[targetNomor] = 300;
                 simpanDB();
                 
                 await reply(`✅ *TRANSAKSI BERHASIL*\nNn... Pembayaran Premium disetujui (Aktif 30 Hari).\n*Target:* ${targetNomor}`);
-                try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `🎉 *PEMBAYARAN DITERIMA*\n\nNn... Statusmu sekarang menjadi **VIP Premium** selama 30 hari ke depan! Token harianmu telah ditingkatkan ke 1000/hari, dan kamu bisa menikmati akses NSFW & ComfyUI.\nKetik *!premium* untuk info lebih lanjut.` }); } catch (err) { }
+                try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `🎉 *PEMBAYARAN DITERIMA*\n\nNn... Statusmu sekarang menjadi **VIP Premium** selama 30 hari ke depan! Token harianmu telah ditingkatkan ke 300/hari, dengan akses NSFW serta ComfyUI saat server GPU online.\nKetik *!premium* untuk info lebih lanjut.` }); } catch (err) { }
             } else {
                 await reply(`❌ *TRANSAKSI DITOLAK*\nNn... Laporan dikirim ke target.`);
                 try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `⚠️ *PEMBAYARAN DITOLAK*\n\nNn... Dana Premium tidak masuk.\n*Alasan:* ${alasanTolak}` }); } catch (err) { }
