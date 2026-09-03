@@ -12,6 +12,7 @@ const memory = require('./memory');
 const state = require('../../config/state');
 
 const { getCoreNumber } = require('../../utils/helpers');
+const { ID_OWNER } = require('../../config/constants');
 
 /**
  * Mapping dari !aimode shortcut ke { provider, model }.
@@ -45,6 +46,11 @@ function validateModelAccess(provider, model, context = {}) {
 
 function resolveMode(mode, senderId) {
     const core = getCoreNumber(senderId);
+    const isOwner = ID_OWNER.some(ownerId => ownerId === senderId || ownerId === core);
+    const xkiroModel = state.userXKiroModel[senderId] ||
+        (core && state.userXKiroModel[core]) ||
+        (isOwner && state.ownerXKiroModel) ||
+        'deepseek/deepseek-v4-flash';
     const modeMap = {
         'gemini':       { provider: 'gemini',      model: 'gemini-2.5-flash-lite' },
         'ollama':       { provider: 'ollama',      model: state.userOllamaModel[senderId] || (core && state.userOllamaModel[core]) || 'gemma3:4b' },
@@ -52,8 +58,8 @@ function resolveMode(mode, senderId) {
         'or':           { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || 'deepseek/deepseek-r1:free' },
         'cloudflare':   { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
         'cf':           { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
-        'xkiro':        { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'deepseek/deepseek-v4-flash' },
-        'xk':           { provider: 'xkiro',       model: state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'deepseek/deepseek-v4-flash' },
+        'xkiro':        { provider: 'xkiro',       model: xkiroModel },
+        'xk':           { provider: 'xkiro',       model: xkiroModel },
         'arisu':        { provider: 'arisu',       model: state.userArisuModel[senderId] || (core && state.userArisuModel[core]) || state.ownerArisuModel || 'deepseek-v3' },
         'ds3':          { provider: 'arisu',       model: 'deepseek-v3' },
         'ds4':          { provider: 'arisu',       model: 'deepseek-v4' },

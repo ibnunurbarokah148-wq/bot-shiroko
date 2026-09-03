@@ -773,7 +773,7 @@ async function handle(ctx) {
 
                     const mediaBuffer = await downloadMediaBaileys(messageToDownload, quotedType === 'audioMessage' ? 'audio' : 'document');
                     const core = getCoreNumber(senderId);
-                    const currentMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || 'arisu-gemini';
+                    const currentMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || 'xkiro';
                     const { provider, model } = AIProvider.resolveMode(currentMode, senderId);
                     if (provider === 'arisu') {
                         await reply('Nn... Mode ArisuSoft belum mendukung transkripsi audio. Pilih Gemini, OpenRouter, Cloudflare, atau xKiro terlebih dahulu.');

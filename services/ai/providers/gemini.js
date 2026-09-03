@@ -7,7 +7,7 @@ const state = require('../../../config/state');
 const memory = require('../memory');
 const { getShirokoSystemPrompt, getShirokoGenerationConfig } = require('../prompts');
 const { temporaryAudioFile, cleanupTemp, normalizeAudioMime, validateTranscript } = require('../media.service');
-const { sanitizeInternalDisclosure } = require('../utils');
+const { sanitizeInternalDisclosure, detectMimeType } = require('../utils');
 
 // Rotasi multi-API key
 const GEMINI_API_KEYS = process.env.GEMINI_API_KEY
@@ -65,7 +65,7 @@ const PROVIDER_NAME = 'gemini';
  * @param {Buffer|null} [options.imageBuffer]
  * @returns {Promise<string>}
  */
-async function generate({ prompt, senderId, isOwner, model = 'gemini-2.5-flash-lite', systemPrompt = null, imageBuffer = null, useMemory = true }) {
+async function generate({ prompt, senderId, isOwner, model = 'gemini-2.5-flash-lite', systemPrompt = null, imageBuffer = null, imageMimeType = null, useMemory = true }) {
     const { genAI } = getGeminiComponents();
     const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
     const shouldKeepMemory = useMemory !== false;
@@ -95,7 +95,7 @@ async function generate({ prompt, senderId, isOwner, model = 'gemini-2.5-flash-l
             lastMsg.parts.push({
                 inlineData: {
                     data: imageBuffer.toString('base64'),
-                    mimeType: 'image/jpeg'
+                    mimeType: imageMimeType || detectMimeType(imageBuffer, 'image')
                 }
             });
         }
@@ -109,7 +109,7 @@ async function generate({ prompt, senderId, isOwner, model = 'gemini-2.5-flash-l
             contents[0].parts.push({
                 inlineData: {
                     data: imageBuffer.toString('base64'),
-                    mimeType: 'image/jpeg'
+                    mimeType: imageMimeType || detectMimeType(imageBuffer, 'image')
                 }
             });
         }

@@ -75,14 +75,14 @@ async function handleChat(bot, username, message, mcData) {
         const targetMode = pk.replace(/^!?aimode\s*/i, '').trim();
         const ownerId = Array.isArray(ID_OWNER) ? ID_OWNER[0] : ID_OWNER;
         if (!targetMode) {
-            const currentMode = state.mcAiMode || (globalState.userAiMode ? (globalState.userAiMode[ownerId] || (Array.isArray(ID_OWNER) && globalState.userAiMode[ID_OWNER[1]])) : null) || 'arisu-gemini';
+            const currentMode = state.mcAiMode || (globalState.userAiMode ? (globalState.userAiMode[ownerId] || (Array.isArray(ID_OWNER) && globalState.userAiMode[ID_OWNER[1]])) : null) || 'xkiro';
             const { provider, model } = AIProvider.resolveMode(currentMode, ownerId);
             bot.chat(`Nn. Mode AI aktif: [${currentMode}] (${provider}/${model}).`);
             bot.chat("Opsi: ds3, ds4, glm, qwen, arisu-gemini, gemini, cf, or, ollama, gpt, grok");
             return;
         }
 
-        const validModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
+        const validModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'xkiro', 'xk', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
         if (validModes.includes(targetMode)) {
             state.mcAiMode = targetMode;
             const { provider, model } = AIProvider.resolveMode(targetMode, ownerId);
@@ -393,9 +393,9 @@ async function handleChat(bot, username, message, mcData) {
     try {
         const customSystemPrompt = getShirokoSystemPrompt(true) + "\n\n[INSTRUKSI WAJIB UNTUK MINECRAFT CHAT: Jawab pesan player dengan SANGAT SINGKAT, maksimal 1 kalimat pendek padat. Jangan gunakan formatting markdown bold/italic yang aneh. Selalu mulai dengan 'Nn... '.]";
         
-        // Mode AI ditentukan dari: 1. Mode in-game jika ada -> 2. Mode WA Owner -> 3. Fallback arisu-gemini
+        // Mode AI ditentukan dari: 1. Mode in-game jika ada -> 2. Mode WA Owner -> 3. Fallback xKiro
         const ownerId = Array.isArray(ID_OWNER) ? ID_OWNER[0] : ID_OWNER;
-        const activeAiMode = state.mcAiMode || (globalState.userAiMode ? (globalState.userAiMode[ownerId] || (Array.isArray(ID_OWNER) && globalState.userAiMode[ID_OWNER[1]])) : null) || 'arisu-gemini';
+        const activeAiMode = state.mcAiMode || (globalState.userAiMode ? (globalState.userAiMode[ownerId] || (Array.isArray(ID_OWNER) && globalState.userAiMode[ID_OWNER[1]])) : null) || 'xkiro';
         const resolved = AIProvider.resolveMode(activeAiMode, ownerId);
 
         let aiReply = null;

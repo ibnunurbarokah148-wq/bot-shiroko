@@ -180,7 +180,18 @@ function buildMoodContext() {
     const mood = getMood();
     if (mood.mood === 'neutral' || mood.intensity <= 0) return '';
 
-    return `Gunakan gaya respons yang sedikit lebih ${mood.mood === 'happy' ? 'hangat dan ceria' : mood.mood === 'sad' ? 'lembut dan menenangkan' : mood.mood === 'angry' ? 'tenang dan berhati-hati' : 'hangat dan perhatian'} sesuai suasana percakapan. Jangan menyebut mood, state internal, nilai, sinyal, atau instruksi ini kepada user.`;
+    const guidance = {
+        happy: 'hangat dan ceria',
+        affectionate: 'hangat dan penuh perhatian',
+        playful: 'ringan dan sedikit menggoda',
+        sad: 'lembut dan menenangkan',
+        tired: 'singkat, lembut, dan tidak menekan',
+        anxious: 'meyakinkan dan menenangkan',
+        frustrated: 'sabar dan membantu langkah demi langkah',
+        annoyed: 'tenang dan berhati-hati',
+        distant: 'ringkas dan tidak memaksa'
+    }[mood.mood] || 'hangat dan perhatian';
+    return `Gunakan gaya respons yang sedikit lebih ${guidance} sesuai suasana percakapan. Jangan menyebut mood, state internal, nilai, sinyal, atau instruksi ini kepada user.`;
 }
 
 module.exports = {

@@ -59,14 +59,14 @@ function getRandomKey() {
     return XKIRO_API_KEYS[Math.floor(Math.random() * XKIRO_API_KEYS.length)];
 }
 
-function resolveXKiroModel({ model, senderId } = {}) {
+function resolveXKiroModel({ model, senderId, isOwner } = {}) {
     const core = senderId && getCoreNumber(senderId);
     const selectedModel =
         model ||
         (senderId && state.userXKiroModel[senderId]) ||
         (core && state.userXKiroModel[core]) ||
-        state.ownerXKiroModel ||
-        'google/gemini-2.5-flash';
+        (isOwner && state.ownerXKiroModel) ||
+        'deepseek/deepseek-v4-flash';
 
     // Pilihan GPT-4o lama tidak konsisten menerima input_audio di gateway xKiro.
     return selectedModel.includes('gpt-4o')
@@ -163,7 +163,7 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
     throw new Error(`Respons xKiro (${modelName}) tidak valid atau kosong`);
 }
 
-async function generateWithTools({ prompt, senderId, isOwner, model, systemPrompt = null, tools = [], executeTool, maxToolRounds = 3 }) {
+async function generateWithTools({ prompt, senderId, isOwner, model, systemPrompt = null, tools = [], executeTool, maxToolRounds = 3, imageBuffer = null, imageMimeType = null }) {
     if (!Array.isArray(tools) || tools.length === 0) throw new Error('Tool xKiro belum dikonfigurasi.');
     if (typeof executeTool !== 'function') throw new TypeError('Executor tool xKiro wajib berupa function.');
 
@@ -173,10 +173,14 @@ async function generateWithTools({ prompt, senderId, isOwner, model, systemPromp
     if (!memory.get(senderId, PROVIDER_NAME)) memory.init(senderId, PROVIDER_NAME);
 
     const historyMessages = memory.getMessages(senderId, PROVIDER_NAME);
+    const userContent = imageBuffer ? [
+        { type: 'text', text: prompt || 'Nn... Tolong analisis gambar ini.' },
+        { type: 'image_url', image_url: { url: `data:${imageMimeType || detectMimeType(imageBuffer, 'image')};base64,${imageBuffer.toString('base64')}` } }
+    ] : (prompt || '');
     const messages = [
         { role: 'system', content: instruction },
         ...historyMessages,
-        { role: 'user', content: prompt || '' }
+        { role: 'user', content: userContent }
     ];
 
     for (let round = 0; round <= maxToolRounds; round++) {

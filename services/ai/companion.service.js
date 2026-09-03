@@ -3,12 +3,15 @@ const appearanceState = require('./appearance.state');
 const pixaiService = require('../pixai.service');
 const { cekDanPotongLimit, kembalikanLimit } = require('../../config/db');
 const { getShirokoSystemPrompt } = require('./prompts');
+const appState = require('../../config/state');
+const { getCoreNumber } = require('../../utils/helpers');
 const { parseJsonObject } = require('./utils');
 const memory = require('./memory');
 
 // Base Anchor Shiroko tanpa tag "side braid" agar hairstyle dinamis dapat di-override bersih
 const SHIROKO_CHARACTER_ANCHOR = 'sunaookami shiroko, 1girl, light blue hair, blue eyes, halo, wolf ears, anime style';
 const COMPANION_IMAGE_COST = 2;
+const VISUAL_PLANNER_MAX_TEXT = 500;
 const VALID_COMPANION_INTENTS = new Set([
     'NORMAL_CHAT',
     'VISION_ANALYSIS',
@@ -115,6 +118,109 @@ const XKIRO_COMPANION_TOOLS = Object.freeze([
     }
 ]);
 
+function compactVisualPatch(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const result = {};
+    const copyString = (key, source = value, target = result) => {
+        if (typeof source[key] === 'string' && source[key].trim()) {
+            target[key] = source[key].trim().slice(0, VISUAL_PLANNER_MAX_TEXT);
+        }
+    };
+
+    if (value.hair && typeof value.hair === 'object') {
+        result.hair = {};
+        copyString('style', value.hair, result.hair);
+        copyString('length', value.hair, result.hair);
+        copyString('color', value.hair, result.hair);
+        if (!Object.keys(result.hair).length) delete result.hair;
+    }
+    copyString('expression');
+    copyString('pose');
+    if (value.scene && typeof value.scene === 'object') {
+        result.scene = {};
+        copyString('location', value.scene, result.scene);
+        copyString('lighting', value.scene, result.scene);
+        if (!Object.keys(result.scene).length) delete result.scene;
+    }
+    if (value.outfit && typeof value.outfit === 'object') {
+        result.outfit = {};
+        for (const key of ['outer', 'inner', 'bottom', 'shoes', 'style', 'description']) {
+            copyString(key, value.outfit, result.outfit);
+        }
+        for (const key of ['accessories', 'colors']) {
+            if (Array.isArray(value.outfit[key])) {
+                const items = value.outfit[key]
+                    .filter(item => typeof item === 'string' && item.trim())
+                    .map(item => item.trim().slice(0, VISUAL_PLANNER_MAX_TEXT));
+                if (items.length) result.outfit[key] = items.slice(0, 10);
+            }
+        }
+        if (!Object.keys(result.outfit).length) delete result.outfit;
+    }
+    copyString('description');
+    return result;
+}
+
+function mergeAppearancePatch(current, patch) {
+    return {
+        ...current,
+        hair: { ...current.hair, ...(patch.hair || {}) },
+        scene: { ...current.scene, ...(patch.scene || {}) },
+        outfit: { ...current.outfit, ...(patch.outfit || {}) },
+        expression: patch.expression || current.expression,
+        pose: patch.pose || current.pose,
+        description: patch.description || current.description,
+        updatedAt: Date.now()
+    };
+}
+
+async function createArisuVisualPlan({ text, appearance, senderId, isOwner, model }) {
+    const prompt = `Kamu adalah visual planner untuk karakter anime Shiroko.
+Analisis permintaan pengguna berdasarkan penampilan saat ini. Jangan menjawab percakapan.
+Hanya isi field appearancePatch yang benar-benar diminta pengguna. Jangan menebak atau mengubah atribut lain.
+Jika pengguna meminta "pap", "foto", atau "gambar", set render=true.
+Jika pengguna meminta perubahan tanpa kata visual, render=false.
+Perubahan pakaian/penampilan dianggap permanen hanya jika pengguna mengatakan mulai sekarang, selalu, ganti, ubah, atau menyuruh karakter memakai pakaian itu. Untuk permintaan pap satu kali, persistAppearance=false.
+Semua nilai atribut dan renderPrompt harus berbahasa Inggris. Kembalikan JSON murni tanpa markdown.
+
+Penampilan saat ini:
+${JSON.stringify(appearance)}
+
+Permintaan pengguna:
+${String(text || '').slice(0, 2000)}
+
+Format wajib:
+{
+  "render": true,
+  "persistAppearance": false,
+  "appearancePatch": {
+    "hair": {}, "expression": "", "pose": "",
+    "scene": {"location": "", "lighting": ""},
+    "outfit": {"outer": "", "inner": "", "bottom": "", "shoes": "", "accessories": [], "colors": [], "style": ""}
+  },
+  "renderPrompt": "short extra visual instruction, empty if none",
+  "captionContext": "short Indonesian context for roleplay"
+}`;
+    const resultText = await AIProvider.generate({
+        provider: 'arisu',
+        model,
+        prompt,
+        senderId,
+        isOwner,
+        useMemory: false,
+        throwOnError: true,
+        systemPrompt: 'Anda adalah parser visual JSON. Keluarkan JSON valid saja, tanpa markdown atau penjelasan.'
+    });
+    const plan = parseJsonObject(resultText, 'respons visual planner Arisu');
+    return {
+        render: plan.render === true,
+        persistAppearance: plan.persistAppearance === true,
+        appearancePatch: compactVisualPatch(plan.appearancePatch),
+        renderPrompt: typeof plan.renderPrompt === 'string' ? plan.renderPrompt.trim().slice(0, VISUAL_PLANNER_MAX_TEXT) : '',
+        captionContext: typeof plan.captionContext === 'string' ? plan.captionContext.trim().slice(0, VISUAL_PLANNER_MAX_TEXT) : ''
+    };
+}
+
 function createXkiroToolExecutor(ctx) {
     return async (name, args = {}) => {
         const { senderId, isOwner } = ctx;
@@ -130,6 +236,9 @@ function createXkiroToolExecutor(ctx) {
             return { ok: true, appearance: appearanceState.getAppearance(senderId) };
         }
         if (name === 'generate_character_image') {
+            if (!ctx.companionRenderAllowed) {
+                return { ok: false, error: 'Render tidak diizinkan untuk intent ini.' };
+            }
             const appearance = appearanceState.getAppearance(senderId);
             const queued = await renderAndSendCharacter({ ...ctx, provider: 'xkiro' }, appearance, args.reason || ctx.textClean);
             return { ok: queued, status: queued ? 'image_queued' : 'image_not_queued', reason: args.reason || null };
@@ -139,15 +248,19 @@ function createXkiroToolExecutor(ctx) {
 }
 
 async function handleXkiroCompanionFlow(ctx) {
-    const { provider, model, senderId, isOwner, textClean } = ctx;
-    if (provider !== 'xkiro') return false;
+    const { provider, model, senderId, isOwner, textClean, companionIntent, companionRenderAllowed, systemPrompt: providedSystemPrompt, moodContext } = ctx;
+    if (provider !== 'xkiro' || !companionIntent) return false;
     const appearanceContext = appearanceState.buildAppearanceContext(appearanceState.getAppearance(senderId));
-    const systemPrompt = `${getShirokoSystemPrompt(isOwner)}
+    const systemPrompt = `${providedSystemPrompt || getShirokoSystemPrompt(isOwner)}
 
 [NATIVE BOT TOOLS]
+Intent lokal yang sudah divalidasi: ${companionIntent}.
+Render diizinkan: ${companionRenderAllowed ? 'YA' : 'TIDAK'}.
+${moodContext || ''}
 Kamu terhubung langsung ke tool bot. Jangan menulis prompt gambar atau berpura-pura sudah mengirim gambar.
-Jika pengguna meminta melihat/membuat visual, panggil generate_character_image.
-Jika pengguna meminta perubahan penampilan, panggil update_appearance. Jika sekaligus meminta visual, panggil update_appearance lalu generate_character_image.
+Jangan panggil generate_character_image jika Render diizinkan bernilai TIDAK.
+Untuk intent perubahan penampilan, panggil update_appearance saja kecuali render diizinkan.
+Untuk intent permintaan visual, panggil generate_character_image.
 Gunakan get_current_appearance jika perlu mengetahui state penampilan saat ini.
 Gunakan reset_appearance jika pengguna meminta kembali ke penampilan default.
 Penampilan saat ini (referensi awal):
@@ -159,7 +272,9 @@ ${appearanceContext}`;
         model,
         systemPrompt,
         tools: XKIRO_COMPANION_TOOLS,
-        executeTool: createXkiroToolExecutor(ctx)
+        executeTool: createXkiroToolExecutor(ctx),
+        imageBuffer: ctx.chatImageBuffer,
+        imageMimeType: ctx.chatImageMime
     });
     await ctx.reply(result);
     return true;
@@ -328,7 +443,13 @@ Kembalikan respons JSON murni tanpa markdown:
 /**
  * Generate Roleplay Text Reply dari Shiroko (Menggunakan Memory Chat Normal)
  */
-async function generateShirokoRoleplayReply(promptContext, senderId, isOwner, userMode = 'gemini') {
+function resolveActiveSystemPrompt(senderId, isOwner, userMode) {
+    const core = getCoreNumber(senderId);
+    const customPrompt = appState.userSystemPrompt?.[senderId] || (core && appState.userSystemPrompt?.[core]);
+    return customPrompt || getShirokoSystemPrompt(isOwner);
+}
+
+async function generateShirokoRoleplayReply(promptContext, senderId, isOwner, userMode = 'gemini', systemPrompt = null) {
     const { provider, model } = AIProvider.resolveMode(userMode, senderId);
     try {
         const reply = await AIProvider.generate({
@@ -338,7 +459,7 @@ async function generateShirokoRoleplayReply(promptContext, senderId, isOwner, us
             senderId,
             isOwner,
             useMemory: true,
-            systemPrompt: getShirokoSystemPrompt(isOwner)
+            systemPrompt: systemPrompt || resolveActiveSystemPrompt(senderId, isOwner, userMode)
         });
         return reply;
     } catch (err) {
@@ -349,7 +470,7 @@ async function generateShirokoRoleplayReply(promptContext, senderId, isOwner, us
 /**
  * Render Karakter Shiroko via PixAI + Kirim Gambar + Balasan Roleplay Natural
  */
-async function renderAndSendCharacter(ctx, appearanceData, sceneContextText) {
+async function renderAndSendCharacter(ctx, appearanceData, sceneContextText, renderPrompt = '') {
     const { sock, from, msg, senderId, isOwner, reply, userMode, provider } = ctx;
 
     // Memotong limit 1 kali sebelum antrean gambar dibuat
@@ -368,7 +489,9 @@ async function renderAndSendCharacter(ctx, appearanceData, sceneContextText) {
 
     try {
         const promptTags = appearanceState.toPixaiPromptTags(appearanceData);
-        const fullPixaiPrompt = `${SHIROKO_CHARACTER_ANCHOR}, ${promptTags}, solo, looking at viewer, high quality, masterpiece`;
+        const extraRenderPrompt = typeof renderPrompt === 'string' ? renderPrompt.trim() : '';
+        const sceneContext = typeof sceneContextText === 'string' && sceneContextText.trim() ? sceneContextText.trim() : '';
+        const fullPixaiPrompt = `${SHIROKO_CHARACTER_ANCHOR}, ${promptTags}${sceneContext ? `, ${sceneContext}` : ''}${extraRenderPrompt ? `, ${extraRenderPrompt}` : ''}, solo, looking at viewer, high quality, masterpiece`;
 
         // Buat pesan roleplay pendamping gambar
         const roleplayContext = `[SISTEM ROLEPLAY]: Kamu baru saja mengubah penampilan/memakai pakaian ini: (${appearanceData.description || promptTags}). Responlah ucapan Sensei dengan sikap Shiroko yang kalem, agak malu-malu tapi senang. Sampaikan bahwa kamu sudah tampil dengan gaya ini untuknya.`;
@@ -411,6 +534,45 @@ async function handleCompanionFlow(ctx) {
     // setelah validasi dan pemotongan biaya model di commands/ai.js.
     if (provider !== 'arisu') return false;
     const hasImage = !!chatImageBuffer;
+
+    // Text-based visual requests use an isolated Arisu planner. This prevents
+    // the normal roleplay history from inventing or overwriting outfit fields.
+    const preliminaryIntent = !hasImage ? detectHeuristicIntent(textLower, false) : null;
+    const shouldUseVisualPlanner = preliminaryIntent && !['NORMAL_CHAT', 'OUTFIT_DISCUSSION', 'VISION_ANALYSIS'].includes(preliminaryIntent.intent);
+
+    if (shouldUseVisualPlanner) {
+        try {
+            const currentAppearance = appearanceState.getAppearance(senderId);
+            const plan = await createArisuVisualPlan({
+                text: textClean,
+                appearance: currentAppearance,
+                senderId,
+                isOwner,
+                model
+            });
+            const effectiveAppearance = mergeAppearancePatch(currentAppearance, plan.appearancePatch);
+
+            if (plan.persistAppearance && Object.keys(plan.appearancePatch).length > 0) {
+                appearanceState.setAppearance(senderId, plan.appearancePatch, { mode: 'merge' });
+            }
+
+                if (plan.render) {
+                await renderAndSendCharacter(ctx, effectiveAppearance, textClean, plan.renderPrompt);
+            } else {
+                const changeDescription = plan.captionContext || plan.appearancePatch.description || textClean;
+                const roleplayText = await generateShirokoRoleplayReply(
+                    `Sensei meminta penyesuaian penampilan: "${changeDescription}". Sampaikan respons natural sesuai state penampilan terbaru, tanpa menyebut sistem internal.`,
+                    senderId,
+                    isOwner,
+                    userMode
+                );
+                await reply(roleplayText);
+            }
+            return true;
+        } catch (error) {
+            console.warn(`[COMPANION] Arisu visual planner gagal, memakai flow lama: ${error.message}`);
+        }
+    }
 
     // Gunakan konteks provider aktif agar follow-up seperti "tunjukkan" tetap dipahami.
     const recentMessages = memory.getMessages(senderId, provider)

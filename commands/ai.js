@@ -459,12 +459,12 @@ async function handle(ctx) {
         const allowedModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'xkiro', 'xk', 'arisu', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
         
         const core = getCoreNumber(senderId);
-        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
+        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'xkiro';
         const currentMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || defaultMode;
         const currentOllama = state.userOllamaModel[senderId] || (core && state.userOllamaModel[core]) || state.ownerOllamaModel || 'gemma3:4b';
         const currentOR = state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || state.ownerOpenRouterModel || 'deepseek/deepseek-r1:free';
         const currentCF = state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || state.ownerCloudflareModel || '@cf/meta/llama-3-8b-instruct';
-        const currentXK = state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || state.ownerXKiroModel || 'deepseek/deepseek-v4-flash';
+        const currentXK = state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || (isOwner && state.ownerXKiroModel) || 'deepseek/deepseek-v4-flash';
 
         if (!args || !allowedModes.includes(args)) {
             let listModes = isOwner 
@@ -608,7 +608,7 @@ async function handle(ctx) {
     // ==========================================
     if (textLower.startsWith('!shiroko_pintar ')) {
         const core = getCoreNumber(senderId);
-        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
+        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'xkiro';
         const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
         const cost = 3;
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
@@ -686,6 +686,7 @@ async function handle(ctx) {
     // RADAR PENANGKAP GAMBAR & FILE UNTUK NGOBROL
     // ==========================================
     let chatImageBuffer = null;
+    let chatImageMime = null;
     let chatAudioBuffer = null;
     let chatAudioMime = 'audio/ogg';
     let extractedFileText = "";
@@ -713,6 +714,7 @@ async function handle(ctx) {
             if (messageToDownload) {
                 try {
                     chatImageBuffer = await downloadMediaBaileys(messageToDownload, 'image');
+                    chatImageMime = messageToDownload.mimetype || 'image/jpeg';
                     if (!pesanUser) pesanUser = "Nn... Tolong deskripsikan gambar ini dengan detail.";
                 } catch (e) {
                     console.error("Gagal download gambar chat:", e);
@@ -750,15 +752,23 @@ async function handle(ctx) {
 
         // Resolve mode sekali agar companion dan chat normal memakai mode yang sama.
         const core = getCoreNumber(senderId);
-        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
+        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'xkiro';
         const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
         const resolvedMode = AIProvider.resolveMode(userMode, senderId);
+
+        // Perbarui mood sebelum companion flow agar jalur visual tidak melewati state mood.
+        // Normal chat membaca flag ini supaya tidak melakukan update dua kali.
+        if (isOwner && pesanUser) {
+            moodState.updateFromResponse(pesanUser);
+            ctx.moodProcessed = true;
+        }
 
         // Companion legacy hanya untuk Arisu. xKiro memakai native tools
         // setelah biaya dan capability model divalidasi di bawah.
         const companionHandled = await companionService.handleCompanionFlow({
             ...ctx,
             chatImageBuffer,
+            chatImageMime,
             userMode,
             ...resolvedMode
         });
@@ -770,7 +780,7 @@ async function handle(ctx) {
     // ==========================================
     if (pemicuObrolan && (pesanUser || chatImageBuffer || chatAudioBuffer || extractedFileText)) {
         const core = getCoreNumber(senderId);
-        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'arisu-gemini';
+        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'xkiro';
         const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
         const { provider: costProvider, model: costModel } = AIProvider.resolveMode(userMode, senderId);
         const isPremium = hasActivePremium(senderId);
@@ -791,10 +801,6 @@ async function handle(ctx) {
             await reply(`Nn... ${access.reason}`);
             return true;
         }
-        if (costProvider === 'xkiro' && xkiroMetadata && xkiroMetadata.capabilities?.tools !== true) {
-            await reply('Nn... Model xKiro ini belum mendukung native tool calling. Pilih model lain yang memiliki capability tools.');
-            return true;
-        }
         const cost = access.cost;
         if (!Number.isInteger(cost) || cost < 0) {
             await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model Xkiro dari *!aimode xkiro*.');
@@ -803,19 +809,41 @@ async function handle(ctx) {
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
         if (costProvider === 'xkiro') {
-            try {
-                return await companionService.handleXkiroCompanionFlow({
-                    ...ctx,
-                    userMode,
-                    provider: costProvider,
-                    model: costModel
-                });
-            } catch (error) {
-                kembalikanLimit(senderId, cost);
-                console.error('🚨 xKiro Native Tool Error:', error);
-                await reply(`Nn... Terjadi kesalahan saat menjalankan aksi native xKiro:\n_${error.message}_`);
-                return true;
+            const companionIntent = companionService.detectHeuristicIntent(textLower, !!chatImageBuffer);
+            const visualIntent = companionIntent && !['NORMAL_CHAT', 'OUTFIT_DISCUSSION', 'VISION_ANALYSIS'].includes(companionIntent.intent);
+
+            if (visualIntent) {
+                if (!xkiroMetadata?.capabilities?.tools) {
+                    kembalikanLimit(senderId, cost);
+                    await reply('Nn... Model xKiro ini belum mendukung native tool calling untuk aksi visual. Pilih model lain yang memiliki capability tools.');
+                    return true;
+                }
+                const activePrompt = triggerType === 'shiroko'
+                    ? getShirokoSystemPrompt(isOwner)
+                    : (state.userSystemPrompt?.[senderId] || (core && state.userSystemPrompt?.[core])) || getShirokoSystemPrompt(isOwner);
+                try {
+                    return await companionService.handleXkiroCompanionFlow({
+                        ...ctx,
+                        userMode,
+                        provider: costProvider,
+                        model: costModel,
+                        companionIntent: companionIntent.intent,
+                        companionRenderAllowed: companionIntent.renderRequested,
+                        systemPrompt: activePrompt,
+                        chatImageBuffer,
+                        chatImageMime,
+                        moodContext: isOwner ? moodState.buildMoodContext() : ''
+                    });
+                } catch (error) {
+                    kembalikanLimit(senderId, cost);
+                    console.error('🚨 xKiro Native Tool Error:', error);
+                    await reply(`Nn... Terjadi kesalahan saat menjalankan aksi native xKiro:\n_${error.message}_`);
+                    return true;
+                }
             }
+
+            // Chat biasa/discussion/vision diteruskan ke jalur normal agar
+            // imageBuffer, memory, dan system prompt tetap diproses dengan benar.
         }
 
         try {
@@ -867,7 +895,7 @@ async function handle(ctx) {
                 moodInput = `${pesanUser} ${transcript}`.trim();
                 finalPrompt = `${pesanUser}\n\n[TRANSKRIP AUDIO USER]:\n${transcript.substring(0, 20000)}`;
             }
-            if (isOwner && moodInput) moodState.updateFromResponse(moodInput);
+            if (isOwner && moodInput && !ctx.moodProcessed) moodState.updateFromResponse(moodInput);
 
             const { incrementStat } = require('../config/database');
             incrementStat('aiRequests');
@@ -897,6 +925,7 @@ async function handle(ctx) {
                 isOwner,
                 systemPrompt: effectiveSystemPrompt,
                 imageBuffer: chatImageBuffer,
+                imageMimeType: chatImageMime,
                 useMemory: !extractedFileText
             });
 

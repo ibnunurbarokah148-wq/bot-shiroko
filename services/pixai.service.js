@@ -52,6 +52,36 @@ function parseLoras(prompt, options = {}) {
     return { cleanPrompt, loras };
 }
 
+function buildGenerationParameters(cleanPrompt, modelId, loras, options = {}) {
+    const steps = Number(options.steps || 20);
+    const width = Number(options.width || 720);
+    const height = Number(options.height || 1280);
+    const parameters = {
+        prompts: cleanPrompt,
+        negativePrompts: options.negativePrompts || process.env.PIXAI_NEGATIVE_PROMPT || 'worst quality, low quality, extra digits, bad anatomy',
+        samplingSteps: steps,
+        samplingMethod: options.samplingMethod || 'DPM++ 2M Karras',
+        cfgScale: Number(options.cfgScale || 6),
+        autoPublish: false,
+        priority: Number(options.priority || 1000),
+        width,
+        height,
+        clipSkip: Number(options.clipSkip || 2),
+        modelId,
+        controlNets: [],
+        extra: { ...(options.extra || {}) }
+    };
+
+    if (loras.length > 0) {
+        // Keep both forms: PixAI deployments have used top-level and extra LoRA fields.
+        // The task metadata lets us verify which form the current account accepted.
+        parameters.loras = loras;
+        parameters.extra.loras = loras;
+    }
+
+    return parameters;
+}
+
 /**
  * Membuat tugas generate gambar di PixAI.art dengan rotasi & failover Multi-Token
  * @param {string} prompt - Prompt teks (misal: "1girl, white hair, blue eyes")
@@ -97,17 +127,12 @@ async function createGenerationTask(prompt, options = {}) {
 
         // Attempt 1: GraphQL createGenerationTask (Sama dengan Web API PixAI)
         try {
-            const gqlParameters = {
-                prompts: cleanPrompt,
-                modelId: modelId,
-                steps: steps,
-                width: width,
-                height: height
-            };
-
-            if (loras.length > 0) {
-                gqlParameters.loras = loras;
-            }
+            const gqlParameters = buildGenerationParameters(cleanPrompt, modelId, loras, {
+                ...options,
+                steps,
+                width,
+                height
+            });
 
             const graphqlQuery = {
                 query: `
@@ -159,13 +184,14 @@ async function createGenerationTask(prompt, options = {}) {
         // Attempt 2: REST API v2 Fallback
         try {
             const payload = {
-                prompt: prompt,
+                prompt: cleanPrompt,
                 modelVersionId: modelId,
-                parameters: {
-                    width: width,
-                    height: height,
-                    steps: steps
-                }
+                parameters: buildGenerationParameters(cleanPrompt, modelId, loras, {
+                    ...options,
+                    steps,
+                    width,
+                    height
+                })
             };
 
             const res = await axios.post('https://api.pixai.art/v2/image/create', payload, {
@@ -215,13 +241,12 @@ async function createGenerationTask(prompt, options = {}) {
                         }
                     `,
                     variables: {
-                        parameters: {
-                            prompts: prompt,
-                            modelId: modelId,
-                            steps: steps,
-                            width: width,
-                            height: height
-                        }
+                        parameters: buildGenerationParameters(cleanPrompt, modelId, loras, {
+                            ...options,
+                            steps,
+                            width,
+                            height
+                        })
                     }
                 };
 
