@@ -173,13 +173,12 @@ ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset M
 *║* ➸ \`!tiktok [link]\` (Download Video/Audio)
 *║* ➸ \`!dengar / !transkrip\` (Reply VN ke Teks)
 *║*
-${isOwner ? `*╠═══「 AI CALL & MUSIC 」*
+*╠═══「 MUSIC CALL 」*
 *║* ➸ !play [URL YouTube / audio] (Langsung Telepon & Putar)
 *║* ➸ !pause / !resume
 *║* ➸ !skip / !stopmusic
 *║* ➸ !queue (Status Antrean Musik)
 *║*
-` : ''}
 *╠═══「 DATA INTEL 」*
 *║* ➸ \`!pixiv [query]\`
 *║* ➸ \`!waifu [nama]\`

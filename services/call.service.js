@@ -39,8 +39,8 @@ function startCall(number) {
     return request('post', '/call', { target: String(number || '').replace(/[^0-9+]/g, '') }, { timeout: 30000 });
 }
 
-function hangup() {
-    return request('post', '/hangup', {});
+function hangup(number) {
+    return request('post', '/hangup', { peer: String(number || '').replace(/[^0-9+]/g, '') });
 }
 
 function play(url) {
@@ -51,24 +51,24 @@ function startMusicCall(number, url) {
     return request('post', '/call/music', { target: String(number || '').replace(/[^0-9+]/g, ''), url }, { timeout: 210000 });
 }
 
-function pauseMusic() {
-    return request('post', '/music/pause', {});
+function pauseMusic(number) {
+    return request('post', '/music/pause', { peer: String(number || '').replace(/[^0-9+]/g, '') });
 }
 
-function resumeMusic() {
-    return request('post', '/music/resume', {});
+function resumeMusic(number) {
+    return request('post', '/music/resume', { peer: String(number || '').replace(/[^0-9+]/g, '') });
 }
 
-function skipMusic() {
-    return request('post', '/music/skip', {});
+function skipMusic(number) {
+    return request('post', '/music/skip', { peer: String(number || '').replace(/[^0-9+]/g, '') });
 }
 
-function stopMusic() {
-    return request('post', '/music/stop', {});
+function stopMusic(number) {
+    return request('post', '/music/stop', { peer: String(number || '').replace(/[^0-9+]/g, '') });
 }
 
-function musicQueue() {
-    return request('get', '/music/queue');
+function musicQueue(number) {
+    return request('get', '/music/queue', { peer: String(number || '').replace(/[^0-9+]/g, '') });
 }
 
 module.exports = { status, startCall, startMusicCall, hangup, play, pauseMusic, resumeMusic, skipMusic, stopMusic, musicQueue };

@@ -73,20 +73,21 @@ type server struct {
 	caller *meowcaller.Client
 	log    zerolog.Logger
 
-	mu          sync.Mutex
-	active      *meowcaller.Call
-	state       string
-	peer        string
-	startedAt   time.Time
-	endReason   string
-	ready       bool
-	processing  bool
-	musicOnly   bool
-	pcm         []int16
-	musicPlayer *meowcaller.Player
-	musicQueue  []musicItem
-	speechStart int
-	lastVoice   int
+	mu           sync.Mutex
+	active       *meowcaller.Call
+	state        string
+	peer         string
+	startedAt    time.Time
+	endReason    string
+	ready        bool
+	processing   bool
+	musicOnly    bool
+	pcm          []int16
+	musicPlayer  *meowcaller.Player
+	musicQueue   []musicItem
+	pendingCalls []pendingMusicCall
+	speechStart  int
+	lastVoice    int
 }
 
 type statusResponse struct {
@@ -108,6 +109,11 @@ type musicItem struct {
 	path   string
 	format string
 	url    string
+}
+
+type pendingMusicCall struct {
+	target string
+	item   musicItem
 }
 
 func main() {
@@ -396,8 +402,8 @@ func (s *server) musicCallHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := digits(req.Target)
-	if !s.isAllowed(target) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "target tidak ada dalam ID_OWNER"})
+	if target == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "target tidak valid"})
 		return
 	}
 	item, err := s.downloadMusic(r.Context(), req.URL)
@@ -407,6 +413,13 @@ func (s *server) musicCallHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	if s.active != nil {
+		if s.peer != target {
+			s.pendingCalls = append(s.pendingCalls, pendingMusicCall{target: target, item: item})
+			position := len(s.pendingCalls)
+			s.mu.Unlock()
+			writeJSON(w, http.StatusAccepted, map[string]any{"state": "queued_call", "position": position})
+			return
+		}
 		s.musicOnly = true
 		s.musicQueue = append(s.musicQueue, item)
 		position := len(s.musicQueue)
@@ -431,6 +444,29 @@ func (s *server) musicCallHandler(w http.ResponseWriter, r *http.Request) {
 	s.musicQueue = append(s.musicQueue, item)
 	s.mu.Unlock()
 	writeJSON(w, http.StatusAccepted, map[string]any{"state": "ringing", "position": 0})
+}
+
+func (s *server) startPendingMusicCall() {
+	s.mu.Lock()
+	if s.active != nil || len(s.pendingCalls) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	next := s.pendingCalls[0]
+	s.pendingCalls = s.pendingCalls[1:]
+	s.mu.Unlock()
+	call, err := s.caller.Call(s.ctx, "+"+next.target)
+	if err != nil {
+		_ = next.item.source.Close()
+		s.log.Warn().Err(err).Str("peer", next.target).Msg("queued music call failed")
+		go s.startPendingMusicCall()
+		return
+	}
+	s.attach(call, next.target, "ringing")
+	s.mu.Lock()
+	s.musicOnly = true
+	s.musicQueue = append(s.musicQueue, next.item)
+	s.mu.Unlock()
 }
 
 func (s *server) musicPlayHandler(w http.ResponseWriter, r *http.Request) {
@@ -464,6 +500,8 @@ func (s *server) musicPlayHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) musicPauseHandler(w http.ResponseWriter, _ *http.Request) {
+	// Music control is routed through the local secret and the active call owner is
+	// checked by the Node command layer.
 	s.mu.Lock()
 	player := s.musicPlayer
 	s.mu.Unlock()
@@ -969,6 +1007,7 @@ func (s *server) finish(call *meowcaller.Call, reason string) {
 		}
 	}
 	s.mu.Unlock()
+	go s.startPendingMusicCall()
 	if reason != "media_context_canceled" {
 		s.log.Info().Str("reason", reason).Msg("panggilan selesai")
 	}

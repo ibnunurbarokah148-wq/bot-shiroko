@@ -94,8 +94,8 @@ async function handle(ctx) {
     }
 
     if (textLower.startsWith('!play ')) {
-        if (!isOwner || isGroup) {
-            await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.');
+        if (isGroup) {
+            await reply('Nn... Music Call hanya tersedia melalui chat pribadi.');
             return true;
         }
         const musicUrl = textClean.substring(6).trim();
@@ -103,48 +103,54 @@ async function handle(ctx) {
             await reply('Nn... Masukkan URL YouTube atau direct audio .mp3, .wav, atau .opus.');
             return true;
         }
+        const musicCost = 4;
+        if (!cekDanPotongLimit(senderId, musicCost)) {
+            await reply(`Nn... Butuh ${musicCost} limit untuk memutar satu lagu.`);
+            return true;
+        }
         try {
             const callService = require('../services/call.service');
             const result = await callService.startMusicCall(callTarget, musicUrl);
-            await reply(`🎵 Nn... Musik masuk ke antrean call. Posisi: *${result.position === 0 ? 'sedang diputar' : result.position}*.`);
+            await reply(`🎵 Nn... Musik diterima (${musicCost} limit). Status: *${result.position === 0 ? 'sedang diputar' : `antrean call #${result.position}`}*.`);
         } catch (error) {
+            if (!isOwner) kembalikanLimit(senderId, musicCost);
             await reply(`Nn... Gagal memutar musik.\n_${error.message}_`);
         }
         return true;
     }
 
     if (['!pause', '!pausemusic'].includes(textLower)) {
-        if (!isOwner || isGroup) { await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.'); return true; }
-        try { await require('../services/call.service').pauseMusic(); await reply('⏸️ Musik call dijeda.'); }
+        if (isGroup) { await reply('Nn... Kontrol musik call hanya tersedia melalui chat pribadi.'); return true; }
+        try { await require('../services/call.service').pauseMusic(callTarget); await reply('⏸️ Musik call dijeda.'); }
         catch (error) { await reply(`Nn... Gagal menjeda musik.\n_${error.message}_`); }
         return true;
     }
 
     if (['!resume', '!resumemusic'].includes(textLower)) {
-        if (!isOwner || isGroup) { await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.'); return true; }
-        try { await require('../services/call.service').resumeMusic(); await reply('▶️ Musik call dilanjutkan.'); }
+        if (isGroup) { await reply('Nn... Kontrol musik call hanya tersedia melalui chat pribadi.'); return true; }
+        try { await require('../services/call.service').resumeMusic(callTarget); await reply('▶️ Musik call dilanjutkan.'); }
         catch (error) { await reply(`Nn... Gagal melanjutkan musik.\n_${error.message}_`); }
         return true;
     }
 
     if (textLower === '!skip') {
-        if (!isOwner || isGroup) { await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.'); return true; }
-        try { await require('../services/call.service').skipMusic(); await reply('⏭️ Musik dilewati.'); }
+        if (isGroup) { await reply('Nn... Kontrol musik call hanya tersedia melalui chat pribadi.'); return true; }
+        try { await require('../services/call.service').skipMusic(callTarget); await reply('⏭️ Musik dilewati.'); }
         catch (error) { await reply(`Nn... Gagal melewati musik.\n_${error.message}_`); }
         return true;
     }
 
     if (['!stopmusic', '!stop'].includes(textLower)) {
-        if (!isOwner || isGroup) { await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.'); return true; }
-        try { await require('../services/call.service').stopMusic(); await reply('⏹️ Musik call dihentikan dan antrean dikosongkan.'); }
+        if (isGroup) { await reply('Nn... Kontrol musik call hanya tersedia melalui chat pribadi.'); return true; }
+        try { await require('../services/call.service').stopMusic(callTarget); await reply('⏹️ Musik call dihentikan dan antrean dikosongkan.'); }
         catch (error) { await reply(`Nn... Gagal menghentikan musik.\n_${error.message}_`); }
         return true;
     }
 
     if (textLower === '!queue') {
-        if (!isOwner || isGroup) { await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.'); return true; }
+        if (isGroup) { await reply('Nn... Kontrol musik call hanya tersedia melalui chat pribadi.'); return true; }
         try {
-            const queue = await require('../services/call.service').musicQueue();
+            const queue = await require('../services/call.service').musicQueue(callTarget);
             await reply(`🎶 *MUSIC CALL*\n\n• Sedang diputar: *${queue.playing ? 'Ya' : 'Tidak'}*\n• Antrean berikutnya: *${queue.queued || 0}*`);
         } catch (error) { await reply(`Nn... Gagal mengambil antrean musik.\n_${error.message}_`); }
         return true;
