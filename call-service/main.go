@@ -77,6 +77,7 @@ type server struct {
 	state       string
 	peer        string
 	startedAt   time.Time
+	endReason   string
 	ready       bool
 	processing  bool
 	musicOnly   bool
@@ -374,6 +375,9 @@ func (s *server) callHandler(w http.ResponseWriter, r *http.Request) {
 func (s *server) hangupHandler(w http.ResponseWriter, _ *http.Request) {
 	s.mu.Lock()
 	call := s.active
+	if call != nil {
+		s.endReason = "local_hangup"
+	}
 	s.mu.Unlock()
 	if call != nil {
 		_ = call.Hangup()
@@ -733,6 +737,7 @@ func (s *server) handleIncoming(call *meowcaller.Call) {
 func (s *server) attach(call *meowcaller.Call, peer, state string) {
 	s.mu.Lock()
 	s.active, s.peer, s.state, s.startedAt = call, peer, state, time.Now()
+	s.endReason = ""
 	s.ready, s.processing, s.pcm = false, false, nil
 	s.speechStart, s.lastVoice = -1, -1
 	s.mu.Unlock()
@@ -759,6 +764,9 @@ func (s *server) attach(call *meowcaller.Call, peer, state string) {
 		case <-timer.C:
 			s.mu.Lock()
 			active := s.active == call
+			if active {
+				s.endReason = "timeout"
+			}
 			s.mu.Unlock()
 			if active {
 				_ = call.Hangup()
@@ -909,6 +917,16 @@ func (s *removeOnCloseSource) Close() error {
 func (s *server) finish(call *meowcaller.Call, reason string) {
 	s.mu.Lock()
 	if s.active == call {
+		if s.endReason != "" {
+			reason = s.endReason
+		}
+		if reason == "" || reason == "context canceled" {
+			reason = "media_context_canceled"
+		}
+		elapsed := time.Since(s.startedAt).Round(time.Second)
+		s.log.Warn().Str("reason", reason).Str("peer", s.peer).Dur("duration", elapsed).Msg("call ended")
+	}
+	if s.active == call {
 		player := s.musicPlayer
 		queued := s.musicQueue
 		s.musicPlayer = nil
@@ -916,6 +934,7 @@ func (s *server) finish(call *meowcaller.Call, reason string) {
 		s.active, s.peer, s.state = nil, "", "idle"
 		s.ready, s.processing, s.pcm = false, false, nil
 		s.musicOnly = false
+		s.endReason = ""
 		if player != nil {
 			player.Stop()
 		}
@@ -924,7 +943,9 @@ func (s *server) finish(call *meowcaller.Call, reason string) {
 		}
 	}
 	s.mu.Unlock()
-	s.log.Info().Str("reason", reason).Msg("panggilan selesai")
+	if reason != "media_context_canceled" {
+		s.log.Info().Str("reason", reason).Msg("panggilan selesai")
+	}
 }
 
 func (s *server) currentPeer(call *meowcaller.Call) string {
