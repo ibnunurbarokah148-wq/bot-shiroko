@@ -47,6 +47,10 @@ function play(url) {
     return request('post', '/music/play', { url }, { timeout: 75000 });
 }
 
+function startMusicCall(number, url) {
+    return request('post', '/call/music', { target: String(number || '').replace(/[^0-9+]/g, ''), url }, { timeout: 210000 });
+}
+
 function pauseMusic() {
     return request('post', '/music/pause', {});
 }
@@ -67,4 +71,4 @@ function musicQueue() {
     return request('get', '/music/queue');
 }
 
-module.exports = { status, startCall, hangup, play, pauseMusic, resumeMusic, skipMusic, stopMusic, musicQueue };
+module.exports = { status, startCall, startMusicCall, hangup, play, pauseMusic, resumeMusic, skipMusic, stopMusic, musicQueue };

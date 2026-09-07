@@ -104,7 +104,8 @@ async function handle(ctx) {
             return true;
         }
         try {
-            const result = await require('../services/call.service').play(musicUrl);
+            const callService = require('../services/call.service');
+            const result = await callService.startMusicCall(callTarget, musicUrl);
             await reply(`🎵 Nn... Musik masuk ke antrean call. Posisi: *${result.position === 0 ? 'sedang diputar' : result.position}*.`);
         } catch (error) {
             await reply(`Nn... Gagal memutar musik.\n_${error.message}_`);

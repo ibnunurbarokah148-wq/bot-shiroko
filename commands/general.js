@@ -174,7 +174,7 @@ ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset M
 *║* ➸ \`!dengar / !transkrip\` (Reply VN ke Teks)
 *║*
 ${isOwner ? `*╠═══「 AI CALL & MUSIC 」*
-*║* ➸ !play [URL YouTube / audio]
+*║* ➸ !play [URL YouTube / audio] (Langsung Telepon & Putar)
 *║* ➸ !pause / !resume
 *║* ➸ !skip / !stopmusic
 *║* ➸ !queue (Status Antrean Musik)

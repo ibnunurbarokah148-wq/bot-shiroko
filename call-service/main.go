@@ -79,6 +79,7 @@ type server struct {
 	startedAt   time.Time
 	ready       bool
 	processing  bool
+	musicOnly   bool
 	pcm         []int16
 	musicPlayer *meowcaller.Player
 	musicQueue  []musicItem
@@ -312,6 +313,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /health", s.auth(func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, http.StatusOK, map[string]bool{"ok": true}) }))
 	mux.HandleFunc("GET /status", s.auth(s.statusHandler))
 	mux.HandleFunc("POST /call", s.auth(s.callHandler))
+	mux.HandleFunc("POST /call/music", s.auth(s.musicCallHandler))
 	mux.HandleFunc("POST /hangup", s.auth(s.hangupHandler))
 	mux.HandleFunc("POST /music/play", s.auth(s.musicPlayHandler))
 	mux.HandleFunc("POST /music/pause", s.auth(s.musicPauseHandler))
@@ -377,6 +379,53 @@ func (s *server) hangupHandler(w http.ResponseWriter, _ *http.Request) {
 		_ = call.Hangup()
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *server) musicCallHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Target string `json:"target"`
+		URL    string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "JSON tidak valid"})
+		return
+	}
+	target := digits(req.Target)
+	if !s.isAllowed(target) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "target tidak ada dalam ID_OWNER"})
+		return
+	}
+	item, err := s.downloadMusic(r.Context(), req.URL)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	s.mu.Lock()
+	if s.active != nil {
+		s.musicOnly = true
+		s.musicQueue = append(s.musicQueue, item)
+		position := len(s.musicQueue)
+		if s.musicPlayer == nil && s.ready {
+			s.startNextMusicLocked()
+			position = 0
+		}
+		s.mu.Unlock()
+		writeJSON(w, http.StatusAccepted, map[string]any{"state": "active", "position": position})
+		return
+	}
+	s.mu.Unlock()
+	call, err := s.caller.Call(r.Context(), "+"+target)
+	if err != nil {
+		_ = item.source.Close()
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	s.attach(call, target, "ringing")
+	s.mu.Lock()
+	s.musicOnly = true
+	s.musicQueue = append(s.musicQueue, item)
+	s.mu.Unlock()
+	writeJSON(w, http.StatusAccepted, map[string]any{"state": "ringing", "position": 0})
 }
 
 func (s *server) musicPlayHandler(w http.ResponseWriter, r *http.Request) {
@@ -689,6 +738,9 @@ func (s *server) attach(call *meowcaller.Call, peer, state string) {
 		s.mu.Lock()
 		if s.active == call {
 			s.ready, s.state = true, "active"
+			if s.musicOnly && s.musicPlayer == nil {
+				s.startNextMusicLocked()
+			}
 		}
 		s.mu.Unlock()
 	})
@@ -714,7 +766,7 @@ func (s *server) attach(call *meowcaller.Call, peer, state string) {
 
 func (s *server) receiveFrame(call *meowcaller.Call, frame []float32) {
 	s.mu.Lock()
-	if s.active != call || !s.ready || s.processing {
+	if s.active != call || !s.ready || s.processing || s.musicOnly {
 		s.mu.Unlock()
 		return
 	}
@@ -859,6 +911,7 @@ func (s *server) finish(call *meowcaller.Call, reason string) {
 		s.musicQueue = nil
 		s.active, s.peer, s.state = nil, "", "idle"
 		s.ready, s.processing, s.pcm = false, false, nil
+		s.musicOnly = false
 		if player != nil {
 			player.Stop()
 		}
