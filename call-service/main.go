@@ -15,8 +15,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -52,6 +54,9 @@ type config struct {
 	pairMethod   string
 	pairPhone    string
 	pairDisplay  string
+	ytdlpPath    string
+	musicMaxMB   int
+	musicMaxDur  time.Duration
 	allowed      map[string]struct{}
 	turnSilence  time.Duration
 	minSpeech    time.Duration
@@ -170,6 +175,9 @@ func loadConfig() (config, error) {
 		pairMethod:   strings.ToLower(env("CALL_PAIRING_METHOD", "code")),
 		pairPhone:    digits(env("CALL_PAIRING_PHONE", os.Getenv("WA_PHONE_NUMBER"))),
 		pairDisplay:  env("CALL_PAIRING_DISPLAY_NAME", "Chrome (Linux)"),
+		ytdlpPath:    env("CALL_YTDLP_PATH", "yt-dlp"),
+		musicMaxMB:   intEnv("CALL_MUSIC_MAX_MB", 32),
+		musicMaxDur:  durationEnv("CALL_MUSIC_MAX_DURATION", 15*time.Minute),
 		allowed:      allowed,
 		turnSilence:  durationEnv("CALL_TURN_SILENCE", 1200*time.Millisecond),
 		minSpeech:    durationEnv("CALL_MIN_SPEECH", 700*time.Millisecond),
@@ -466,6 +474,9 @@ func (s *server) downloadMusic(ctx context.Context, rawURL string) (musicItem, e
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		return musicItem{}, errors.New("URL musik harus berupa http/https yang valid")
 	}
+	if isYouTubeHost(parsed.Hostname()) {
+		return s.downloadYouTube(ctx, parsed.String())
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		return musicItem{}, err
@@ -479,15 +490,16 @@ func (s *server) downloadMusic(ctx context.Context, rawURL string) (musicItem, e
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return musicItem{}, fmt.Errorf("download musik HTTP %d", response.StatusCode)
 	}
-	if response.ContentLength > 32<<20 {
-		return musicItem{}, errors.New("file musik terlalu besar; batas 32 MB")
+	maxBytes := int64(s.cfg.musicMaxMB) << 20
+	if response.ContentLength > maxBytes {
+		return musicItem{}, fmt.Errorf("file musik terlalu besar; batas %d MB", s.cfg.musicMaxMB)
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, 32<<20+1))
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxBytes+1))
 	if err != nil {
 		return musicItem{}, err
 	}
-	if len(data) > 32<<20 {
-		return musicItem{}, errors.New("file musik terlalu besar; batas 32 MB")
+	if int64(len(data)) > maxBytes {
+		return musicItem{}, fmt.Errorf("file musik terlalu besar; batas %d MB", s.cfg.musicMaxMB)
 	}
 	ext := strings.ToLower(filepath.Ext(parsed.Path))
 	if ext != ".mp3" && ext != ".wav" && ext != ".opus" {
@@ -511,6 +523,76 @@ func (s *server) downloadMusic(ctx context.Context, rawURL string) (musicItem, e
 		return musicItem{}, fmt.Errorf("decode musik gagal: %w", err)
 	}
 	return musicItem{source: &removeOnCloseSource{AudioSource: source, path: path}, path: path, format: strings.TrimPrefix(ext, "."), url: parsed.String()}, nil
+}
+
+func isYouTubeHost(host string) bool {
+	host = strings.ToLower(strings.TrimPrefix(host, "www."))
+	return host == "youtu.be" || host == "youtube.com" || strings.HasSuffix(host, ".youtube.com") || host == "music.youtube.com"
+}
+
+func (s *server) downloadYouTube(ctx context.Context, rawURL string) (musicItem, error) {
+	if _, err := exec.LookPath(s.cfg.ytdlpPath); err != nil {
+		return musicItem{}, fmt.Errorf("yt-dlp tidak ditemukan di %q; install dengan: pip install -U yt-dlp", s.cfg.ytdlpPath)
+	}
+	dir, err := os.MkdirTemp("", "shiroko-youtube-")
+	if err != nil {
+		return musicItem{}, err
+	}
+	defer os.RemoveAll(dir)
+	output := filepath.Join(dir, "audio.%(ext)s")
+	commandCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	args := []string{
+		"--no-playlist", "--no-warnings", "--restrict-filenames",
+		"--extract-audio", "--audio-format", "mp3", "--audio-quality", "0",
+		"--match-filter", fmt.Sprintf("duration <= %d", int(s.cfg.musicMaxDur.Seconds())),
+		"--max-filesize", fmt.Sprintf("%dM", s.cfg.musicMaxMB),
+		"--output", output, rawURL,
+	}
+	result := exec.CommandContext(commandCtx, s.cfg.ytdlpPath, args...)
+	result.Dir = dir
+	outputLog, err := result.CombinedOutput()
+	if err != nil {
+		if errors.Is(commandCtx.Err(), context.DeadlineExceeded) {
+			return musicItem{}, errors.New("download YouTube timeout")
+		}
+		message := strings.TrimSpace(string(outputLog))
+		if len(message) > 300 {
+			message = message[len(message)-300:]
+		}
+		return musicItem{}, fmt.Errorf("download YouTube gagal: %s", message)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return musicItem{}, err
+	}
+	var downloaded string
+	for _, entry := range entries {
+		if strings.HasSuffix(strings.ToLower(entry.Name()), ".mp3") {
+			downloaded = filepath.Join(dir, entry.Name())
+			break
+		}
+	}
+	if downloaded == "" {
+		return musicItem{}, errors.New("yt-dlp tidak menghasilkan file MP3")
+	}
+	path := filepath.Join(os.TempDir(), fmt.Sprintf("shiroko-youtube-%d.mp3", time.Now().UnixNano()))
+	data, err := os.ReadFile(downloaded)
+	if err != nil {
+		return musicItem{}, err
+	}
+	if int64(len(data)) > int64(s.cfg.musicMaxMB)<<20 {
+		return musicItem{}, fmt.Errorf("hasil YouTube terlalu besar; batas %d MB", s.cfg.musicMaxMB)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return musicItem{}, err
+	}
+	source, err := meowcaller.MP3File(path)
+	if err != nil {
+		_ = os.Remove(path)
+		return musicItem{}, fmt.Errorf("decode YouTube gagal: %w", err)
+	}
+	return musicItem{source: &removeOnCloseSource{AudioSource: source, path: path}, path: path, format: "mp3", url: rawURL}, nil
 }
 
 func (s *server) startNextMusicLocked() {
@@ -858,6 +940,14 @@ func durationEnv(key string, fallback time.Duration) time.Duration {
 		if parsed, err := time.ParseDuration(value); err == nil {
 			return parsed
 		}
+	}
+	return fallback
+}
+
+func intEnv(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+		return parsed
 	}
 	return fallback
 }

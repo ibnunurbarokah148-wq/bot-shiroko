@@ -100,7 +100,7 @@ async function handle(ctx) {
         }
         const musicUrl = textClean.substring(6).trim();
         if (!musicUrl) {
-            await reply('Nn... Masukkan URL direct audio .mp3, .wav, atau .opus.');
+            await reply('Nn... Masukkan URL YouTube atau direct audio .mp3, .wav, atau .opus.');
             return true;
         }
         try {
