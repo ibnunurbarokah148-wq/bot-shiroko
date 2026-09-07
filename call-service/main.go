@@ -595,7 +595,7 @@ func (s *server) downloadYouTube(ctx context.Context, rawURL string) (musicItem,
 	defer cancel()
 	args := []string{
 		"--no-playlist", "--no-warnings", "--no-progress", "--restrict-filenames",
-		"--extract-audio", "--audio-format", "mp3", "--audio-quality", "0",
+		"--format", "bestaudio/best", "--extract-audio", "--audio-format", "wav", "--audio-quality", "0",
 		"--match-filter", fmt.Sprintf("duration <= %d", int(s.cfg.musicMaxDur.Seconds())),
 		"--max-filesize", fmt.Sprintf("%dM", s.cfg.musicMaxMB),
 		"--print", "after_move:filepath",
@@ -671,7 +671,11 @@ func convertAudioFile(ctx context.Context, ffmpegPath, input, output string) err
 	if _, err := exec.LookPath(ffmpegPath); err != nil {
 		return fmt.Errorf("ffmpeg tidak ditemukan di %q", ffmpegPath)
 	}
-	command := exec.CommandContext(ctx, ffmpegPath, "-y", "-i", input, "-ac", "1", "-ar", "16000", "-f", "wav", output)
+	command := exec.CommandContext(ctx, ffmpegPath,
+		"-y", "-i", input,
+		"-af", "loudnorm=I=-16:TP=-1.5:LRA=11,alimiter=limit=0.95:attack=5:release=50",
+		"-ac", "1", "-ar", "16000", "-sample_fmt", "s16", "-f", "wav", output,
+	)
 	log, err := command.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(log))
