@@ -22,6 +22,11 @@ const { initPrayerScheduler } = require('./services/prayer.service');
 
 // Services (auto-init saat di-require: Pixiv login, AI memory cleanup)
 require('./services/pixiv.service');
+const { createCallAIBridge } = require('./services/call-ai-bridge.service');
+
+let activeSocket = null;
+let startInProgress = false;
+let reconnectTimer = null;
 
 // ==========================================
 // ERROR BOUNDARY GLOBAL (FIX #13)
@@ -37,6 +42,8 @@ process.on('uncaughtException', (err) => {
 // KONEKSI BAILEYS (HANYA KONEKSI WA)
 // ==========================================
 async function startBot() {
+    if (startInProgress || activeSocket) return;
+    startInProgress = true;
     const { state: authState, saveCreds } = await useMultiFileAuthState('./auth_session');
     
     // Fetch latest WA Web version untuk mencegah error 405 (Method Not Allowed).
@@ -66,6 +73,8 @@ async function startBot() {
         logger: pino({ level: 'silent' }),
         browser: ['Ubuntu', 'Chrome', '20.0.04']
     });
+    startInProgress = false;
+    activeSocket = sock;
 
     // Simpan ke module untuk akses dari services (ComfyUI, cron, express, dll)
     setSocket(sock);
@@ -102,12 +111,19 @@ async function startBot() {
         const { connection, lastDisconnect } = update;
 
         if (connection === 'close') {
+            if (activeSocket !== sock) return;
+            activeSocket = null;
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             console.log(`🔌 Koneksi terputus (kode: ${statusCode || 'unknown'}). Reconnect: ${shouldReconnect}`);
             if (shouldReconnect) {
                 // Delay reconnect 3 detik untuk menghindari loop terlalu cepat
-                setTimeout(() => startBot(), 3000);
+                if (!reconnectTimer) {
+                    reconnectTimer = setTimeout(() => {
+                        reconnectTimer = null;
+                        startBot().catch(error => console.error('[WA] Gagal reconnect:', error));
+                    }, 3000);
+                }
             } else {
                 console.log('Sesi telah logout. Hapus folder auth_session dan jalankan ulang.');
             }
@@ -397,6 +413,7 @@ const io = new Server(server, {
     cors: { origin: '*' }
 });
 global.io = io; // Jadikan global agar bisa diakses handler
+createCallAIBridge();
 
 io.on('connection', (socket) => {
     console.log('[WEBSOCKET] Client Web Dashboard terhubung:', socket.id);

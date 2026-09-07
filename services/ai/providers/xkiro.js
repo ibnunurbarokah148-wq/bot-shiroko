@@ -236,6 +236,93 @@ async function generateWithTools({ prompt, senderId, isOwner, model, systemPromp
     }
 }
 
+const XKIRO_TTS_FORMATS = new Set(['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm']);
+const XKIRO_TTS_MIME = Object.freeze({
+    mp3: 'audio/mpeg',
+    opus: 'audio/ogg',
+    aac: 'audio/aac',
+    flac: 'audio/flac',
+    wav: 'audio/wav',
+    pcm: 'audio/pcm'
+});
+
+async function textToSpeech(textInput, voice = process.env.XKIRO_TTS_VOICE || 'mexican-female', options = {}) {
+    const input = String(textInput || '').trim();
+    if (!input) throw new Error('Teks TTS xKiro tidak boleh kosong.');
+
+    const responseFormat = String(options.responseFormat || process.env.XKIRO_TTS_FORMAT || 'mp3').toLowerCase();
+    if (!XKIRO_TTS_FORMATS.has(responseFormat)) {
+        throw new Error(`Format TTS xKiro tidak didukung: ${responseFormat}`);
+    }
+
+    const payload = {
+        model: options.model || process.env.XKIRO_TTS_MODEL || 'xkiro-voice',
+        input,
+        voice,
+        response_format: responseFormat,
+        speed: Number(options.speed ?? process.env.XKIRO_TTS_SPEED ?? 1)
+    };
+    if (!Number.isFinite(payload.speed) || payload.speed < 0.25 || payload.speed > 4) {
+        throw new Error('Kecepatan TTS xKiro harus antara 0.25 sampai 4.0.');
+    }
+    if (options.pitch !== undefined) payload.pitch = Number(options.pitch);
+    if (options.volume !== undefined) payload.volume = Number(options.volume);
+    if (options.emotion) payload.emotion = String(options.emotion);
+
+    try {
+        const response = await axios.post('https://api.xkiro.com/v1/audio/speech', payload, {
+            headers: {
+                Authorization: `Bearer ${getRandomKey()}`,
+                'Content-Type': 'application/json',
+                Accept: XKIRO_TTS_MIME[responseFormat]
+            },
+            responseType: 'arraybuffer',
+            timeout: 95000,
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity
+        });
+        const buffer = Buffer.from(response.data);
+        if (!buffer.length) throw new Error('xKiro mengembalikan audio kosong.');
+        return { buffer, mime: XKIRO_TTS_MIME[responseFormat], format: responseFormat, voice: payload.voice };
+    } catch (error) {
+        let detail = error.message;
+        if (error.response?.data) {
+            try {
+                const parsed = JSON.parse(Buffer.from(error.response.data).toString('utf8'));
+                detail = parsed?.error?.message || parsed?.message || detail;
+            } catch {}
+        }
+        throw new Error(`xKiro TTS Error: ${detail}`);
+    }
+}
+
+function getConfiguredTTSVoices() {
+    const configured = String(process.env.XKIRO_TTS_VOICES || process.env.XKIRO_TTS_VOICE || 'mexican-female')
+        .split(',')
+        .map(id => id.trim())
+        .filter(Boolean);
+    return [...new Set(configured)].map(id => ({ id, name: id.replace(/[-_]+/g, ' '), desc: 'xKiro Voice' }));
+}
+
+async function fetchTTSVoices(filters = {}) {
+    const params = {};
+    for (const key of ['locale', 'languageKey', 'gender', 'isVip', 'q', 'offset', 'limit']) {
+        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') params[key] = filters[key];
+    }
+    const response = await axios.get('https://api.xkiro.com/v1/audio/voices', { params, timeout: 15000 });
+    const voices = response.data?.voices;
+    if (!Array.isArray(voices)) throw new Error('Daftar voice xKiro tidak valid.');
+    return voices.map(voice => ({
+        id: voice.id,
+        name: voice.name || voice.id,
+        locale: voice.locale || null,
+        languageKey: voice.languageKey || null,
+        gender: voice.gender || null,
+        isVip: voice.isVip === true,
+        desc: [voice.locale, voice.gender, voice.isVip ? 'VIP' : 'Standard'].filter(Boolean).join(' • ') || 'xKiro Voice'
+    }));
+}
+
 async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId }) {
     const apiKey = getRandomKey();
     const modelName = resolveXKiroModel({ model, senderId });
@@ -318,6 +405,9 @@ module.exports = {
     generate,
     generateWithTools,
     transcribe,
+    textToSpeech,
+    getConfiguredTTSVoices,
+    fetchTTSVoices,
     fetchModels,
     resolveXKiroModel,
     XKIRO_PREMIUM_MODELS,

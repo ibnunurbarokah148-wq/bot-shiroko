@@ -42,8 +42,112 @@ function formatXKiroModelLine(model, { isOwner, isPremium }) {
 }
 
 async function handle(ctx) {
-    const { sock, msg, normalizedMessage, from, senderId, isOwner, isGroup, textClean, textLower,
+    const { sock, msg, normalizedMessage, from, senderId, callTarget, isOwner, isGroup, textClean, textLower,
             msgType, isQuoted, quotedMsg, quotedType, reply, downloadMediaBaileys } = ctx;
+
+    if (textLower === '!callai' || textLower === '!telponai') {
+        if (!isOwner || isGroup) {
+            await reply('Nn... POC telepon AI sementara hanya tersedia untuk Owner melalui chat pribadi.');
+            return true;
+        }
+        try {
+            const callService = require('../services/call.service');
+            const target = callTarget;
+            if (!target) {
+                await reply('Nn... Nomor telepon akun ini belum bisa dipetakan dari LID WhatsApp. Simpan nomor tersebut di kontak utama lalu coba lagi.');
+                return true;
+            }
+            const result = await callService.startCall(target);
+            await reply(`Nn... Panggilan AI sedang dimulai. Status: *${result.state || 'ringing'}*.`);
+        } catch (error) {
+            await reply(`Nn... Gagal memulai panggilan AI.\n_${error.message}_`);
+        }
+        return true;
+    }
+
+    if (textLower === '!hangup' || textLower === '!tutuptelepon') {
+        if (!isOwner) {
+            await reply('Nn... Perintah ini hanya tersedia untuk Owner.');
+            return true;
+        }
+        try {
+            await require('../services/call.service').hangup();
+            await reply('Nn... Panggilan AI sudah diakhiri.');
+        } catch (error) {
+            await reply(`Nn... Gagal mengakhiri panggilan.\n_${error.message}_`);
+        }
+        return true;
+    }
+
+    if (textLower === '!callstatus') {
+        if (!isOwner) {
+            await reply('Nn... Status telepon hanya tersedia untuk Owner.');
+            return true;
+        }
+        try {
+            const status = await require('../services/call.service').status();
+            await reply(`☎️ *STATUS AI CALL*\n\n• Service: *${status.connected ? 'CONNECTED' : 'OFFLINE'}*\n• Login: *${status.loggedIn ? 'READY' : 'BELUM PAIRING'}*\n• Call: *${status.state || 'idle'}*\n• Peer: ${status.peer || '-'}`);
+        } catch (error) {
+            await reply(`Nn... Call service belum bisa dihubungi.\n_${error.message}_`);
+        }
+        return true;
+    }
+
+    if (textLower.startsWith('!play ')) {
+        if (!isOwner || isGroup) {
+            await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.');
+            return true;
+        }
+        const musicUrl = textClean.substring(6).trim();
+        if (!musicUrl) {
+            await reply('Nn... Masukkan URL direct audio .mp3, .wav, atau .opus.');
+            return true;
+        }
+        try {
+            const result = await require('../services/call.service').play(musicUrl);
+            await reply(`🎵 Nn... Musik masuk ke antrean call. Posisi: *${result.position === 0 ? 'sedang diputar' : result.position}*.`);
+        } catch (error) {
+            await reply(`Nn... Gagal memutar musik.\n_${error.message}_`);
+        }
+        return true;
+    }
+
+    if (['!pause', '!pausemusic'].includes(textLower)) {
+        if (!isOwner || isGroup) { await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.'); return true; }
+        try { await require('../services/call.service').pauseMusic(); await reply('⏸️ Musik call dijeda.'); }
+        catch (error) { await reply(`Nn... Gagal menjeda musik.\n_${error.message}_`); }
+        return true;
+    }
+
+    if (['!resume', '!resumemusic'].includes(textLower)) {
+        if (!isOwner || isGroup) { await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.'); return true; }
+        try { await require('../services/call.service').resumeMusic(); await reply('▶️ Musik call dilanjutkan.'); }
+        catch (error) { await reply(`Nn... Gagal melanjutkan musik.\n_${error.message}_`); }
+        return true;
+    }
+
+    if (textLower === '!skip') {
+        if (!isOwner || isGroup) { await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.'); return true; }
+        try { await require('../services/call.service').skipMusic(); await reply('⏭️ Musik dilewati.'); }
+        catch (error) { await reply(`Nn... Gagal melewati musik.\n_${error.message}_`); }
+        return true;
+    }
+
+    if (['!stopmusic', '!stop'].includes(textLower)) {
+        if (!isOwner || isGroup) { await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.'); return true; }
+        try { await require('../services/call.service').stopMusic(); await reply('⏹️ Musik call dihentikan dan antrean dikosongkan.'); }
+        catch (error) { await reply(`Nn... Gagal menghentikan musik.\n_${error.message}_`); }
+        return true;
+    }
+
+    if (textLower === '!queue') {
+        if (!isOwner || isGroup) { await reply('Nn... Kontrol musik call hanya tersedia untuk Owner melalui chat pribadi.'); return true; }
+        try {
+            const queue = await require('../services/call.service').musicQueue();
+            await reply(`🎶 *MUSIC CALL*\n\n• Sedang diputar: *${queue.playing ? 'Ya' : 'Tidak'}*\n• Antrean berikutnya: *${queue.queued || 0}*`);
+        } catch (error) { await reply(`Nn... Gagal mengambil antrean musik.\n_${error.message}_`); }
+        return true;
+    }
 
     if (textLower === '!mood') {
         if (!isOwner) {
@@ -979,7 +1083,7 @@ async function handle(ctx) {
 
         if (isOwner) moodState.resetMood();
 
-        await reply('Nn... *(Menggelengkan kepala)*. Shiroko sudah melupakan seluruh riwayat obrolan dan mereset sistem pengingat/alarm.');
+        await ctx.replyNow('Nn... *(Menggelengkan kepala)*. Shiroko sudah melupakan seluruh riwayat obrolan dan mereset sistem pengingat/alarm.');
         return true;
     }
 

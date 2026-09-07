@@ -23,3 +23,6 @@ MineflayerPython-main/
 __pycache__/
 *.pyc
 ecosystem.config.js
+call-service/wa-voip.db*
+call-service/pairing-qr.png
+call-service/call-service

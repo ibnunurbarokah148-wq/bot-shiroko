@@ -4,7 +4,8 @@
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 const { ID_OWNER } = require('../config/constants');
 const { getCoreNumber } = require('../config/db');
-const { cacheMessage, saveDeletedMessage, getLastDeletedMessage } = require('../config/cache');
+const { cacheMessage, getAlbumParentId, getMessageFromCache, getAlbumMessages, getImageMessage, saveDeletedMessage, getLastDeletedMessage } = require('../config/cache');
+const state = require('../config/state');
 
 // Command modules (urutan penting — AI harus terakhir karena punya catch-all chat)
 const alarm = require('../commands/alarm');
@@ -21,14 +22,39 @@ const data = require('../commands/data');
 const minecraft = require('../commands/minecraft');
 const group = require('../commands/group');
 const ai = require('../commands/ai');
+const memory = require('../services/ai/memory');
+
+const processedMessageIds = new Map();
+const MESSAGE_DEDUPE_TTL = 5 * 60 * 1000;
+
+function wasAlreadyProcessed(messageId) {
+    if (!messageId) return false;
+    const now = Date.now();
+    for (const [id, timestamp] of processedMessageIds) {
+        if (now - timestamp > MESSAGE_DEDUPE_TTL) processedMessageIds.delete(id);
+    }
+    if (processedMessageIds.has(messageId)) return true;
+    processedMessageIds.set(messageId, now);
+    return false;
+}
 
 function registerMessageHandler(sock, isJadibot = false) {
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
 
+        // Cache semua pesan dalam batch terlebih dahulu. Album dikirim sebagai
+        // beberapa pesan, termasuk pesan fromMe jika albumnya berasal dari bot.
+        for (const batchMessage of messages) {
+            if (batchMessage?.message) cacheMessage(batchMessage.key.remoteJid, batchMessage);
+        }
+
         const msg = messages[0];
         if (!msg || !msg.message) return;
         if (msg.key.fromMe) return;
+        if (wasAlreadyProcessed(msg.key.id)) {
+            console.log(`[MESSAGE] diabaikan: duplikat message ID ${msg.key.id}`);
+            return;
+        }
 
         const from = msg.key.remoteJid;
         const isGroup = from.endsWith('@g.us');
@@ -36,6 +62,27 @@ function registerMessageHandler(sock, isJadibot = false) {
         // Sub-bot (Jadibot) khusus untuk penggunaan Personal (PM/Japri), abaikan chat grup
         if (isJadibot && isGroup) return;
         const senderId = isGroup ? msg.key.participant : from;
+
+        // Baileys dapat menerima chat pribadi dengan remoteJid berbentuk LID.
+        // Call service membutuhkan nomor telepon, jadi prioritaskan JID alternatif
+        // lalu gunakan mapping LID bawaan Baileys sebagai fallback.
+        async function resolveCallTarget() {
+            const alternative = isGroup ? msg.key.participantAlt : msg.key.remoteJidAlt;
+            const alternativeNumber = String(alternative || '').split('@')[0].split(':')[0].replace(/\D/g, '');
+            if (alternativeNumber && !String(alternative || '').includes('@lid')) return alternativeNumber;
+
+            const rawSender = String(senderId || '');
+            if (!rawSender.includes('@lid') || !sock.signalRepository?.lidMapping?.getPNForLID) return alternativeNumber || null;
+            try {
+                const phoneJid = await sock.signalRepository.lidMapping.getPNForLID(rawSender);
+                return phoneJid ? String(phoneJid).split('@')[0].split(':')[0].replace(/\D/g, '') || null : null;
+            } catch (error) {
+                console.warn(`[CALL] Gagal resolve LID ${rawSender}: ${error.message}`);
+                return alternativeNumber || null;
+            }
+        }
+
+        const callTarget = await resolveCallTarget();
 
         // Buka wrapper pesan WhatsApp agar audio/image dalam ephemeral/view-once tetap terdeteksi.
         function unwrapMessage(message) {
@@ -59,8 +106,6 @@ function registerMessageHandler(sock, isJadibot = false) {
             if (protoMsg.type === 14 || protoMsg.type === 'REVOKE') {
                 saveDeletedMessage(from, protoMsg.key.id);
             }
-        } else {
-            cacheMessage(from, msg);
         }
 
         // Ekstrak teks dari berbagai tipe pesan
@@ -85,6 +130,11 @@ function registerMessageHandler(sock, isJadibot = false) {
         const isQuoted = !!contextInfo?.quotedMessage;
         const quotedMsg = contextInfo?.quotedMessage ? unwrapQuotedMessage(contextInfo.quotedMessage) : null;
         const quotedType = quotedMsg ? Object.keys(quotedMsg)[0] : null;
+
+        const repliedOriginal = contextInfo?.stanzaId ? getMessageFromCache(from, contextInfo.stanzaId) : null;
+        const albumParentId = getAlbumParentId(msg) || getAlbumParentId(quotedMsg) ||
+            getAlbumParentId(repliedOriginal) || null;
+        const albumMessages = albumParentId ? getAlbumMessages(from, albumParentId) : [];
 
         let quotedText = '';
         if (quotedMsg) {
@@ -117,24 +167,39 @@ function registerMessageHandler(sock, isJadibot = false) {
                     id: contextInfo?.stanzaId || msg.key.id
                 },
                 message: payload
-            } : { ...msg, message: payload };
+            } : (messageObj?.key ? { ...messageObj, message: payload } : { ...msg, message: payload });
             return downloadMediaMessage(sourceMessage, 'buffer', {});
         }
 
         // Helper function: reply ke pesan
-        const reply = async (teks) => {
+        const requestGeneration = memory.generation(senderId);
+        const replyNow = async (teks) => {
             await sock.sendMessage(from, { text: teks }, { quoted: msg });
+        };
+        const reply = async (teks) => {
+            if (!memory.isCurrent(senderId, requestGeneration)) {
+                console.log(`[MESSAGE] balasan dibuang: sesi ${senderId} sudah direset`);
+                return;
+            }
+            return replyNow(teks);
         };
 
         // Objek konteks yang dikirim ke semua handler
         const ctx = {
-            sock, msg, normalizedMessage, from, senderId, isOwner, isGroup,
+            sock, msg, normalizedMessage, from, senderId, callTarget, isOwner, isGroup,
             text: textClean, textClean, textLower, msgType,
             isQuoted, quotedMsg, quotedType, quotedText, quotedTextLower,
             quotedStanzaId: contextInfo?.stanzaId || null,
              quotedParticipant: contextInfo?.participant || null,
-             mentionedJid, reply, downloadMediaBaileys
+             mentionedJid, albumMessages, albumParentId, requestGeneration,
+             getImageMessage,
+             getAlbumMessagesForMessage: parentId => getAlbumMessages(from, parentId),
+             reply, replyNow, isRequestCurrent: () => memory.isCurrent(senderId, requestGeneration), downloadMediaBaileys
         };
+
+        // Anggota album dikirim sebagai event terpisah tanpa caption. Jangan
+        // biarkan event lanjutan jatuh ke handler AI ketika album sedang dicetak.
+        if (albumParentId && state.albumStikerProcessing?.[albumParentId] && !textClean) return;
 
         // AFK: auto-back saat chat biasa dan notifikasi mention/reply.
         if (isGroup) {

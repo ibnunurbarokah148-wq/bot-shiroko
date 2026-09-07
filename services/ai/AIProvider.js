@@ -157,6 +157,14 @@ function clearMemory(senderId) {
     return cleared;
 }
 
+function getMemoryGeneration(senderId) {
+    return memory.generation(senderId);
+}
+
+function isMemoryGenerationCurrent(senderId, generation) {
+    return memory.isCurrent(senderId, generation);
+}
+
 /**
  * Scan daftar model dari provider tertentu.
  * @param {string} provider - 'openrouter' | 'cloudflare' | 'xkiro'
@@ -200,12 +208,14 @@ async function generateImage(provider, prompt, model) {
  * @param {string} [model]
  * @returns {Promise<{buffer: Buffer, mime: string}>}
  */
-async function textToSpeech(provider, text, model) {
+async function textToSpeech(provider, text, model, options = {}) {
     switch (provider) {
         case 'cloudflare':
             return cloudflareProvider.textToSpeech(text, model);
         case 'arisu':
             return arisuProvider.textToSpeech(text, model);
+        case 'xkiro':
+            return xkiroProvider.textToSpeech(text, model, options);
         default:
             throw new Error(`textToSpeech tidak tersedia untuk provider: ${provider}`);
     }
@@ -236,6 +246,8 @@ async function fetchTTSModels(provider) {
             return cloudflareProvider.fetchTTSModels();
         case 'arisu':
             return arisuProvider.fetchTTSModels();
+        case 'xkiro':
+            return xkiroProvider.fetchTTSVoices();
         default:
             throw new Error(`fetchTTSModels tidak tersedia untuk provider: ${provider}`);
     }
@@ -248,6 +260,8 @@ module.exports = {
     getModelCost,
     validateModelAccess,
     clearMemory,
+    getMemoryGeneration,
+    isMemoryGenerationCurrent,
     fetchModels,
     generateImage,
     textToSpeech,

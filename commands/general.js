@@ -123,6 +123,10 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *║* ➸ !cekid (Cek ID WA & Role)
 *║* ➸ !bini / !mybini / !gantiwaifu (Pilih karakter waifu)
 *║* ➸ !waifustatus / !stopwaifu
+${isOwner ? `*║* ➸ !callai / !telponai (Mulai AI Call)
+*║* ➸ !callstatus (Status AI Call)
+*║* ➸ !hangup / !tutuptelepon (Akhiri AI Call)
+` : ''}
 ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset Mood Shiroko)\n` : ''}*║*
 *╠═══「 LMS & EVALUASI 」*
 *║* ➸ !reg_guru
@@ -169,6 +173,13 @@ ${isOwner ? `*║* ➸ !mood (Lihat Mood Shiroko)\n*║* ➸ !resetmood (Reset M
 *║* ➸ \`!tiktok [link]\` (Download Video/Audio)
 *║* ➸ \`!dengar / !transkrip\` (Reply VN ke Teks)
 *║*
+${isOwner ? `*╠═══「 AI CALL & MUSIC 」*
+*║* ➸ !play [URL .mp3/.wav/.opus]
+*║* ➸ !pause / !resume
+*║* ➸ !skip / !stopmusic
+*║* ➸ !queue (Status Antrean Musik)
+*║*
+` : ''}
 *╠═══「 DATA INTEL 」*
 *║* ➸ \`!pixiv [query]\`
 *║* ➸ \`!waifu [nama]\`

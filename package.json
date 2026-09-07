@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "node tests/smoke.test.js",
-    "start": "node index.js"
+    "start": "node index.js",
+    "call:build": "go build -C call-service -o call-service .",
+    "call:start": "./call-service/call-service"
   },
   "keywords": [],
   "author": "",
