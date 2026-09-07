@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -585,9 +586,34 @@ func isYouTubeHost(host string) bool {
 	return host == "youtu.be" || host == "youtube.com" || strings.HasSuffix(host, ".youtube.com") || host == "music.youtube.com"
 }
 
+func normalizeYouTubeURL(rawURL string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || !isYouTubeHost(parsed.Hostname()) {
+		return "", errors.New("URL bukan YouTube yang valid")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	pathParts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	videoID := parsed.Query().Get("v")
+	if host == "youtu.be" && len(pathParts) > 0 {
+		videoID = pathParts[0]
+	}
+	if videoID == "" && len(pathParts) >= 2 && (pathParts[0] == "shorts" || pathParts[0] == "live" || pathParts[0] == "embed" || pathParts[0] == "share") {
+		videoID = pathParts[1]
+	}
+	videoID = strings.TrimSpace(videoID)
+	if videoID == "" || !regexp.MustCompile(`^[A-Za-z0-9_-]{6,20}$`).MatchString(videoID) {
+		return "", errors.New("video ID YouTube tidak ditemukan dari link shared")
+	}
+	return "https://www.youtube.com/watch?v=" + url.QueryEscape(videoID), nil
+}
+
 func (s *server) downloadYouTube(ctx context.Context, rawURL string) (musicItem, error) {
 	if _, err := exec.LookPath(s.cfg.ytdlpPath); err != nil {
 		return musicItem{}, fmt.Errorf("yt-dlp tidak ditemukan di %q; install dengan: pip install -U yt-dlp", s.cfg.ytdlpPath)
+	}
+	canonicalURL, err := normalizeYouTubeURL(rawURL)
+	if err != nil {
+		return musicItem{}, err
 	}
 	dir, err := os.MkdirTemp("", "shiroko-youtube-")
 	if err != nil {
@@ -603,7 +629,7 @@ func (s *server) downloadYouTube(ctx context.Context, rawURL string) (musicItem,
 		"--match-filter", fmt.Sprintf("duration <= %d", int(s.cfg.musicMaxDur.Seconds())),
 		"--max-filesize", fmt.Sprintf("%dM", s.cfg.musicMaxMB),
 		"--print", "after_move:filepath",
-		"--output", output, rawURL,
+		"--output", output, canonicalURL,
 	}
 	result := exec.CommandContext(commandCtx, s.cfg.ytdlpPath, args...)
 	result.Dir = dir
@@ -663,7 +689,7 @@ func (s *server) downloadYouTube(ctx context.Context, rawURL string) (musicItem,
 		_ = os.Remove(path)
 		return musicItem{}, fmt.Errorf("decode YouTube gagal: %w", err)
 	}
-	return musicItem{source: &removeOnCloseSource{AudioSource: source, path: path}, path: path, format: "mp3", url: rawURL}, nil
+	return musicItem{source: &removeOnCloseSource{AudioSource: source, path: path}, path: path, format: "wav", url: canonicalURL}, nil
 }
 
 func fileExists(path string) bool {
