@@ -104,7 +104,7 @@ async function handle(ctx) {
             return true;
         }
         const musicCost = 4;
-        if (!cekDanPotongLimit(senderId, musicCost)) {
+        if (!isOwner && !cekDanPotongLimit(senderId, musicCost)) {
             await reply(`Nn... Butuh ${musicCost} limit untuk memutar satu lagu.`);
             return true;
         }
