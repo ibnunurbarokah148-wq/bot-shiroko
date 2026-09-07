@@ -55,6 +55,7 @@ type config struct {
 	pairPhone    string
 	pairDisplay  string
 	ytdlpPath    string
+	ffmpegPath   string
 	musicMaxMB   int
 	musicMaxDur  time.Duration
 	allowed      map[string]struct{}
@@ -176,6 +177,7 @@ func loadConfig() (config, error) {
 		pairPhone:    digits(env("CALL_PAIRING_PHONE", os.Getenv("WA_PHONE_NUMBER"))),
 		pairDisplay:  env("CALL_PAIRING_DISPLAY_NAME", "Chrome (Linux)"),
 		ytdlpPath:    env("CALL_YTDLP_PATH", "yt-dlp"),
+		ffmpegPath:   env("CALL_FFMPEG_PATH", "ffmpeg"),
 		musicMaxMB:   intEnv("CALL_MUSIC_MAX_MB", 32),
 		musicMaxDur:  durationEnv("CALL_MUSIC_MAX_DURATION", 15*time.Minute),
 		allowed:      allowed,
@@ -543,41 +545,57 @@ func (s *server) downloadYouTube(ctx context.Context, rawURL string) (musicItem,
 	commandCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 	args := []string{
-		"--no-playlist", "--no-warnings", "--restrict-filenames",
+		"--no-playlist", "--no-warnings", "--no-progress", "--restrict-filenames",
 		"--extract-audio", "--audio-format", "mp3", "--audio-quality", "0",
 		"--match-filter", fmt.Sprintf("duration <= %d", int(s.cfg.musicMaxDur.Seconds())),
 		"--max-filesize", fmt.Sprintf("%dM", s.cfg.musicMaxMB),
+		"--print", "after_move:filepath",
 		"--output", output, rawURL,
 	}
 	result := exec.CommandContext(commandCtx, s.cfg.ytdlpPath, args...)
 	result.Dir = dir
-	outputLog, err := result.CombinedOutput()
+	var stdout, stderr bytes.Buffer
+	result.Stdout = &stdout
+	result.Stderr = &stderr
+	err = result.Run()
 	if err != nil {
 		if errors.Is(commandCtx.Err(), context.DeadlineExceeded) {
 			return musicItem{}, errors.New("download YouTube timeout")
 		}
-		message := strings.TrimSpace(string(outputLog))
+		message := strings.TrimSpace(stderr.String())
 		if len(message) > 300 {
 			message = message[len(message)-300:]
 		}
 		return musicItem{}, fmt.Errorf("download YouTube gagal: %s", message)
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return musicItem{}, err
-	}
 	var downloaded string
-	for _, entry := range entries {
-		if strings.HasSuffix(strings.ToLower(entry.Name()), ".mp3") {
-			downloaded = filepath.Join(dir, entry.Name())
-			break
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && filepath.IsAbs(line) && fileExists(line) {
+			downloaded = line
 		}
 	}
 	if downloaded == "" {
-		return musicItem{}, errors.New("yt-dlp tidak menghasilkan file MP3")
+		entries, readErr := os.ReadDir(dir)
+		if readErr != nil {
+			return musicItem{}, readErr
+		}
+		for _, entry := range entries {
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if ext == ".mp3" || ext == ".wav" || ext == ".opus" || ext == ".webm" || ext == ".m4a" {
+				downloaded = filepath.Join(dir, entry.Name())
+				break
+			}
+		}
 	}
-	path := filepath.Join(os.TempDir(), fmt.Sprintf("shiroko-youtube-%d.mp3", time.Now().UnixNano()))
-	data, err := os.ReadFile(downloaded)
+	if downloaded == "" {
+		return musicItem{}, fmt.Errorf("yt-dlp tidak menghasilkan file audio (stdout=%q)", strings.TrimSpace(stdout.String()))
+	}
+	path := filepath.Join(os.TempDir(), fmt.Sprintf("shiroko-youtube-%d.wav", time.Now().UnixNano()))
+	if err := convertAudioFile(commandCtx, s.cfg.ffmpegPath, downloaded, path); err != nil {
+		return musicItem{}, fmt.Errorf("konversi audio YouTube gagal: %w", err)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return musicItem{}, err
 	}
@@ -587,12 +605,33 @@ func (s *server) downloadYouTube(ctx context.Context, rawURL string) (musicItem,
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		return musicItem{}, err
 	}
-	source, err := meowcaller.MP3File(path)
+	source, err := meowcaller.WAVFile(path)
 	if err != nil {
 		_ = os.Remove(path)
 		return musicItem{}, fmt.Errorf("decode YouTube gagal: %w", err)
 	}
 	return musicItem{source: &removeOnCloseSource{AudioSource: source, path: path}, path: path, format: "mp3", url: rawURL}, nil
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func convertAudioFile(ctx context.Context, ffmpegPath, input, output string) error {
+	if _, err := exec.LookPath(ffmpegPath); err != nil {
+		return fmt.Errorf("ffmpeg tidak ditemukan di %q", ffmpegPath)
+	}
+	command := exec.CommandContext(ctx, ffmpegPath, "-y", "-i", input, "-ac", "1", "-ar", "16000", "-f", "wav", output)
+	log, err := command.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(log))
+		if len(message) > 300 {
+			message = message[len(message)-300:]
+		}
+		return errors.New(message)
+	}
+	return nil
 }
 
 func (s *server) startNextMusicLocked() {
