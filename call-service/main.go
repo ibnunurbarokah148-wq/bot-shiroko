@@ -706,6 +706,9 @@ func (s *server) downloadYouTube(ctx context.Context, rawURL string) (musicItem,
 		}
 	}
 	if downloaded == "" {
+		if strings.Contains(strings.ToLower(stderr.String()), "duration") || strings.Contains(strings.ToLower(stderr.String()), "match filter") {
+			return musicItem{}, fmt.Errorf("video ditolak karena durasi melebihi batas %s", s.cfg.musicMaxDur)
+		}
 		return musicItem{}, fmt.Errorf("yt-dlp tidak menghasilkan file audio (stdout=%q)", strings.TrimSpace(stdout.String()))
 	}
 	path := filepath.Join(os.TempDir(), fmt.Sprintf("shiroko-youtube-%d.wav", time.Now().UnixNano()))
