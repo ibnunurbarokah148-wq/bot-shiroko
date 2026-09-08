@@ -47,6 +47,7 @@ function createCallAIBridge() {
             }
 
             callTurnsInFlight.add(peer);
+            const startedAt = Date.now();
             const sttProvider = process.env.CALL_STT_PROVIDER || 'gemini';
             const sttModel = process.env.CALL_STT_MODEL || 'gemini-2.5-flash';
             const aiProvider = process.env.CALL_AI_PROVIDER || 'gemini';
@@ -58,6 +59,7 @@ function createCallAIBridge() {
                 audioBuffer,
                 mimeType: 'audio/wav'
             });
+            console.log(`[CALL AI] STT selesai dalam ${Date.now() - startedAt}ms`);
             const cleanTranscript = String(transcript || '').trim().slice(0, MAX_TRANSCRIPT_CHARS);
             if (!cleanTranscript) throw new Error('Transkrip kosong.');
 
@@ -68,8 +70,9 @@ function createCallAIBridge() {
                 isOwner: true,
                 prompt: cleanTranscript,
                 systemPrompt: `${getShirokoSystemPrompt(true)}\n\n[MODE TELEPON]\nJawab dalam bahasa Indonesia yang natural dan ringkas. Maksimal 3 kalimat. Jangan memakai markdown, daftar, emoji, atau simbol dekoratif karena jawaban akan dibacakan.`,
-                useMemory: true
+                useMemory: false
             });
+            console.log(`[CALL AI] Gemini selesai dalam ${Date.now() - startedAt}ms`);
             const spokenText = String(answer || '').replace(/[*_`#>]/g, '').trim().slice(0, MAX_REPLY_CHARS);
             if (!spokenText) throw new Error('Jawaban AI kosong.');
 
@@ -89,6 +92,7 @@ function createCallAIBridge() {
                 console.warn(`[CALL AI] Fish Audio gagal, fallback ke xKiro: ${error.message}`);
                 tts = await AIProvider.textToSpeech('xkiro', spokenText, process.env.XKIRO_TTS_VOICE || 'mexican-female', { responseFormat: 'mp3' });
             }
+            console.log(`[CALL AI] TTS selesai dalam ${Date.now() - startedAt}ms provider=${ttsProvider}`);
             res.json({
                 transcript: cleanTranscript,
                 reply: spokenText,
