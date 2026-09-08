@@ -49,7 +49,8 @@ function createCallAIBridge() {
             callTurnsInFlight.add(peer);
             const sttProvider = process.env.CALL_STT_PROVIDER || 'gemini';
             const sttModel = process.env.CALL_STT_MODEL || 'gemini-2.5-flash';
-            const model = process.env.CALL_AI_MODEL || 'deepseek/deepseek-v4-flash';
+            const aiProvider = process.env.CALL_AI_PROVIDER || 'gemini';
+            const model = process.env.CALL_AI_MODEL || 'gemini-2.5-flash-lite';
             const transcript = await AIProvider.transcribe({
                 provider: sttProvider,
                 model: sttModel,
@@ -61,7 +62,7 @@ function createCallAIBridge() {
             if (!cleanTranscript) throw new Error('Transkrip kosong.');
 
             const answer = await AIProvider.generate({
-                provider: 'xkiro',
+                provider: aiProvider,
                 model,
                 senderId: `${peer}@s.whatsapp.net`,
                 isOwner: true,
