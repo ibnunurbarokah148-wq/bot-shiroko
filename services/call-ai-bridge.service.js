@@ -72,12 +72,22 @@ function createCallAIBridge() {
             const spokenText = String(answer || '').replace(/[*_`#>]/g, '').trim().slice(0, MAX_REPLY_CHARS);
             if (!spokenText) throw new Error('Jawaban AI kosong.');
 
-            const tts = await AIProvider.textToSpeech(
-                'xkiro',
-                spokenText,
-                process.env.XKIRO_TTS_VOICE || 'mexican-female',
-                { responseFormat: 'mp3' }
-            );
+            const ttsProvider = process.env.CALL_TTS_PROVIDER || (process.env.FISH_API_KEY && process.env.SHIROKO_VOICE_ID ? 'fish' : 'xkiro');
+            let tts;
+            try {
+                tts = await AIProvider.textToSpeech(
+                    ttsProvider,
+                    spokenText,
+                    ttsProvider === 'fish' ? process.env.SHIROKO_VOICE_ID : (process.env.XKIRO_TTS_VOICE || 'mexican-female'),
+                    ttsProvider === 'fish'
+                        ? { model: process.env.FISH_TTS_MODEL || 's2.1-pro-free', format: 'mp3' }
+                        : { responseFormat: 'mp3' }
+                );
+            } catch (error) {
+                if (ttsProvider !== 'fish') throw error;
+                console.warn(`[CALL AI] Fish Audio gagal, fallback ke xKiro: ${error.message}`);
+                tts = await AIProvider.textToSpeech('xkiro', spokenText, process.env.XKIRO_TTS_VOICE || 'mexican-female', { responseFormat: 'mp3' });
+            }
             res.json({
                 transcript: cleanTranscript,
                 reply: spokenText,

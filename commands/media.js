@@ -44,7 +44,8 @@ function watermarkSvg(width, height, options) {
 
 async function handle(ctx) {
     const { sock, msg, normalizedMessage, from, senderId, isOwner, textClean, textLower, msgType,
-            isQuoted, quotedMsg, quotedType, reply, downloadMediaBaileys } = ctx;
+            isQuoted, quotedMsg, quotedType, albumMessages, albumParentId,
+            getAlbumMessagesForMessage, getImageMessage, reply, downloadMediaBaileys } = ctx;
 
     // ==========================================
     // HANDLER !PIXAI (PIXAI.ART ANIME GENERATOR)
@@ -496,6 +497,7 @@ async function handle(ctx) {
         if (sesi.step === 1) {
             const { fetchCloudflareTTSModels } = require('../services/ai/providers/cloudflare');
             const { fetchTTSModels: fetchArisuTTSModels } = require('../services/ai/providers/arisu');
+            const { getConfiguredTTSVoices } = require('../services/ai/providers/xkiro');
 
             if (pilihan === '1' || pilihan === 'cloudflare') {
                 await reply('⏳ Nn... Memindai semua model suara dari Cloudflare Workers AI...');
@@ -525,6 +527,31 @@ async function handle(ctx) {
                 menuText += `Ketik *batal* untuk membatalkan.`;
 
                 await reply(menuText);
+                return true;
+
+            } else if (pilihan === '3' || pilihan === 'xkiro') {
+                const xkiroVoices = getConfiguredTTSVoices();
+                sesi.step = 2;
+                sesi.provider = 'xkiro';
+                sesi.models = xkiroVoices;
+
+                let menuText = `🎙️ *VOICE XKIRO*\n\nNn... Balas dengan angka untuk memilih voice (biaya 2 limit):\n\n`;
+                xkiroVoices.forEach((voice, i) => {
+                    menuText += `${i + 1}. *${voice.name}* (\`${voice.id}\`)\n`;
+                });
+                menuText += `\nKetik *batal* untuk membatalkan.`;
+                await reply(menuText);
+                return true;
+
+            } else if (pilihan === '4' || pilihan === 'fish') {
+                if (!process.env.FISH_API_KEY || !process.env.SHIROKO_VOICE_ID) {
+                    await reply('Nn... Fish Audio belum dikonfigurasi oleh Owner.');
+                    return true;
+                }
+                sesi.step = 2;
+                sesi.provider = 'fish';
+                sesi.models = [{ id: process.env.SHIROKO_VOICE_ID, name: 'Fish Audio Shiroko Voice', desc: 'Reference voice' }];
+                await reply('🎙️ *FISH AUDIO*\n\nBalas *1* untuk membuat audio dengan voice Shiroko.\nKetik *batal* untuk membatalkan.');
                 return true;
 
             } else if (pilihan === '2' || pilihan === 'arisu') {
@@ -557,7 +584,7 @@ async function handle(ctx) {
                 return true;
 
             } else {
-                await reply('Nn... Pilihan tidak valid. Balas dengan angka *1* (Cloudflare AI) atau *2* (ArisuSoft AI). Atau ketik *batal*.');
+                await reply('Nn... Pilihan tidak valid. Balas *1* (Cloudflare), *2* (ArisuSoft), *3* (xKiro), atau *4* (Fish Audio). Atau ketik *batal*.');
                 return true;
             }
         }
@@ -603,6 +630,14 @@ async function handle(ctx) {
                 } else if (sesi.provider === 'arisu') {
                     const { textToSpeech: textToSpeechArisu } = require('../services/ai/providers/arisu');
                     const res = await textToSpeechArisu(textTTS, chosenModel.id);
+                    buffer = res.buffer;
+                    mime = res.mime;
+                } else if (sesi.provider === 'xkiro') {
+                    const res = await AIProvider.textToSpeech('xkiro', textTTS, chosenModel.id, { responseFormat: 'mp3' });
+                    buffer = res.buffer;
+                    mime = res.mime;
+                } else if (sesi.provider === 'fish') {
+                    const res = await AIProvider.textToSpeech('fish', textTTS, chosenModel.id, { model: process.env.FISH_TTS_MODEL || 's2.1-pro-free', format: 'mp3' });
                     buffer = res.buffer;
                     mime = res.mime;
                 } else {
@@ -659,7 +694,9 @@ async function handle(ctx) {
         let menuText = `🎙️ *PILIH PROVIDER SUARA (TEXT-TO-SPEECH)*\n\n` +
             `Nn... Pilih Provider / Server Suara dengan membalas angka:\n\n` +
             `1️⃣ *Cloudflare Workers AI* ⚡ (Multi-Language & Realtime Voice)\n` +
-            `2️⃣ *ArisuSoft Satelit AI* 🛰️ (Bahasa Indonesia & Voicevox Anime JP)\n\n` +
+            `2️⃣ *ArisuSoft Satelit AI* 🛰️ (Bahasa Indonesia & Voicevox Anime JP)\n` +
+            `3️⃣ *xKiro Voice* (OpenAI-compatible TTS)\n` +
+            `${process.env.FISH_API_KEY && process.env.SHIROKO_VOICE_ID ? '4️⃣ *Fish Audio* (Reference Voice)\n' : ''}\n` +
             `Ketik *batal* untuk membatalkan.`;
 
         await reply(menuText);
@@ -893,47 +930,61 @@ async function handle(ctx) {
         const isQuotedImage = isQuoted && quotedType === 'imageMessage';
 
         if (isTargetImage || isQuotedImage) {
-            if (!cekDanPotongLimit(senderId)) { await reply('Nn... Token habis.'); return true; }
+            const albumKey = albumParentId || null;
+            if (albumKey) {
+                if (state.albumStikerProcessing[albumKey]) return true;
+                state.albumStikerProcessing[albumKey] = true;
+            }
+            if (!cekDanPotongLimit(senderId)) {
+                if (albumKey) delete state.albumStikerProcessing[albumKey];
+                await reply('Nn... Token habis.');
+                return true;
+            }
             try {
-                await reply('Nn... Sedang mencetak stiker di server lokal. Mohon tunggu...');
-                const messageToDownload = isQuotedImage ? quotedMsg.imageMessage : msg.message.imageMessage;
-                const mediaBuffer = await downloadMediaBaileys(messageToDownload, 'image');
-
                 const tempDir = path.join(__dirname, '..', 'temp');
                 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
-                const namaFile = `stiker_${Date.now()}`;
-                const tempInput = path.join(tempDir, `${namaFile}.jpg`);
-                const tempOutput = path.join(tempDir, `${namaFile}.webp`);
-
-                fs.writeFileSync(tempInput, mediaBuffer);
-
-                const command = `ffmpeg -i "${tempInput}" -vcodec libwebp -vf "scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000" -lossless 0 -qscale 50 -preset default -loop 0 -an -vsync 0 "${tempOutput}"`;
-
-                exec(command, async (err) => {
-                    if (err) {
-                        console.error('🚨 ERROR FFMPEG:', err);
-                        await reply('Nn... FFMPEG gagal memproses gambar. Pastikan modul ffmpeg benar-benar telah di instal.');
-                        if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput);
-                        return;
-                    }
-
+                let failed = 0;
+                // Beri waktu bagi event album lain yang datang berurutan untuk
+                // masuk cache sebelum foto-foto mulai diproses.
+                if (albumParentId) await new Promise(resolve => setTimeout(resolve, 1500));
+                const albumImages = (albumParentId ? getAlbumMessagesForMessage(albumParentId) : albumMessages)
+                    .filter(albumMessage => getImageMessage(albumMessage))
+                    .slice(0, 16);
+                const targets = albumImages.length > 1
+                    ? albumImages
+                    : [isQuotedImage ? quotedMsg : normalizedMessage];
+                await reply(targets.length > 1
+                    ? `Nn... Mencetak ${targets.length} foto album menjadi stiker. Mohon tunggu...`
+                    : 'Nn... Sedang mencetak stiker di server lokal. Mohon tunggu...');
+                for (const [index, target] of targets.entries()) {
+                    const mediaBuffer = await downloadMediaBaileys(getImageMessage(target) || target, 'image');
+                    const namaFile = `stiker_${Date.now()}_${index}`;
+                    const tempInput = path.join(tempDir, `${namaFile}.jpg`);
+                    const tempOutput = path.join(tempDir, `${namaFile}.webp`);
                     try {
+                        fs.writeFileSync(tempInput, mediaBuffer);
+                        const command = `ffmpeg -y -i "${tempInput}" -vcodec libwebp -vf "scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000" -lossless 0 -qscale 50 -preset default -loop 0 -an -vsync 0 "${tempOutput}"`;
+                        await new Promise((resolve, reject) => exec(command, (err, _stdout, stderr) => err ? reject(new Error(stderr || err.message)) : resolve()));
                         const webpBuffer = fs.readFileSync(tempOutput);
                         const stikerFinal = await tambahMetadataStiker(webpBuffer, "Dibuat oleh", "Bot Shiroko");
                         await sock.sendMessage(from, { sticker: stikerFinal }, { quoted: msg });
-                    } catch (sendErr) {
-                        console.error('🚨 ERROR KIRIM STIKER:', sendErr);
-                        await reply('Nn... Gagal mengirim stiker yang sudah jadi.');
+                    } catch (stickerError) {
+                        failed++;
+                        console.error(`🚨 ERROR STIKER #${index + 1}:`, stickerError.message);
                     } finally {
-                        if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput);
-                        if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput);
+                        for (const file of [tempInput, tempOutput]) {
+                            if (fs.existsSync(file)) fs.unlinkSync(file);
+                        }
                     }
-                });
+                }
+                if (failed > 0) await reply(`Nn... ${failed} foto gagal dicetak, tetapi stiker lainnya tetap dikirim.`);
 
             } catch (error) {
                 await reply('Nn... Terjadi kesalahan saat mengunduh gambar.');
                 console.error('ERROR STIKER:', error.message);
+            } finally {
+                if (albumKey) delete state.albumStikerProcessing[albumKey];
             }
         } else {
             await reply('Nn... Gambarnya mana, Sensei? Harus kirim atau reply gambar dengan caption *!stiker*.');

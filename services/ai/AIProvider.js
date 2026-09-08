@@ -8,6 +8,7 @@ const openrouterProvider = require('./providers/openrouter');
 const cloudflareProvider = require('./providers/cloudflare');
 const arisuProvider = require('./providers/arisu');
 const xkiroProvider = require('./providers/xkiro');
+const fishProvider = require('./providers/fish');
 const memory = require('./memory');
 const state = require('../../config/state');
 
@@ -216,6 +217,8 @@ async function textToSpeech(provider, text, model, options = {}) {
             return arisuProvider.textToSpeech(text, model);
         case 'xkiro':
             return xkiroProvider.textToSpeech(text, model, options);
+        case 'fish':
+            return fishProvider.textToSpeech(text, model, options);
         default:
             throw new Error(`textToSpeech tidak tersedia untuk provider: ${provider}`);
     }
@@ -248,6 +251,8 @@ async function fetchTTSModels(provider) {
             return arisuProvider.fetchTTSModels();
         case 'xkiro':
             return xkiroProvider.fetchTTSVoices();
+        case 'fish':
+            return [{ id: process.env.SHIROKO_VOICE_ID || 'configured-voice', name: 'Fish Audio Voice', desc: 'Reference voice' }];
         default:
             throw new Error(`fetchTTSModels tidak tersedia untuk provider: ${provider}`);
     }
