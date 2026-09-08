@@ -59,6 +59,7 @@ type config struct {
 	ffmpegPath   string
 	musicMaxMB   int
 	musicMaxDur  time.Duration
+	musicCallMax time.Duration
 	allowed      map[string]struct{}
 	turnSilence  time.Duration
 	minSpeech    time.Duration
@@ -189,6 +190,7 @@ func loadConfig() (config, error) {
 		ffmpegPath:   env("CALL_FFMPEG_PATH", "ffmpeg"),
 		musicMaxMB:   intEnv("CALL_MUSIC_MAX_MB", 32),
 		musicMaxDur:  durationEnv("CALL_MUSIC_MAX_DURATION", 15*time.Minute),
+		musicCallMax: durationEnv("CALL_MUSIC_MAX_CALL_DURATION", time.Hour),
 		allowed:      allowed,
 		turnSilence:  durationEnv("CALL_TURN_SILENCE", 1200*time.Millisecond),
 		minSpeech:    durationEnv("CALL_MIN_SPEECH", 700*time.Millisecond),
@@ -438,9 +440,11 @@ func (s *server) musicCallHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
-	s.attach(call, target, "ringing")
 	s.mu.Lock()
 	s.musicOnly = true
+	s.mu.Unlock()
+	s.attach(call, target, "ringing")
+	s.mu.Lock()
 	s.musicQueue = append(s.musicQueue, item)
 	s.mu.Unlock()
 	writeJSON(w, http.StatusAccepted, map[string]any{"state": "ringing", "position": 0})
@@ -462,9 +466,11 @@ func (s *server) startPendingMusicCall() {
 		go s.startPendingMusicCall()
 		return
 	}
-	s.attach(call, next.target, "ringing")
 	s.mu.Lock()
 	s.musicOnly = true
+	s.mu.Unlock()
+	s.attach(call, next.target, "ringing")
+	s.mu.Lock()
 	s.musicQueue = append(s.musicQueue, next.item)
 	s.mu.Unlock()
 }
@@ -825,7 +831,13 @@ func (s *server) attach(call *meowcaller.Call, peer, state string) {
 		s.log.Info().Int("phase", int(phase)).Str("peer", peer).Msg("call state")
 	})
 	go func() {
-		timer := time.NewTimer(s.cfg.maxCall)
+		s.mu.Lock()
+		callDuration := s.cfg.maxCall
+		if s.musicOnly {
+			callDuration = s.cfg.musicCallMax
+		}
+		s.mu.Unlock()
+		timer := time.NewTimer(callDuration)
 		defer timer.Stop()
 		select {
 		case <-timer.C:
