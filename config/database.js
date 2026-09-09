@@ -25,11 +25,23 @@ async function initDatabase() {
 
     const SQL = await initSqlJs();
 
-    // Load file database jika sudah ada
+    // Load file database jika sudah ada. Jika rusak, simpan backup agar startup
+    // tetap berjalan dan data lama masih dapat dipulihkan secara manual.
     if (fs.existsSync(DB_PATH)) {
         const fileBuffer = fs.readFileSync(DB_PATH);
-        db = new SQL.Database(fileBuffer);
-        console.log('[DATABASE] SQLite database dimuat dari file.');
+        const sqliteHeader = Buffer.from('SQLite format 3\u0000');
+        const hasValidHeader = fileBuffer.subarray(0, sqliteHeader.length).equals(sqliteHeader);
+        try {
+            if (!hasValidHeader) throw new Error('header SQLite tidak valid');
+            db = new SQL.Database(fileBuffer);
+            console.log('[DATABASE] SQLite database dimuat dari file.');
+        } catch (error) {
+            const corruptPath = `${DB_PATH}.corrupt-${Date.now()}`;
+            fs.renameSync(DB_PATH, corruptPath);
+            db = new SQL.Database();
+            console.warn(`[DATABASE] File database rusak (${error.message}). Backup: ${corruptPath}`);
+            console.log('[DATABASE] SQLite database baru dibuat.');
+        }
     } else {
         db = new SQL.Database();
         console.log('[DATABASE] SQLite database baru dibuat.');

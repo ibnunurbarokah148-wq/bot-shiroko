@@ -45,6 +45,7 @@ module.exports = {
     sesiModelGambar: {},
     sesiArisu: {},
     sesiTTS: {},
+    albumStikerProcessing: {},
 
     // Model AI Pilihan User
     userOpenRouterModel: {},

@@ -4,9 +4,67 @@
 // ==========================================
 const axios = require('axios');
 const https = require('https');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const ffmpegPath = require('ffmpeg-static');
+const { tambahMetadataStiker } = require('../utils/sticker');
 const state = require('../config/state');
 const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
 const { pixiv } = require('../services/pixiv.service');
+
+const execFileAsync = promisify(execFile);
+// ffmpeg-static belum menyediakan binary untuk sebagian arsitektur Termux.
+const ffmpegBinary = ffmpegPath || 'ffmpeg';
+
+async function downloadTikTokMedia(url, timeout = 60000) {
+    const response = await axios.get(url, {
+        responseType: 'arraybuffer',
+        timeout,
+        maxContentLength: 80 * 1024 * 1024,
+        maxBodyLength: 80 * 1024 * 1024,
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    return Buffer.from(response.data);
+}
+
+async function normalizeTikTokVideo(videoBuffer) {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shiroko-tiktok-'));
+    const inputPath = path.join(tempDir, 'input-video');
+    const outputPath = path.join(tempDir, 'output.mp4');
+    fs.writeFileSync(inputPath, videoBuffer);
+    try {
+        await execFileAsync(ffmpegBinary, [
+            '-y', '-i', inputPath,
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+            '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
+            outputPath
+        ], { timeout: 120000, maxBuffer: 1024 * 1024 });
+        return fs.readFileSync(outputPath);
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+}
+
+async function imageToSticker(imageBuffer) {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shiroko-sticker-'));
+    const inputPath = path.join(tempDir, 'input-image');
+    const outputPath = path.join(tempDir, 'output.webp');
+    fs.writeFileSync(inputPath, imageBuffer);
+    try {
+        await execFileAsync(ffmpegBinary, [
+            '-y', '-i', inputPath, '-vcodec', 'libwebp',
+            '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000',
+            '-lossless', '0', '-qscale', '50', '-preset', 'default', '-loop', '0', '-an', '-vsync', '0', outputPath
+        ], { timeout: 120000, maxBuffer: 1024 * 1024 });
+        return tambahMetadataStiker(fs.readFileSync(outputPath), 'Dibuat oleh', 'Bot Shiroko');
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+}
 
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, textClean, textLower, reply } = ctx;
@@ -32,22 +90,54 @@ async function handle(ctx) {
             try {
                 if (sesi.isImage) {
                     if (pilihan === '1') {
-                        await reply(`Nn... Mengirim ${data.images.length} gambar...`);
-                        for (let i = 0; i < data.images.length; i++) await sock.sendMessage(from, { image: { url: data.images[i] }, caption: `Gambar ${i + 1}/${data.images.length}` });
+                        const imageUrls = data.images.slice(0, 16);
+                        await reply(`Nn... Mengirim ${imageUrls.length} foto sebagai satu album...`);
+                        const imageBuffers = await Promise.all(imageUrls.map(imageUrl => downloadTikTokMedia(imageUrl)));
+                        const album = await sock.sendMessage(from, {
+                            album: { expectedImageCount: imageBuffers.length },
+                            caption: `Gambar TikTok (${imageBuffers.length} foto)`
+                        }, { quoted: msg });
+
+                        for (const [index, imageBuffer] of imageBuffers.entries()) {
+                            await sock.sendMessage(from, {
+                                image: imageBuffer,
+                                albumParentKey: album.key,
+                                ...(index === imageBuffers.length - 1 ? { caption: 'Nn... Semua foto sudah dikirim dalam satu album.' } : {})
+                            });
+                        }
                     }
-                    else if (pilihan === '2') { await reply('Nn... Mengamankan audio...'); await sock.sendMessage(from, { audio: { url: data.music }, mimetype: 'audio/mp4' }); }
-                    else if (!isNaN(pilihan) && parseInt(pilihan) >= 3 && parseInt(pilihan) <= (data.images.length + 2)) {
-                        const i = parseInt(pilihan) - 3;
+                    else if (pilihan === '2') {
+                        const imageUrls = data.images.slice(0, 16);
+                        await reply(`Nn... Mengubah ${imageUrls.length} foto menjadi stiker...`);
+                        const imageBuffers = await Promise.all(imageUrls.map(imageUrl => downloadTikTokMedia(imageUrl)));
+                        for (const imageBuffer of imageBuffers) {
+                            await sock.sendMessage(from, { sticker: await imageToSticker(imageBuffer) }, { quoted: msg });
+                        }
+                    }
+                    else if (pilihan === '3') { await reply('Nn... Mengamankan audio...'); await sock.sendMessage(from, { audio: { url: data.music }, mimetype: 'audio/mp4' }); }
+                    else if (!isNaN(pilihan) && parseInt(pilihan) >= 4 && parseInt(pilihan) <= (data.images.length + 3)) {
+                        const i = parseInt(pilihan) - 4;
                         await reply(`Nn... Mengamankan gambar urutan ke-${i + 1}...`);
                         await sock.sendMessage(from, { image: { url: data.images[i] } });
                     }
+                    else if (!isNaN(pilihan) && parseInt(pilihan) >= data.images.length + 4 && parseInt(pilihan) <= (data.images.length * 2 + 3)) {
+                        const i = parseInt(pilihan) - data.images.length - 4;
+                        await reply(`Nn... Mengubah gambar urutan ke-${i + 1} menjadi stiker...`);
+                        const imageBuffer = await downloadTikTokMedia(data.images[i]);
+                        await sock.sendMessage(from, { sticker: await imageToSticker(imageBuffer) }, { quoted: msg });
+                    }
                     else { await reply(`Nn... Pilihan tidak valid.`); return true; }
                 } else {
-                    if (pilihan === '1') { await reply('Nn... Mengirim video...'); await sock.sendMessage(from, { video: { url: data.play }, caption: 'Nn... Video tanpa watermark.' }); }
+                    if (pilihan === '1') {
+                        await reply('Nn... Mengamankan dan mengonversi video...');
+                        const video = await normalizeTikTokVideo(await downloadTikTokMedia(data.play));
+                        await sock.sendMessage(from, { video, mimetype: 'video/mp4', caption: 'Nn... Video tanpa watermark.' });
+                    }
                     else if (pilihan === '2') { await reply('Nn... Mengirim audio...'); await sock.sendMessage(from, { audio: { url: data.music }, mimetype: 'audio/mp4' }); }
                     else if (pilihan === '3') {
-                        await reply('Nn... Mengirim video dan audio...');
-                        await sock.sendMessage(from, { video: { url: data.play } });
+                        await reply('Nn... Mengamankan video dan audio...');
+                        const video = await normalizeTikTokVideo(await downloadTikTokMedia(data.play));
+                        await sock.sendMessage(from, { video, mimetype: 'video/mp4', caption: 'Nn... Video tanpa watermark.' });
                         await sock.sendMessage(from, { audio: { url: data.music }, mimetype: 'audio/mp4' });
                     }
                     else { await reply('Nn... Pilihan tidak valid. Pilih 1, 2, atau 3.'); return true; }
@@ -177,7 +267,7 @@ async function handle(ctx) {
 
         try {
             await reply('Nn... Menganalisis target...');
-            const response = await axios.get(`https://www.tikwm.com/api/?url=${url}`);
+            const response = await axios.get(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`, { timeout: 30000 });
             if (response.data.code === 0) {
                 const data = response.data.data;
                 const isImage = data.images && data.images.length > 0;
@@ -188,7 +278,8 @@ async function handle(ctx) {
 
                 state.sesiTikTok[senderId] = { isImage: isImage, data: data, timer: timeoutId };
 
-                let teks = `*Data Intel:* ${data.title || 'Tanpa Judul'}\n\nNn... Target adalah ${isImage ? 'gambar' : 'video'}. Pilih metode ekstraksi:\n1️⃣ *Semua Gambar/Video Saja*\n2️⃣ *Sound Saja*\n${isImage ? 'Atau ketik angka 3, 4, dst untuk ambil urutan gambar spesifik.' : '3️⃣ *Video & Sound*'}\n\n_Ketik *batal* membatalkan._`;
+                let teks = `*Data Intel:* ${data.title || 'Tanpa Judul'}\n\nNn... Target adalah ${isImage ? 'gambar' : 'video'}. Pilih metode ekstraksi:\n${isImage ? '1️⃣ *Semua gambar sebagai album*\n2️⃣ *Semua gambar jadi stiker*\n3️⃣ *Sound saja*\n4️⃣ dst. *Gambar nomor tertentu*\n' : '1️⃣ *Video saja*\n2️⃣ *Sound saja*\n3️⃣ *Video & sound*\n'}\n_Ketik *batal* membatalkan._`;
+                if (isImage) teks += `\nNomor stiker tertentu: *${data.images.length + 4}* sampai *${data.images.length * 2 + 3}*.\n`;
                 await reply(teks);
             } else { kembalikanLimit(senderId); await reply('Nn... Target tidak ditemukan.'); }
         } catch (error) { kembalikanLimit(senderId); await reply('Nn... Gagal menembus TikTok.'); }

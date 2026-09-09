@@ -12,6 +12,7 @@ class ChatMemory {
     constructor() {
         /** @type {Object<string, Object<string, {messages: Array, lastActive: number}>>} */
         this._store = {};
+        this._generations = {};
         // senderId -> { provider -> { messages, lastActive } }
 
         // Auto-cleanup tiap jam
@@ -32,6 +33,24 @@ class ChatMemory {
     _sharedKey(senderId) {
         const core = getCoreNumber(senderId) || senderId || 'global';
         return `${core}::shared`;
+    }
+
+    _generationKey(senderId) {
+        return getCoreNumber(senderId) || senderId || 'global';
+    }
+
+    generation(senderId) {
+        return this._generations[this._generationKey(senderId)] || 0;
+    }
+
+    isCurrent(senderId, generation) {
+        return this.generation(senderId) === generation;
+    }
+
+    invalidate(senderId) {
+        const key = this._generationKey(senderId);
+        this._generations[key] = this.generation(senderId) + 1;
+        return this._generations[key];
     }
 
     /**
@@ -163,6 +182,7 @@ class ChatMemory {
      * @returns {boolean} true jika ada yang dihapus
      */
     clearAll(senderId) {
+        this.invalidate(senderId);
         const core = getCoreNumber(senderId) || senderId;
         let found = false;
         for (const key of Object.keys(this._store)) {
