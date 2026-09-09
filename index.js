@@ -23,10 +23,19 @@ const { initPrayerScheduler } = require('./services/prayer.service');
 // Services (auto-init saat di-require: Pixiv login, AI memory cleanup)
 require('./services/pixiv.service');
 const { createCallAIBridge } = require('./services/call-ai-bridge.service');
+const { recordActivity, getRecentActivity, getActivitySeries } = require('./services/activity.service');
+const { isDiscordReady, getDiscordLatency } = require('./services/discord-status');
+const { getMinecraftStatus } = require('./services/minecraft');
 
 let activeSocket = null;
 let startInProgress = false;
 let reconnectTimer = null;
+let whatsappConnectionStatus = 'OFFLINE';
+let whatsappHeartbeatAt = 0;
+
+function emitServiceStatus() {
+    if (global.io) global.io.emit('service_status', { generatedAt: new Date().toISOString() });
+}
 
 // ==========================================
 // ERROR BOUNDARY GLOBAL (FIX #13)
@@ -75,6 +84,10 @@ async function startBot() {
     });
     startInProgress = false;
     activeSocket = sock;
+    whatsappConnectionStatus = 'CONNECTING';
+    whatsappHeartbeatAt = Date.now();
+    recordActivity({ platform: 'whatsapp', type: 'connection', message: 'WhatsApp Bot mencoba terhubung.' });
+    emitServiceStatus();
 
     // Simpan ke module untuk akses dari services (ComfyUI, cron, express, dll)
     setSocket(sock);
@@ -113,6 +126,10 @@ async function startBot() {
         if (connection === 'close') {
             if (activeSocket !== sock) return;
             activeSocket = null;
+            whatsappConnectionStatus = 'OFFLINE';
+            whatsappHeartbeatAt = Date.now();
+            recordActivity({ platform: 'whatsapp', type: 'connection', message: 'Koneksi WhatsApp terputus.' });
+            emitServiceStatus();
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             console.log(`🔌 Koneksi terputus (kode: ${statusCode || 'unknown'}). Reconnect: ${shouldReconnect}`);
@@ -128,6 +145,10 @@ async function startBot() {
                 console.log('Sesi telah logout. Hapus folder auth_session dan jalankan ulang.');
             }
         } else if (connection === 'open') {
+            whatsappConnectionStatus = 'ONLINE';
+            whatsappHeartbeatAt = Date.now();
+            recordActivity({ platform: 'whatsapp', type: 'connection', message: 'WhatsApp Bot berhasil terhubung.' });
+            emitServiceStatus();
             console.log('✅ Bot Shiroko terhubung ke WhatsApp!');
         }
     });
@@ -226,6 +247,7 @@ setInterval(async () => {
 
 // Endpoint API Dashboard Web Shiroko
 app.get('/api/dashboard', (req, res) => {
+    const requestStartedAt = Date.now();
     // Memberikan izin CORS agar web eksternal bisa mengakses
     res.setHeader('Access-Control-Allow-Origin', '*');
     
@@ -268,9 +290,14 @@ app.get('/api/dashboard', (req, res) => {
         commands: commandsCount
     };
     
+    const minecraftStatus = getMinecraftStatus();
+    const discordOnline = isDiscordReady();
+    const whatsappOnline = whatsappConnectionStatus === 'ONLINE' && Boolean(activeSocket);
     const services = [
-        { name: 'WhatsApp Bot', status: 'ONLINE', icon: 'fab fa-whatsapp' },
-        { name: 'Discord Bot', status: process.env.DISCORD_TOKEN ? 'ONLINE' : 'OFFLINE', icon: 'fab fa-discord' },
+        { id: 'whatsapp', name: 'WhatsApp Bot', status: whatsappOnline ? 'ONLINE' : whatsappConnectionStatus, icon: 'fab fa-whatsapp', latency: whatsappOnline ? Date.now() - whatsappHeartbeatAt : null, heartbeatAt: whatsappHeartbeatAt || null },
+        { id: 'discord', name: 'Discord Bot', status: discordOnline ? 'ONLINE' : 'OFFLINE', icon: 'fab fa-discord', latency: getDiscordLatency() },
+        { id: 'minecraft-bot', name: 'Minecraft Bot', status: minecraftStatus.status || 'OFFLINE', icon: 'fas fa-robot', latency: minecraftStatus.online && minecraftStatus.heartbeatAt ? Date.now() - minecraftStatus.heartbeatAt : null, heartbeatAt: minecraftStatus.heartbeatAt || null },
+        { id: 'minecraft-server', name: 'Server Minecraft', status: minecraftStatus.online ? 'ONLINE' : (minecraftStatus.status === 'CONNECTING' ? 'CONNECTING' : 'OFFLINE'), icon: 'fas fa-cube', latency: minecraftStatus.online && minecraftStatus.heartbeatAt ? Date.now() - minecraftStatus.heartbeatAt : null, heartbeatAt: minecraftStatus.heartbeatAt || null },
         { name: 'Google Gemini', status: process.env.GEMINI_API_KEY ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-brain' },
         { name: 'OpenRouter AI', status: process.env.OPENROUTER_API_KEY ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-network-wired' },
         { name: 'Cloudflare AI', status: process.env.CLOUDFLARE_API_TOKEN ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-cloud' },
@@ -280,7 +307,23 @@ app.get('/api/dashboard', (req, res) => {
         { name: 'Local AI (Ollama)', status: ollamaStatus || 'STANDBY', icon: 'fas fa-server' }
     ];
 
-    res.json({ stats, services });
+    const generatedAt = new Date().toISOString();
+    res.json({
+        stats,
+        services,
+        activity: getRecentActivity(6),
+        activitySeries: getActivitySeries(),
+        dataSource: 'live',
+        generatedAt,
+        updatedAt: generatedAt,
+        health: {
+            latency: Date.now() - requestStartedAt,
+            heartbeat: true,
+            whatsapp: whatsappOnline,
+            discord: discordOnline,
+            minecraft: minecraftStatus.online
+        }
+    });
 });
 
 // Endpoint untuk Control Panel (Dipanggil oleh Web Dashboard)

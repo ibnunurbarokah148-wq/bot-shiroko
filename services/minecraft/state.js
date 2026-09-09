@@ -4,6 +4,8 @@
 
 const state = {
     activeMcBot: null,
+    connectionStatus: 'OFFLINE',
+    lastHeartbeatAt: 0,
     autoReconnect: false,
     isLocal: false,
 

@@ -39,6 +39,11 @@ for (const character of WAIFU_CHARACTERS) {
 assert.deepStrictEqual(mediaQueue.getStatus(), { active: 0, queued: 0, maxActive: 2 }, 'Queue media harus kosong saat test dimulai.');
 
 const { parseJsonObject } = require('../services/ai/utils');
+const activity = require('../services/activity.service');
+const initialActivity = activity.recordActivity({ platform: 'whatsapp', type: 'test', message: 'Smoke test activity.' });
+assert.strictEqual(initialActivity.platform, 'whatsapp', 'Activity harus menormalisasi platform WhatsApp.');
+assert.strictEqual(activity.getRecentActivity(1)[0].message, 'Smoke test activity.', 'Ring buffer activity harus menyimpan event terbaru.');
+assert.strictEqual(activity.getActivitySeries().whatsapp.reduce((sum, value) => sum + value, 0), 1, 'Activity series WhatsApp harus menghitung event.');
 assert.deepStrictEqual(
     parseJsonObject('```json\n{"intent":"NORMAL_CHAT","renderRequested":false}\n```', 'test classifier'),
     { intent: 'NORMAL_CHAT', renderRequested: false },

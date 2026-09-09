@@ -23,6 +23,7 @@ const minecraft = require('../commands/minecraft');
 const group = require('../commands/group');
 const ai = require('../commands/ai');
 const memory = require('../services/ai/memory');
+const { recordActivity } = require('../services/activity.service');
 
 const processedMessageIds = new Map();
 const MESSAGE_DEDUPE_TTL = 5 * 60 * 1000;
@@ -62,6 +63,7 @@ function registerMessageHandler(sock, isJadibot = false) {
         // Sub-bot (Jadibot) khusus untuk penggunaan Personal (PM/Japri), abaikan chat grup
         if (isJadibot && isGroup) return;
         const senderId = isGroup ? msg.key.participant : from;
+        recordActivity({ platform: 'whatsapp', type: 'message', message: `Pesan WhatsApp dari ${msg.pushName || senderId || 'pengguna'}.` });
 
         // Baileys dapat menerima chat pribadi dengan remoteJid berbentuk LID.
         // Call service membutuhkan nomor telepon, jadi prioritaskan JID alternatif

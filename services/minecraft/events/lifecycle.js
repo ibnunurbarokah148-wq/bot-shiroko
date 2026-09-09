@@ -7,6 +7,7 @@ const { amankanBarangKePeti, tebangPohonDanAmbil, mulaiNambang, bergerakAcak, is
 const { getSocket } = require('../../../utils/socket');
 const { ID_OWNER } = require('../../../config/constants');
 const axios = require('axios');
+const { recordActivity } = require('../../activity.service');
 
 function setupLifecycleEvents(bot, createBotFn) {
 
@@ -80,6 +81,9 @@ function setupLifecycleEvents(bot, createBotFn) {
     });
 
     bot.on('spawn', () => {
+        state.connectionStatus = 'ONLINE';
+        state.lastHeartbeatAt = Date.now();
+        recordActivity({ platform: 'minecraft', type: 'connection', message: 'Minecraft Bot berhasil terhubung.' });
         bot.loadPlugin(hawkeye);
         const mcData = require('minecraft-data')(bot.version || '1.21.1');
         const movements = new Movements(bot, mcData);
@@ -325,10 +329,23 @@ function setupLifecycleEvents(bot, createBotFn) {
         }, 2500);
     });
 
-    bot.on('error', err => console.error("[ERROR] Bot:", err.message));
-    bot.on('kicked', reason => console.log("[WARN] Bot di-kick:", reason));
+    bot.on('error', err => {
+        state.connectionStatus = 'OFFLINE';
+        state.lastHeartbeatAt = Date.now();
+        recordActivity({ platform: 'minecraft', type: 'error', message: `Minecraft Bot error: ${err.message}` });
+        console.error("[ERROR] Bot:", err.message);
+    });
+    bot.on('kicked', reason => {
+        state.connectionStatus = 'OFFLINE';
+        state.lastHeartbeatAt = Date.now();
+        recordActivity({ platform: 'minecraft', type: 'connection', message: 'Minecraft Bot dikeluarkan dari server.' });
+        console.log("[WARN] Bot di-kick:", reason);
+    });
     
     bot.on('end', reason => {
+        state.connectionStatus = 'OFFLINE';
+        state.lastHeartbeatAt = Date.now();
+        recordActivity({ platform: 'minecraft', type: 'connection', message: 'Koneksi Minecraft terputus.' });
         console.log(`[INFO] Koneksi terputus. Reconnect: ${state.autoReconnect}`);
         clearAllIntervals();
         
@@ -344,6 +361,7 @@ function setupLifecycleEvents(bot, createBotFn) {
 
     let lastTimeCheck = 0;
     bot.on('time', async () => {
+        state.lastHeartbeatAt = Date.now();
         const sekarangMS = Date.now();
         if (sekarangMS - lastTimeCheck < 5000) return;
         lastTimeCheck = sekarangMS;

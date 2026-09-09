@@ -23,6 +23,9 @@ const client = new Client({
 // ==========================================
 const { pixiv } = require('./services/pixiv.service');
 const { upsert, incrementStat } = require('./config/database');
+const { setDiscordClient } = require('./services/discord-status');
+const { recordActivity } = require('./services/activity.service');
+setDiscordClient(client);
 
 // 2. KETIKA BOT ONLINE
 client.once(Events.ClientReady, async () => {
@@ -38,11 +41,14 @@ client.once(Events.ClientReady, async () => {
 
     updateDiscordUsersCount(); // Run once at startup
     setInterval(updateDiscordUsersCount, 60000); // And every minute
+    recordActivity({ platform: 'discord', type: 'connection', message: 'Discord Bot siap digunakan.' });
 });
 
 // 3. DETEKSI PESAN DARI USER
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
+
+    recordActivity({ platform: 'discord', type: 'message', message: `Pesan Discord dari ${message.author.username}.` });
 
     const lower = message.content.toLowerCase();
 
@@ -71,5 +77,4 @@ if (process.env.DISCORD_TOKEN && process.env.DISCORD_TOKEN.trim() && !process.en
 } else {
     console.log('ℹ️ [DISCORD] DISCORD_TOKEN tidak terpasang di .env. Fitur Discord nonaktif.');
 }
-
 

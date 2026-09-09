@@ -5,9 +5,13 @@ const { CONFIG } = require('./config');
 const { state, clearAllIntervals } = require('./state');
 const { setupLifecycleEvents } = require('./events/lifecycle');
 const { handleChat } = require('./events/chat');
+const { recordActivity } = require('../activity.service');
 
 function createBot() {
     state.autoReconnect = true;
+    state.connectionStatus = 'CONNECTING';
+    state.lastHeartbeatAt = Date.now();
+    recordActivity({ platform: 'minecraft', type: 'connection', message: 'Minecraft Bot mencoba terhubung.' });
     const targetHost = state.isLocal ? CONFIG.localHost : CONFIG.host;
     const targetPort = state.isLocal ? CONFIG.localPort : CONFIG.port;
 
@@ -24,13 +28,17 @@ function createBot() {
     bot.loadPlugin(pathfinder);
 
     // Setup lifecycle events (spawn, death, error, health, dll)
-    setupLifecycleEvents(bot, createBot);
+    setupLifecycleEvents(bot, () => {
+        state.activeMcBot = createBot();
+        return state.activeMcBot;
+    });
 
     // Setup Universal Chat Parser (Menangkap 'chat' standar + 'messagestr' untuk format kustom / versi baru 1.20+ / 1.21)
     const handledMsgTimestamps = new Map();
 
     async function processIncomingChat(username, message) {
         if (!username || !message) return;
+        recordActivity({ platform: 'minecraft', type: 'message', message: `Pesan Minecraft dari ${username}.` });
         const msgKey = `${username.toLowerCase()}:::${message.trim().toLowerCase()}`;
         const now = Date.now();
         if (handledMsgTimestamps.has(msgKey) && now - handledMsgTimestamps.get(msgKey) < 1500) {
@@ -91,6 +99,9 @@ function stopMcBot() {
         state.activeMcBot.quit();
     } catch(e) {}
     state.activeMcBot = null;
+    state.connectionStatus = 'OFFLINE';
+    state.lastHeartbeatAt = Date.now();
+    recordActivity({ platform: 'minecraft', type: 'connection', message: 'Minecraft Bot dihentikan.' });
     return true;
 }
 
@@ -99,13 +110,14 @@ function getMinecraftBot() {
 }
 
 function getMinecraftStatus() {
-    if (!state.activeMcBot || !state.activeMcBot.entity) {
-        return { online: false };
+    const bot = state.activeMcBot;
+    if (!bot || !bot.entity || state.connectionStatus !== 'ONLINE') {
+        return { online: false, status: state.connectionStatus, heartbeatAt: state.lastHeartbeatAt || null };
     }
-    const pos = state.activeMcBot.entity.position;
+    const pos = bot.entity.position;
     
     const invMap = {};
-    for (const item of state.activeMcBot.inventory.items()) {
+    for (const item of bot.inventory.items()) {
         invMap[item.name] = (invMap[item.name] || 0) + item.count;
     }
     const items = Object.entries(invMap).map(([name, count]) => `${name} x${count}`).join(', ') || 'Kosong';
@@ -115,11 +127,13 @@ function getMinecraftStatus() {
         isLocal: state.isLocal,
         host: state.isLocal ? CONFIG.localHost : CONFIG.host,
         port: state.isLocal ? CONFIG.localPort : CONFIG.port,
-        username: state.activeMcBot.username,
-        health: Math.round(state.activeMcBot.health),
-        food: Math.round(state.activeMcBot.food),
+        username: bot.username,
+        health: Math.round(bot.health),
+        food: Math.round(bot.food),
         position: { x: Math.round(pos.x), y: Math.round(pos.y), z: Math.round(pos.z) },
-        inventory: items
+        inventory: items,
+        status: state.connectionStatus,
+        heartbeatAt: state.lastHeartbeatAt || null
     };
 }
 
