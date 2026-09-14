@@ -34,6 +34,7 @@ module.exports = {
     sesiUjian: {},
     sesiMeme: {},
     sesiTopup: {},
+    sesiMybini: {},
     sesiPremium: {},
     sesiJadibot: {},
     sesiOllamaMode: {},

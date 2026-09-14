@@ -112,7 +112,7 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
     // Push pesan user ke ChatMemory (simpan ringkasan pesan)
     if (shouldKeepMemory) memory.push(senderId, PROVIDER_NAME, 'user', prompt || '[Gambar]');
 
-    const systemMessage = { role: 'system', content: instruction };
+    const systemMessage = { role: 'developer', content: instruction };
     const historyMessages = shouldKeepMemory ? memory.getMessages(senderId, PROVIDER_NAME) : [{ role: 'user', content: prompt || '[Gambar]' }];
 
     // Susun payload messages sesuai format OpenAI Chat Completions
@@ -178,7 +178,7 @@ async function generateWithTools({ prompt, senderId, isOwner, model, systemPromp
         { type: 'image_url', image_url: { url: `data:${imageMimeType || detectMimeType(imageBuffer, 'image')};base64,${imageBuffer.toString('base64')}` } }
     ] : (prompt || '');
     const messages = [
-        { role: 'system', content: instruction },
+        { role: 'developer', content: instruction },
         ...historyMessages,
         { role: 'user', content: userContent }
     ];

@@ -29,8 +29,9 @@ for (const file of files) {
 
 const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
 const mediaQueue = require('../services/media-queue.service');
-assert.strictEqual(WAIFU_CHARACTERS.length, 10, 'Roster waifu harus berisi 10 karakter.');
-assert.strictEqual(new Set(WAIFU_CHARACTERS.map(character => character.id)).size, 10, 'ID karakter waifu harus unik.');
+assert.strictEqual(WAIFU_CHARACTERS.length, 11, 'Roster waifu harus berisi 11 karakter.');
+assert.strictEqual(new Set(WAIFU_CHARACTERS.map(character => character.id)).size, 11, 'ID karakter waifu harus unik.');
+assert(WAIFU_CHARACTERS.some(character => character.id === 'mahiru_shiina'), 'Mahiru Shiina harus tersedia di roster waifu.');
 for (const character of WAIFU_CHARACTERS) {
     assert(/istri|suami|pasangan/i.test(character.prompt), `Persona ${character.id} belum memiliki konteks pasangan.`);
     assert(/sayang|suamiku/i.test(character.prompt), `Persona ${character.id} belum memiliki sapaan pasangan.`);
@@ -60,4 +61,4 @@ assert.throws(
     'Parser Companion harus menolak fallback teks provider tanpa memunculkan SyntaxError mentah.'
 );
 
-console.log(`Smoke test lulus: ${files.length} file JavaScript valid, roster 10 waifu, dan parser Companion valid.`);
+console.log(`Smoke test lulus: ${files.length} file JavaScript valid, roster 11 waifu, dan parser Companion valid.`);

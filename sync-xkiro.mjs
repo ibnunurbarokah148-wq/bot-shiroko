@@ -1,3 +1,5 @@
+
+import "dotenv/config";
 import fs from "fs";
 
 const API_KEY = process.env.XKIRO_API_KEY;

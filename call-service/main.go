@@ -659,7 +659,7 @@ func (s *server) downloadYouTube(ctx context.Context, rawURL string) (musicItem,
 	if err != nil {
 		return musicItem{}, err
 	}
-	dir, err := os.MkdirTemp("", "shiroko-youtube-")
+	dir, err := youtubeTempDir(s.cfg.ytdlpPath)
 	if err != nil {
 		return musicItem{}, err
 	}
@@ -737,6 +737,24 @@ func (s *server) downloadYouTube(ctx context.Context, rawURL string) (musicItem,
 		return musicItem{}, fmt.Errorf("decode YouTube gagal: %w", err)
 	}
 	return musicItem{source: &removeOnCloseSource{AudioSource: source, path: path}, path: path, format: "wav", url: canonicalURL}, nil
+}
+
+func youtubeTempDir(ytdlpPath string) (string, error) {
+	// Snap applications have a private /tmp. Use its shared home directory so
+	// yt-dlp and the Go process can access the same downloaded file.
+	if strings.HasPrefix(filepath.Clean(ytdlpPath), "/snap/bin/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		// /snap/bin/yt-dlp is a launcher; the snap name is yt-dlp.
+		sharedDir := filepath.Join(home, "snap", "yt-dlp", "common")
+		if err := os.MkdirAll(sharedDir, 0700); err != nil {
+			return "", err
+		}
+		return os.MkdirTemp(sharedDir, "shiroko-youtube-")
+	}
+	return os.MkdirTemp("", "shiroko-youtube-")
 }
 
 func fileExists(path string) bool {

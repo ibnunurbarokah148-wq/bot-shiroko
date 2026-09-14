@@ -64,10 +64,9 @@ async function chooseModelPaginated(promptMsg, models, prefix, label, userId) {
 
 module.exports = {
     handle: async (message, { client }) => {
-        const discordWaifuIds = ['shiroko', 'yae', 'furina', 'columbina', 'sandrone', 'miwa', 'kafka', 'hutao', 'cantarella', 'janedoe'];
-        const optionsWaifu = WAIFU_CHARACTERS.map((character, index) => new StringSelectMenuOptionBuilder()
+        const optionsWaifu = WAIFU_CHARACTERS.map(character => new StringSelectMenuOptionBuilder()
             .setLabel(`${character.name} (${character.franchise})`)
-            .setValue(`bini_${discordWaifuIds[index]}`));
+            .setValue(`bini_${character.id}`));
 
         const rowWaifu = new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder().setCustomId('select_waifu').setPlaceholder('Pilih karakter...').addOptions(optionsWaifu)
@@ -85,8 +84,7 @@ module.exports = {
             
 
             // Gunakan prompt registry WA sebagai sumber utama agar Discord dan WA konsisten.
-            const discordCharacterIds = { bini_shiroko: 'shiroko', bini_yae: 'yae_miko', bini_furina: 'furina', bini_columbina: 'columbina', bini_sandrone: 'sandrone', bini_miwa: 'miwa', bini_kafka: 'kafka', bini_hutao: 'hu_tao', bini_cantarella: 'cantarella', bini_janedoe: 'jane_doe' };
-            const registryCharacter = WAIFU_CHARACTERS.find(character => character.id === discordCharacterIds[chosenWaifu]);
+            const registryCharacter = WAIFU_CHARACTERS.find(character => `bini_${character.id}` === chosenWaifu);
             if (registryCharacter) { characterName = registryCharacter.name; systemInstruction = registryCharacter.prompt; }
 
             // Tahap 2: Pilih Provider / Model AI

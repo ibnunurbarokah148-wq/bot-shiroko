@@ -43,7 +43,7 @@ function formatXKiroModelLine(model, { isOwner, isPremium }) {
 
 async function handle(ctx) {
     const { sock, msg, normalizedMessage, from, senderId, callTarget, isOwner, isGroup, textClean, textLower,
-            msgType, isQuoted, quotedMsg, quotedType, reply, downloadMediaBaileys } = ctx;
+            msgType, isQuoted, quotedMsg, quotedType, reply, replyNow, downloadMediaBaileys } = ctx;
 
     if (textLower === '!callai' || textLower === '!telponai') {
         if (!isOwner || isGroup) {
@@ -180,15 +180,15 @@ async function handle(ctx) {
     // ==========================================
     // HANDLER SESI MILIH WAIFU (!mybini)
     // ==========================================
-    if (state.sesiWaifu && state.sesiWaifu[senderId]) {
+    if (state.sesiMybini && state.sesiMybini[senderId]) {
         const pilihan = textLower;
         if (pilihan === 'batal' || pilihan === 'cancel') {
-            delete state.sesiWaifu[senderId];
+            delete state.sesiMybini[senderId];
             await reply('Nn... Pemilihan istri dibatalkan.');
             return true;
         }
 
-        if (state.sesiWaifu[senderId].step === 1) {
+        if (state.sesiMybini[senderId].step === 1) {
             const num = parseInt(pilihan);
             if (isNaN(num) || num < 1 || num > WAIFU_CHARACTERS.length) {
                 await reply(`Nn... Angka tidak valid. Balas dengan angka 1-${WAIFU_CHARACTERS.length}, atau ketik *batal*.`);
@@ -196,56 +196,20 @@ async function handle(ctx) {
             }
 
             const chosen = WAIFU_CHARACTERS[num - 1];
-            state.sesiWaifu[senderId].character = chosen.name;
-            state.sesiWaifu[senderId].characterId = chosen.id;
-            state.sesiWaifu[senderId].prompt = chosen.prompt;
-            state.sesiWaifu[senderId].step = 2;
-
-            let teksModel = `Nn... Kamu memilih **${chosen.name}**. Sekarang pilih otak AI yang ingin digunakan:\n\n`;
-            teksModel += `1. Gemini (Cloud)\n`;
-            teksModel += `2. OpenRouter AI (Cloud)\n`;
-            teksModel += `3. Cloudflare Workers AI\n`;
-            teksModel += `4. Ollama (Lokal)\n`;
-            teksModel += `5. Deepseek V3.2 (Arisu)\n`;
-            teksModel += `6. Deepseek V4 Pro (Arisu)\n`;
-            teksModel += `7. GLM AI (Arisu)\n`;
-            teksModel += `8. Qwen AI (Arisu)\n`;
-            teksModel += `9. Gemini (Arisu)\n`;
-            teksModel += `10. GPT 5 Nano (Arisu)\n`;
-            teksModel += `11. Grok 4.1 (Arisu)\n`;
-            teksModel += `12. xKiro Multi-Model Gateway 🚀\n\n`;
-            teksModel += `Balas dengan angka (1-12) atau ketik *batal*.`;
-
-            await reply(teksModel);
-            return true;
-        }
-
-        if (state.sesiWaifu[senderId].step === 2) {
-            const num = parseInt(pilihan);
-            if (isNaN(num) || num < 1 || num > 12) {
-                await reply('Nn... Angka tidak valid. Balas dengan angka 1-12, atau ketik *batal*.');
-                return true;
-            }
-
-            const modelMap = {
-                1: 'gemini', 2: 'openrouter', 3: 'cloudflare', 4: 'ollama',
-                5: 'ds3', 6: 'ds4', 7: 'glm', 8: 'qwen', 9: 'arisu-gemini', 10: 'gpt', 11: 'grok', 12: 'xkiro'
-            };
-
-            const chosenModel = modelMap[num];
-            
-            const charName = state.sesiWaifu[senderId].character;
-            const characterId = state.sesiWaifu[senderId].characterId;
             const core = getCoreNumber(senderId);
+            const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'xkiro';
+            const chosenModel = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
+            const charName = chosen.name;
+            const characterId = chosen.id;
             state.userAIMode[senderId] = chosenModel;
             if (core) state.userAIMode[core] = chosenModel;
             db.setSetting('userAIMode', state.userAIMode);
             waifuService.activate(senderId, characterId);
-            delete state.sesiWaifu[senderId];
+            delete state.sesiMybini[senderId];
             AIProvider.clearMemory(senderId);
             if (core) AIProvider.clearMemory(core);
 
-            await reply(`✅ *MODE WAIFU (${charName}) AKTIF*\n\nDi PM, cukup chat biasa. Di grup, gunakan *!chat [pesan]*. Otak AI: *${chosenModel.toUpperCase()}*.`);
+            await replyNow(`✅ *MODE WAIFU (${charName}) AKTIF*\n\nDi PM, cukup chat biasa. Di grup, gunakan *!chat [pesan]*. Otak AI: *${chosenModel.toUpperCase()}*.`);
             return true;
         }
     }
@@ -461,8 +425,8 @@ async function handle(ctx) {
     // MY BINI / WAIFU MODE
     // ==========================================
     if (textLower === '!mybini' || textLower === '!waifu' || textLower === '!bini' || textLower === '!gantiwaifu') {
-        if (!state.sesiWaifu) state.sesiWaifu = {};
-        state.sesiWaifu[senderId] = { step: 1 };
+        if (!state.sesiMybini) state.sesiMybini = {};
+        state.sesiMybini[senderId] = { step: 1 };
         let teks = `💖 *PILIH KARAKTER WAIFU* 💖\n\nNn... Pilih teman ngobrolmu hari ini:\n\n`;
         WAIFU_CHARACTERS.forEach((character, index) => { teks += `${index + 1}. ${character.name} (${character.franchise})\n`; });
         teks += `\nBalas dengan angka (1-${WAIFU_CHARACTERS.length}) atau ketik *batal*.`;
@@ -478,8 +442,11 @@ async function handle(ctx) {
 
     if (textLower === '!stopwaifu') {
         waifuService.clear(senderId);
+        if (state.sesiMybini) delete state.sesiMybini[senderId];
         AIProvider.clearMemory(senderId);
-        await reply('Nn... Mode waifu dinonaktifkan. Persona default kembali aktif.');
+        const core = getCoreNumber(senderId);
+        if (core) AIProvider.clearMemory(core);
+        await replyNow('Nn... Mode waifu dinonaktifkan. Persona default kembali aktif.');
         return true;
     }
 
@@ -783,7 +750,7 @@ async function handle(ctx) {
         pesanUser = textClean.substring(6).trim();
     } else if (!isGroup) {
         const sedangSesiLain = state.sesiUjian[senderId] || state.sesiTikTok[senderId] ||
-            state.sesiKaryaIlmiah[senderId] || state.sesiPixiv[senderId] || state.sesiWaifu[senderId] ||
+            state.sesiKaryaIlmiah[senderId] || state.sesiPixiv[senderId] || state.sesiWaifu[senderId] || state.sesiMybini[senderId] ||
             state.sesiTopup[senderId] || state.sesiMeme[senderId] || state.sesiOllamaMode[senderId] ||
             state.sesiOpenRouterMode[senderId] || state.sesiCloudflareMode[senderId] ||
             state.sesiCabutRole[senderId] || state.sesiModelGambar[senderId];
