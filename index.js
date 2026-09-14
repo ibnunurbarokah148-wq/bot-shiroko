@@ -26,6 +26,9 @@ const { createCallAIBridge } = require('./services/call-ai-bridge.service');
 const { recordActivity, getRecentActivity, getActivitySeries } = require('./services/activity.service');
 const { isDiscordReady, getDiscordLatency } = require('./services/discord-status');
 const { getMinecraftStatus } = require('./services/minecraft');
+const { getServerStatus, startServerStatusMonitor } = require('./services/minecraft-server-status');
+
+startServerStatusMonitor();
 
 let activeSocket = null;
 let startInProgress = false;
@@ -291,13 +294,29 @@ app.get('/api/dashboard', (req, res) => {
     };
     
     const minecraftStatus = getMinecraftStatus();
+    const minecraftServer = getServerStatus();
     const discordOnline = isDiscordReady();
     const whatsappOnline = whatsappConnectionStatus === 'ONLINE' && Boolean(activeSocket);
     const services = [
         { id: 'whatsapp', name: 'WhatsApp Bot', status: whatsappOnline ? 'ONLINE' : whatsappConnectionStatus, icon: 'fab fa-whatsapp', latency: whatsappOnline ? Date.now() - whatsappHeartbeatAt : null, heartbeatAt: whatsappHeartbeatAt || null },
         { id: 'discord', name: 'Discord Bot', status: discordOnline ? 'ONLINE' : 'OFFLINE', icon: 'fab fa-discord', latency: getDiscordLatency() },
         { id: 'minecraft-bot', name: 'Minecraft Bot', status: minecraftStatus.status || 'OFFLINE', icon: 'fas fa-robot', latency: minecraftStatus.online && minecraftStatus.heartbeatAt ? Date.now() - minecraftStatus.heartbeatAt : null, heartbeatAt: minecraftStatus.heartbeatAt || null },
-        { id: 'minecraft-server', name: 'Server Minecraft', status: minecraftStatus.online ? 'ONLINE' : (minecraftStatus.status === 'CONNECTING' ? 'CONNECTING' : 'OFFLINE'), icon: 'fas fa-cube', latency: minecraftStatus.online && minecraftStatus.heartbeatAt ? Date.now() - minecraftStatus.heartbeatAt : null, heartbeatAt: minecraftStatus.heartbeatAt || null },
+        {
+            id: 'minecraft-server',
+            name: 'Server Minecraft',
+            status: minecraftServer.status || 'UNKNOWN',
+            icon: 'fas fa-cube',
+            latency: minecraftServer.latencyMs ?? null,
+            heartbeatAt: minecraftServer.checkedAt || null,
+            detail: minecraftServer.online && minecraftServer.players !== null
+                ? `${minecraftServer.players}/${minecraftServer.maxPlayers} pemain`
+                : null,
+            host: minecraftServer.host,
+            port: minecraftServer.port,
+            players: minecraftServer.players,
+            maxPlayers: minecraftServer.maxPlayers,
+            version: minecraftServer.version
+        },
         { name: 'Google Gemini', status: process.env.GEMINI_API_KEY ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-brain' },
         { name: 'OpenRouter AI', status: process.env.OPENROUTER_API_KEY ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-network-wired' },
         { name: 'Cloudflare AI', status: process.env.CLOUDFLARE_API_TOKEN ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-cloud' },
@@ -320,7 +339,8 @@ app.get('/api/dashboard', (req, res) => {
             heartbeat: true,
             whatsapp: whatsappOnline,
             discord: discordOnline,
-            minecraft: minecraftStatus.online
+            minecraftBot: minecraftStatus.online,
+            minecraftServer: minecraftServer.online
         }
     });
 });
@@ -352,90 +372,117 @@ app.post('/api/control', (req, res) => {
 });
 
 // ==========================================
-// PIXAI WEB AUTH HELPER (PIXIV-AUTH STYLE)
+// PIXAI WEB AUTH HELPER (HARDENED)
 // ==========================================
-global.authNonces = new Set(); // Simpan nonce aktif
+const pixaiWebAuth = require('./services/pixai-web-auth.service');
+
+const PIXAI_ALLOWED_ORIGINS = (process.env.PIXAI_ALLOWED_ORIGINS || 'https://pixai.art,https://www.pixai.art')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
+function applyPixaiCors(req, res) {
+    const origin = req.headers.origin;
+    if (origin && PIXAI_ALLOWED_ORIGINS.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+function clientKeyOf(req) {
+    return String(req.headers['x-forwarded-for'] || req.ip || 'unknown').split(',')[0].trim();
+}
+
+app.options('/api/save-pixai-token', (req, res) => {
+    applyPixaiCors(req, res);
+    res.status(204).end();
+});
 
 app.post('/api/save-pixai-token', async (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    applyPixaiCors(req, res);
 
-    const { token, nonce } = req.body;
-    if (!token || !token.trim()) {
+    const { token, nonce } = req.body || {};
+    if (!token || typeof token !== 'string' || !token.trim()) {
         return res.status(400).json({ status: 'error', message: 'Token tidak boleh kosong.' });
     }
-
-    // Validasi Nonce (Wajib ada untuk mencegah sharing bookmarklet)
-    if (!nonce) {
-        return res.status(400).json({ status: 'error', message: '❌ Kode keamanan (Nonce) tidak ditemukan. Harap generate ulang Bookmarklet.' });
+    if (!nonce || typeof nonce !== 'string') {
+        return res.status(400).json({ status: 'error', message: 'Kode keamanan (Nonce) tidak ditemukan. Harap generate ulang Bookmarklet.' });
     }
 
-    if (global.authNonces) {
-        if (!global.authNonces.has(nonce)) {
-            return res.status(403).json({ status: 'error', message: '❌ Sesi Kode Kadaluarsa atau Sudah Terpakai! Harap generate ulang Bookmarklet di Web Shiroko.' });
-        }
-        // Hapus nonce agar hanya bisa 1x pakai
-        global.authNonces.delete(nonce);
+    const verdict = pixaiWebAuth.consumeNonce(nonce, clientKeyOf(req));
+    if (!verdict.ok) {
+        const message = verdict.reason === 'RATE_LIMITED'
+            ? 'Terlalu banyak percobaan gagal. Coba lagi beberapa menit lagi.'
+            : 'Sesi kode kedaluwarsa atau sudah terpakai. Harap generate ulang Bookmarklet di Web Shiroko.';
+        return res.status(verdict.reason === 'RATE_LIMITED' ? 429 : 403).json({ status: 'error', message });
     }
 
     try {
         const pixaiAuth = require('./pixai-auth');
         const cleanToken = token.trim();
-        pixaiAuth.addTokenToEnv(cleanToken);
 
         const payload = pixaiAuth.decodeJwt(cleanToken);
-        let diffDays = 'N/A';
-        if (payload?.exp) {
-            diffDays = ((new Date(payload.exp * 1000) - new Date()) / (1000 * 60 * 60 * 24)).toFixed(1);
+        if (!payload || !(payload.sub || payload.user_id)) {
+            return res.status(400).json({ status: 'error', message: 'Token bukan JWT PixAI yang valid.' });
+        }
+        if (payload.exp && payload.exp * 1000 <= Date.now()) {
+            return res.status(400).json({ status: 'error', message: 'Token sudah kedaluwarsa.' });
         }
 
-        // Kirim notifikasi ke WA Owner
+        pixaiAuth.addTokenToEnv(cleanToken);
+
+        const diffDays = payload.exp
+            ? ((new Date(payload.exp * 1000) - new Date()) / (1000 * 60 * 60 * 24)).toFixed(1)
+            : 'N/A';
+
+        // Kirim notifikasi ke pemilik OTP (bukan broadcast ke owner saja)
         try {
             const sock = getSocket();
             const targetOwner = Array.isArray(ID_OWNER) ? ID_OWNER[0] : ID_OWNER;
-            if (sock && targetOwner) {
-                await sock.sendMessage(`${targetOwner}@s.whatsapp.net`, {
-                    text: `🎉 *[ TOKEN PIXAI BARU TERHUBUNG ]*\n\nNn... Token PixAI dari Web Auth Helper berhasil terhubung!\n\n📌 *User ID:* \`${payload?.sub || 'N/A'}\`\n⏳ *Masa Aktif:* *${diffDays} Hari Tersisa* 🟢\n✅ *Status:* PIXAI_TOKEN pool di server bot berhasil diperbarui!`
+            const targetJid = verdict.session.ownerJid || (targetOwner ? `${targetOwner}@s.whatsapp.net` : null);
+            if (sock && targetJid) {
+                await sock.sendMessage(targetJid, {
+                    text: `🎉 *[ TOKEN PIXAI BARU TERHUBUNG ]*\n\nNn... Token PixAI dari Web Auth Helper berhasil terhubung!\n\n📌 *User ID:* \`${payload.sub || payload.user_id}\`\n⏳ *Masa Aktif:* *${diffDays} Hari Tersisa* 🟢\n✅ *Status:* PIXAI_TOKEN pool di server bot berhasil diperbarui!`
                 });
             }
         } catch (eWa) { }
 
+        recordActivity({ platform: 'system', type: 'pixai', message: 'Token PixAI baru berhasil didaftarkan melalui Web Auth.' });
+
         res.json({
             status: 'ok',
-            message: `🎉 Token PixAI berhasil terhubung ke server bot Shiroko! (Sisa Masa Aktif: ${diffDays} Hari)`,
-            userId: payload?.sub || 'N/A',
-            diffDays: diffDays
+            message: `Token PixAI berhasil terhubung ke server bot Shiroko. Sisa masa aktif: ${diffDays} hari.`,
+            diffDays
         });
     } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
+        res.status(500).json({ status: 'error', message: 'Gagal menyimpan token.' });
     }
 });
 
-app.post('/api/generate-bookmarklet', (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+app.options('/api/generate-bookmarklet', (req, res) => {
+    applyPixaiCors(req, res);
+    res.status(204).end();
+});
 
-    const { otp } = req.body;
-    if (!otp) {
+app.post('/api/generate-bookmarklet', (req, res) => {
+    applyPixaiCors(req, res);
+
+    const { otp } = req.body || {};
+    if (!otp || typeof otp !== 'string') {
         return res.status(400).json({ status: 'error', message: 'Kode OTP tidak boleh kosong.' });
     }
 
-    if (!global.webAuthSessions || !global.webAuthSessions.has(otp)) {
-        return res.status(403).json({ status: 'error', message: '❌ Kode OTP tidak valid atau sudah kedaluwarsa (Max 5 Menit).' });
+    const verdict = pixaiWebAuth.consumeOtp(otp, clientKeyOf(req));
+    if (!verdict.ok) {
+        if (verdict.reason === 'RATE_LIMITED') {
+            return res.status(429).json({ status: 'error', message: 'Terlalu banyak percobaan OTP. Coba lagi beberapa menit lagi.' });
+        }
+        return res.status(403).json({ status: 'error', message: 'Kode OTP tidak valid atau sudah kedaluwarsa (maksimal 5 menit).' });
     }
 
-    // OTP Valid! Hapus dari memori agar hanya bisa dipakai sekali generate (jika perlu)
-    // Atau biarkan sampai expired. Mari kita hapus agar aman (Single Use Generate).
-    global.webAuthSessions.delete(otp);
-
-    // ==========================================
-    // POLYMORPHIC OBFUSCATION + SINGLE-USE NONCE
-    // ==========================================
-    const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    global.authNonces.add(nonce);
-    
-    // Hapus nonce otomatis jika tidak terpakai dalam 5 menit
-    setTimeout(() => { global.authNonces.delete(nonce); }, 5 * 60 * 1000);
+    const nonce = pixaiWebAuth.createNonce(verdict.session);
 
     const botUrl = process.env.WEB_SHIROKO_URL || 'https://shiroko-project.my.id';
     

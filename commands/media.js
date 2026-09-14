@@ -89,30 +89,15 @@ async function handle(ctx) {
     // HANDLER !API-PIXAI (WEB AUTH OTP GENERATOR)
     // ==========================================
     if (textLower === '!api-pixai' || textLower === '!pixailink') {
-        const crypto = require('crypto');
-        const otp = 'SRO-' + crypto.randomBytes(2).toString('hex').toUpperCase();
-        
-        if (!global.webAuthSessions) global.webAuthSessions = new Map();
-        
-        // Simpan OTP (5 Menit kedaluwarsa)
-        global.webAuthSessions.set(otp, {
-            expires: Date.now() + 5 * 60 * 1000,
-            jid: msg.key.remoteJid
-        });
-
-        // Bersihkan OTP yang sudah kedaluwarsa
-        for (const [key, session] of global.webAuthSessions.entries()) {
-            if (Date.now() > session.expires) {
-                global.webAuthSessions.delete(key);
-            }
-        }
+        const webAuth = require('../services/pixai-web-auth.service');
+        const { otp, expiresInMinutes } = webAuth.createOtp(msg.key.remoteJid);
 
         const webUrl = process.env.WEB_SHIROKO_URL || 'https://shiroko-project.my.id';
         let linkMsg = `🌐 *[ PIXAI WEB AUTH OTP ]*\n\n`;
         linkMsg += `Nn... Akses generator Web Auth untuk akun Anda.\n\n`;
         linkMsg += `🔗 *Website:* ${webUrl}/pixai-api\n`;
         linkMsg += `🔑 *Kode OTP:* *${otp}*\n\n`;
-        linkMsg += `_Kode ini hanya berlaku selama 5 menit. Masukkan kode di Web Shiroko untuk mendapatkan akses Generator otomatis._ 🎨✨`;
+        linkMsg += `_Kode ini hanya berlaku ${expiresInMinutes} menit, sekali pakai, dan jangan dibagikan ke siapa pun._ 🎨✨`;
 
         await reply(linkMsg);
         return true;
@@ -122,6 +107,10 @@ async function handle(ctx) {
     // HANDLER !CEKPIXAI (CEK STATUS PIXAI TOKEN)
     // ==========================================
     if (textLower === '!cekpixai' || textLower === '!pixaitoken') {
+        if (!isOwner) {
+            await reply('❌ Perintah ini khusus Komandan (Owner).');
+            return true;
+        }
         const pixaiAuth = require('../pixai-auth');
         const tokens = pixaiAuth.getAllTokens();
         if (tokens.length === 0) {
@@ -163,6 +152,11 @@ async function handle(ctx) {
     // HANDLER !BUATPIXAI / !GENPIXAI (PIXAI API TOKEN GENERATOR)
     // ==========================================
     if (textLower.startsWith('!buatpixai') || textLower.startsWith('!genpixai')) {
+        const isPrivateChat = !String(msg.key.remoteJid || '').endsWith('@g.us');
+        if (!isPrivateChat) {
+            await reply('🔒 Nn... Demi keamanan, perintah ini hanya bisa dijalankan di Private Chat (japri). Kredensial tidak boleh dikirim di grup.');
+            return true;
+        }
         const args = textClean.split(' ').slice(1);
         if (args.length < 2) {
             await reply('🔑 *[ PIXAI API TOKEN GENERATOR ]*\n\nNn... Fitur ini digunakan untuk membuat/mengambil Token API PixAI baru dari akun PixAI.\n\n*Format:* \n*!buatpixai [email_pixai] [password_pixai]*\n\n⚠️ *Perhatian:* Jalankan perintah ini di Private Chat (Japri) demi keamanan password Anda!');
@@ -222,9 +216,18 @@ async function handle(ctx) {
         }
 
         const pixaiAuth = require('../pixai-auth');
-        pixaiAuth.saveTokenToEnv(newToken);
-
         const payload = pixaiAuth.decodeJwt(newToken);
+        if (!payload || !(payload.sub || payload.user_id)) {
+            await reply('❌ *[ SET PIXAI TOKEN GAGAL ]*\n\nToken tidak berbentuk JWT PixAI yang valid (klaim `sub` tidak ditemukan).');
+            return true;
+        }
+        if (payload.exp && payload.exp * 1000 <= Date.now()) {
+            await reply('❌ *[ SET PIXAI TOKEN GAGAL ]*\n\nToken tersebut sudah kedaluwarsa.');
+            return true;
+        }
+
+        pixaiAuth.addTokenToEnv(newToken);
+
         let diffDays = 'N/A';
         if (payload?.exp) {
             diffDays = ((new Date(payload.exp * 1000) - new Date()) / (1000 * 60 * 60 * 24)).toFixed(1);
