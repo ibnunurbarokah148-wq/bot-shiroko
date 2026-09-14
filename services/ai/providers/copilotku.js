@@ -1,45 +1,76 @@
 // ==========================================
-// PROVIDER: XKIRO — Multi-Model AI Gateway
-// Base URL: https://api.xkiro.com/v1
+// PROVIDER: COPILOTKU — Multi-Model AI Gateway
+// Base URL: https://anthropic.platfrom-claude.com/v1
 // Compatible with OpenAI Chat Completions & Anthropic Messages format
 // ==========================================
 const axios = require('axios');
 const state = require('../../../config/state');
+const BASE_URL = 'https://anthropic.platfrom-claude.com/v1';
+const COPILOTKU_CATALOG = require('../../../copilotku-models.json');
+const COPILOTKU_MODEL_IDS = new Set(COPILOTKU_CATALOG.map(model => model.id));
 const memory = require('../memory');
 const { cleanThinkingLogs, extractOpenRouterText, detectMimeType } = require('../utils');
 const { prepareAudioForChatApi, validateTranscript } = require('../media.service');
 const { getShirokoSystemPrompt } = require('../prompts');
 const { getCoreNumber } = require('../../../utils/helpers');
 
-const PROVIDER_NAME = 'xkiro';
+const PROVIDER_NAME = 'copilotku';
 
 // Model premium yang boleh dipakai VIP Premium Shiroko.
-// Model lain tetap hanya tersedia untuk Owner karena saldo wallet Xkiro terpisah.
-const XKIRO_PREMIUM_MODELS = Object.freeze({
-    'openai/gpt-5.6-luna': { limitCost: 25 },
-    'z-ai/glm-5.3-flash': { limitCost: 25 },
-    'moonshotai/kimi-k2.6': { limitCost: 125 },
-    'x-ai/grok-4.6': { limitCost: 200 }
+// Model lain tetap hanya tersedia untuk Owner karena saldo wallet Copilotku terpisah.
+const COPILOTKU_PREMIUM_MODELS = Object.freeze({
+    'fable-5': { limitCost: 25 },
+    'fable-5.1': { limitCost: 25 },
+    'opus[1m]': { limitCost: 125 },
+    'Opus-4.8': { limitCost: 200 },
+    'Opus-4.7': { limitCost: 200 },
+    'Haiku-4.5': { limitCost: 25 },
+    'Sonnet-5': { limitCost: 125 },
+    'GLM-5.3': { limitCost: 25 },
+    'GPT-6 Astra': { limitCost: 200 },
+    'GPT-5.6 Sol': { limitCost: 125 },
+    'GPT-5.6 Terra': { limitCost: 125 },
+    'GPT-5.6 Luna': { limitCost: 125 },
+    'GPT-5.5': { limitCost: 125 },
+    'GPT-5.4': { limitCost: 100 },
+    'GPT-5.4 mini': { limitCost: 50 },
+    'GPT-5.3-Codex': { limitCost: 125 },
+    'GPT-5 mini': { limitCost: 50 },
+    'Gemini 3.6 Flash': { limitCost: 25 },
+    'Gemini 3.7 Flash': { limitCost: 25 },
+    'Gemini 3.8 Flash': { limitCost: 25 },
+    'GLM-5.3-Flash': { limitCost: 25 },
+    'Gemini 3.5 Flash': { limitCost: 25 },
+    'Gemini 3.1 Pro': { limitCost: 50 },
+    'Grok 4.5': { limitCost: 125 },
+    'Grok 4.6': { limitCost: 200 },
+    'Raptor mini': { limitCost: 50 },
+    'Kimi K2.7 Code': { limitCost: 125 },
+    'Kimi K3': { limitCost: 125 }
 });
 
-function isXKiroModelFree(model) {
+function isCopilotkuModelFree(model) {
     return model?.billingType === 'free' || model?.accessTier === 'free';
 }
 
-function isXKiroModelAllowed(modelId, { isOwner = false, isPremium = false } = {}) {
-    if (isOwner) return true;
-    if (isPremium && Object.prototype.hasOwnProperty.call(XKIRO_PREMIUM_MODELS, modelId)) return true;
+function isCopilotkuCatalogModel(modelId) {
+    return COPILOTKU_MODEL_IDS.has(modelId);
+}
+
+function isCopilotkuModelAllowed(modelId, { isOwner = false, isPremium = false } = {}) {
+    if (isOwner) return COPILOTKU_MODEL_IDS.has(modelId);
+    if (isPremium && COPILOTKU_MODEL_IDS.has(modelId) && Object.prototype.hasOwnProperty.call(COPILOTKU_PREMIUM_MODELS, modelId)) return true;
     return false;
 }
 
-function getXKiroModelCost(modelId, { isOwner = false, isPremium = false, model = null } = {}) {
+function getCopilotkuModelCost(modelId, { isOwner = false, isPremium = false, model = null } = {}) {
     if (isOwner) return 0;
-    if (isPremium && XKIRO_PREMIUM_MODELS[modelId]) return XKIRO_PREMIUM_MODELS[modelId].limitCost;
-    if (isXKiroModelFree(model) || !model) return 1;
+    if (isPremium && COPILOTKU_MODEL_IDS.has(modelId) && COPILOTKU_PREMIUM_MODELS[modelId]) return COPILOTKU_PREMIUM_MODELS[modelId].limitCost;
+    if (isCopilotkuModelFree(model) || !model) return 1;
     return null;
 }
 
-function formatXKiroPricing(pricing = {}) {
+function formatCopilotkuPricing(pricing = {}) {
     const input = Number(pricing.input || 0);
     const output = Number(pricing.output || 0);
     if (input === 0 && output === 0) return 'FREE';
@@ -47,35 +78,29 @@ function formatXKiroPricing(pricing = {}) {
 }
 
 // Multi-key rotation support
-const XKIRO_API_KEYS = (process.env.XKIRO_API_KEY || process.env.XKIRO_KEY || '')
+const COPILOTKU_API_KEYS = (process.env.COPILOTKU_API_KEY || '')
     .split(',')
     .map(k => k.trim())
     .filter(Boolean);
 
 function getRandomKey() {
-    if (XKIRO_API_KEYS.length === 0) {
-        throw new Error('XKIRO_API_KEY tidak ditemukan pada file .env! Harap tambahkan XKIRO_API_KEY di .env.');
+    if (COPILOTKU_API_KEYS.length === 0) {
+        throw new Error('COPILOTKU_API_KEY tidak ditemukan pada file .env! Harap tambahkan COPILOTKU_API_KEY di .env.');
     }
-    return XKIRO_API_KEYS[Math.floor(Math.random() * XKIRO_API_KEYS.length)];
+    return COPILOTKU_API_KEYS[Math.floor(Math.random() * COPILOTKU_API_KEYS.length)];
 }
 
-function resolveXKiroModel({ model, senderId, isOwner } = {}) {
+function resolveCopilotkuModel({ model, senderId, isOwner } = {}) {
     const core = senderId && getCoreNumber(senderId);
-    const selectedModel =
-        model ||
-        (senderId && state.userXKiroModel[senderId]) ||
-        (core && state.userXKiroModel[core]) ||
-        (isOwner && state.ownerXKiroModel) ||
-        'deepseek/deepseek-v4-flash';
-
-    // Pilihan GPT-4o lama tidak konsisten menerima input_audio di gateway xKiro.
-    return selectedModel.includes('gpt-4o')
-        ? 'google/gemini-2.5-flash'
-        : selectedModel;
+    return model ||
+        (senderId && state.userCopilotkuModel[senderId]) ||
+        (core && state.userCopilotkuModel[core]) ||
+        (isOwner && state.ownerCopilotkuModel) ||
+        'GPT-5.6 Luna';
 }
 
 /**
- * Generate chat / vision via xKiro Gateway.
+ * Generate chat / vision via Copilotku Gateway.
  * @param {object} options
  * @param {string} options.prompt
  * @param {string} options.senderId
@@ -87,7 +112,7 @@ function resolveXKiroModel({ model, senderId, isOwner } = {}) {
  */
 async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, imageBuffer = null, useMemory = true }) {
     const apiKey = getRandomKey();
-    const modelName = resolveXKiroModel({ model, senderId });
+    const modelName = resolveCopilotkuModel({ model, senderId });
 
     const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
 
@@ -132,7 +157,7 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
     let rawData = null;
 
     try {
-        const response = await axios.post('https://api.xkiro.com/v1/chat/completions', {
+        const response = await axios.post(`${BASE_URL}/chat/completions`, {
             model: modelName,
             max_tokens: 4096,
             messages: payloadMessages
@@ -147,7 +172,7 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
     } catch (e) {
         if (shouldKeepMemory) memory.popLast(senderId, PROVIDER_NAME);
         const errMsg = e.response?.data?.error?.message || e.response?.data?.message || e.message;
-        throw new Error(`xKiro Error (${modelName}): ${errMsg}`);
+        throw new Error(`Copilotku Error (${modelName}): ${errMsg}`);
     }
 
     if (rawData) {
@@ -160,15 +185,15 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
     }
 
     if (shouldKeepMemory) memory.popLast(senderId, PROVIDER_NAME);
-    throw new Error(`Respons xKiro (${modelName}) tidak valid atau kosong`);
+    throw new Error(`Respons Copilotku (${modelName}) tidak valid atau kosong`);
 }
 
 async function generateWithTools({ prompt, senderId, isOwner, model, systemPrompt = null, tools = [], executeTool, maxToolRounds = 3, imageBuffer = null, imageMimeType = null }) {
-    if (!Array.isArray(tools) || tools.length === 0) throw new Error('Tool xKiro belum dikonfigurasi.');
-    if (typeof executeTool !== 'function') throw new TypeError('Executor tool xKiro wajib berupa function.');
+    if (!Array.isArray(tools) || tools.length === 0) throw new Error('Tool Copilotku belum dikonfigurasi.');
+    if (typeof executeTool !== 'function') throw new TypeError('Executor tool Copilotku wajib berupa function.');
 
     const apiKey = getRandomKey();
-    const modelName = resolveXKiroModel({ model, senderId });
+    const modelName = resolveCopilotkuModel({ model, senderId });
     const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
     if (!memory.get(senderId, PROVIDER_NAME)) memory.init(senderId, PROVIDER_NAME);
 
@@ -186,7 +211,7 @@ async function generateWithTools({ prompt, senderId, isOwner, model, systemPromp
     for (let round = 0; round <= maxToolRounds; round++) {
         let response;
         try {
-            response = await axios.post('https://api.xkiro.com/v1/chat/completions', {
+            response = await axios.post(`${BASE_URL}/chat/completions`, {
                 model: modelName,
                 max_tokens: 4096,
                 messages,
@@ -197,20 +222,20 @@ async function generateWithTools({ prompt, senderId, isOwner, model, systemPromp
                 timeout: 120000
             });
         } catch (error) {
-            throw new Error(`xKiro Tool Error (${modelName}): ${error.response?.data?.error?.message || error.message}`);
+            throw new Error(`Copilotku Tool Error (${modelName}): ${error.response?.data?.error?.message || error.message}`);
         }
 
         const message = response.data?.choices?.[0]?.message;
         const toolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
         if (!toolCalls.length) {
             const text = cleanThinkingLogs(extractOpenRouterText(response.data));
-            if (!text) throw new Error(`Respons xKiro (${modelName}) kosong setelah tool execution`);
+            if (!text) throw new Error(`Respons Copilotku (${modelName}) kosong setelah tool execution`);
             memory.push(senderId, PROVIDER_NAME, 'user', prompt || '');
             memory.push(senderId, PROVIDER_NAME, 'assistant', text);
             return text;
         }
 
-        if (round === maxToolRounds) throw new Error('xKiro melewati batas maksimal tool call.');
+        if (round === maxToolRounds) throw new Error('Copilotku melewati batas maksimal tool call.');
         messages.push({ role: 'assistant', content: message.content ?? null, tool_calls: toolCalls });
 
         for (const call of toolCalls) {
@@ -236,8 +261,8 @@ async function generateWithTools({ prompt, senderId, isOwner, model, systemPromp
     }
 }
 
-const XKIRO_TTS_FORMATS = new Set(['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm']);
-const XKIRO_TTS_MIME = Object.freeze({
+const COPILOTKU_TTS_FORMATS = new Set(['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm']);
+const COPILOTKU_TTS_MIME = Object.freeze({
     mp3: 'audio/mpeg',
     opus: 'audio/ogg',
     aac: 'audio/aac',
@@ -246,35 +271,35 @@ const XKIRO_TTS_MIME = Object.freeze({
     pcm: 'audio/pcm'
 });
 
-async function textToSpeech(textInput, voice = process.env.XKIRO_TTS_VOICE || 'mexican-female', options = {}) {
+async function textToSpeech(textInput, voice = process.env.COPILOTKU_TTS_VOICE || 'mexican-female', options = {}) {
     const input = String(textInput || '').trim();
-    if (!input) throw new Error('Teks TTS xKiro tidak boleh kosong.');
+    if (!input) throw new Error('Teks TTS Copilotku tidak boleh kosong.');
 
-    const responseFormat = String(options.responseFormat || process.env.XKIRO_TTS_FORMAT || 'mp3').toLowerCase();
-    if (!XKIRO_TTS_FORMATS.has(responseFormat)) {
-        throw new Error(`Format TTS xKiro tidak didukung: ${responseFormat}`);
+    const responseFormat = String(options.responseFormat || process.env.COPILOTKU_TTS_FORMAT || 'mp3').toLowerCase();
+    if (!COPILOTKU_TTS_FORMATS.has(responseFormat)) {
+        throw new Error(`Format TTS Copilotku tidak didukung: ${responseFormat}`);
     }
 
     const payload = {
-        model: options.model || process.env.XKIRO_TTS_MODEL || 'xkiro-voice',
+        model: options.model || process.env.COPILOTKU_TTS_MODEL || 'copilotku-voice',
         input,
         voice,
         response_format: responseFormat,
-        speed: Number(options.speed ?? process.env.XKIRO_TTS_SPEED ?? 1)
+        speed: Number(options.speed ?? process.env.COPILOTKU_TTS_SPEED ?? 1)
     };
     if (!Number.isFinite(payload.speed) || payload.speed < 0.25 || payload.speed > 4) {
-        throw new Error('Kecepatan TTS xKiro harus antara 0.25 sampai 4.0.');
+        throw new Error('Kecepatan TTS Copilotku harus antara 0.25 sampai 4.0.');
     }
     if (options.pitch !== undefined) payload.pitch = Number(options.pitch);
     if (options.volume !== undefined) payload.volume = Number(options.volume);
     if (options.emotion) payload.emotion = String(options.emotion);
 
     try {
-        const response = await axios.post('https://api.xkiro.com/v1/audio/speech', payload, {
+        const response = await axios.post(`${BASE_URL}/audio/speech`, payload, {
             headers: {
                 Authorization: `Bearer ${getRandomKey()}`,
                 'Content-Type': 'application/json',
-                Accept: XKIRO_TTS_MIME[responseFormat]
+                Accept: COPILOTKU_TTS_MIME[responseFormat]
             },
             responseType: 'arraybuffer',
             timeout: 95000,
@@ -282,8 +307,8 @@ async function textToSpeech(textInput, voice = process.env.XKIRO_TTS_VOICE || 'm
             maxBodyLength: Infinity
         });
         const buffer = Buffer.from(response.data);
-        if (!buffer.length) throw new Error('xKiro mengembalikan audio kosong.');
-        return { buffer, mime: XKIRO_TTS_MIME[responseFormat], format: responseFormat, voice: payload.voice };
+        if (!buffer.length) throw new Error('Copilotku mengembalikan audio kosong.');
+        return { buffer, mime: COPILOTKU_TTS_MIME[responseFormat], format: responseFormat, voice: payload.voice };
     } catch (error) {
         let detail = error.message;
         if (error.response?.data) {
@@ -292,16 +317,16 @@ async function textToSpeech(textInput, voice = process.env.XKIRO_TTS_VOICE || 'm
                 detail = parsed?.error?.message || parsed?.message || detail;
             } catch {}
         }
-        throw new Error(`xKiro TTS Error: ${detail}`);
+        throw new Error(`Copilotku TTS Error: ${detail}`);
     }
 }
 
 function getConfiguredTTSVoices() {
-    const configured = String(process.env.XKIRO_TTS_VOICES || process.env.XKIRO_TTS_VOICE || 'mexican-female')
+    const configured = String(process.env.COPILOTKU_TTS_VOICES || process.env.COPILOTKU_TTS_VOICE || 'mexican-female')
         .split(',')
         .map(id => id.trim())
         .filter(Boolean);
-    return [...new Set(configured)].map(id => ({ id, name: id.replace(/[-_]+/g, ' '), desc: 'xKiro Voice' }));
+    return [...new Set(configured)].map(id => ({ id, name: id.replace(/[-_]+/g, ' '), desc: 'Copilotku Voice' }));
 }
 
 async function fetchTTSVoices(filters = {}) {
@@ -309,9 +334,9 @@ async function fetchTTSVoices(filters = {}) {
     for (const key of ['locale', 'languageKey', 'gender', 'isVip', 'q', 'offset', 'limit']) {
         if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') params[key] = filters[key];
     }
-    const response = await axios.get('https://api.xkiro.com/v1/audio/voices', { params, timeout: 15000 });
+    const response = await axios.get(`${BASE_URL}/audio/voices`, { params, timeout: 15000 });
     const voices = response.data?.voices;
-    if (!Array.isArray(voices)) throw new Error('Daftar voice xKiro tidak valid.');
+    if (!Array.isArray(voices)) throw new Error('Daftar voice Copilotku tidak valid.');
     return voices.map(voice => ({
         id: voice.id,
         name: voice.name || voice.id,
@@ -319,17 +344,17 @@ async function fetchTTSVoices(filters = {}) {
         languageKey: voice.languageKey || null,
         gender: voice.gender || null,
         isVip: voice.isVip === true,
-        desc: [voice.locale, voice.gender, voice.isVip ? 'VIP' : 'Standard'].filter(Boolean).join(' • ') || 'xKiro Voice'
+        desc: [voice.locale, voice.gender, voice.isVip ? 'VIP' : 'Standard'].filter(Boolean).join(' • ') || 'Copilotku Voice'
     }));
 }
 
 async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId }) {
     const apiKey = getRandomKey();
-    const modelName = resolveXKiroModel({ model, senderId });
+    const modelName = resolveCopilotkuModel({ model, senderId });
     const { buffer: preparedAudio, format, converted } = prepareAudioForChatApi(audioBuffer, mimeType);
 
-    console.log(`[AUDIO] provider=xkiro model=${modelName} mime=${mimeType} format=${format} converted=${converted} bytes=${preparedAudio.length}`);
-    const response = await axios.post('https://api.xkiro.com/v1/chat/completions', {
+    console.log(`[AUDIO] provider=copilotku model=${modelName} mime=${mimeType} format=${format} converted=${converted} bytes=${preparedAudio.length}`);
+    const response = await axios.post(`${BASE_URL}/chat/completions`, {
         model: modelName,
         messages: [{ role: 'user', content: [
             { type: 'text', text: 'Transkripsikan audio ini secara akurat. Keluarkan hanya transkripnya.' },
@@ -343,27 +368,28 @@ async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId
     });
     const text = extractOpenRouterText(response.data);
     if (!text) {
-        console.error('[AUDIO] Respons mentah xKiro:', JSON.stringify(response.data).slice(0, 500));
+        console.error('[AUDIO] Respons mentah Copilotku:', JSON.stringify(response.data).slice(0, 500));
     }
-    const transcript = validateTranscript(cleanThinkingLogs(text), 'xKiro', modelName);
-    console.log(`[AUDIO] xKiro menjawab: ${transcript.slice(0, 200)}`);
+    const transcript = validateTranscript(cleanThinkingLogs(text), 'Copilotku', modelName);
+    console.log(`[AUDIO] Copilotku menjawab: ${transcript.slice(0, 200)}`);
     return transcript;
 }
 
 /**
- * Scan daftar model live dari xKiro API.
+ * Scan daftar model live dari Copilotku API.
  * @returns {Promise<Array<{id: string, name: string}>>}
  */
 async function fetchModels() {
     const apiKey = getRandomKey();
     try {
-        const res = await axios.get('https://api.xkiro.com/v1/models', {
+        const res = await axios.get(`${BASE_URL}/models`, {
             headers: { 'Authorization': `Bearer ${apiKey}` },
             timeout: 15000
         });
 
         let allModels = res.data.data || res.data.models || [];
         if (!Array.isArray(allModels)) return getFallbackModels();
+        allModels = allModels.filter(model => COPILOTKU_MODEL_IDS.has(model.id || model.name));
 
         const mapped = allModels.map(m => {
             const modelId = m.id || m.name || String(m);
@@ -380,25 +406,27 @@ async function fetchModels() {
                 pricing,
                 capabilities: m.capabilities || {},
                 billingType: isFree ? 'free' : accessTier,
-                limitCost: isFree ? 1 : null
+                limitCost: isFree ? 1 : (COPILOTKU_PREMIUM_MODELS[modelId]?.limitCost || null)
             };
         });
 
         return (mapped.length > 0 ? mapped : getFallbackModels())
             .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     } catch (e) {
-        console.warn(`[XKIRO] Gagal fetch live models, menggunakan catalog fallback: ${e.message}`);
+        console.warn(`[COPILOTKU] Gagal fetch live models, menggunakan catalog fallback: ${e.message}`);
         return getFallbackModels();
     }
 }
 
 function getFallbackModels() {
-    return [
-        { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', accessTier: 'free', billingType: 'free', limitCost: 1, capabilities: { tools: true } },
-        { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', accessTier: 'free', billingType: 'free', limitCost: 1, capabilities: { tools: true } },
-        { id: 'qwen/qwen3.5-flash', name: 'Qwen 3.5 Flash', accessTier: 'free', billingType: 'free', limitCost: 1, capabilities: { tools: true } },
-        { id: 'mistralai/devstral-medium', name: 'Devstral 2', accessTier: 'free', billingType: 'free', limitCost: 1, capabilities: { tools: true } }
-    ].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    return COPILOTKU_CATALOG.map(model => ({
+        id: model.id,
+        name: model.name || model.id,
+        accessTier: 'premium',
+        billingType: 'premium',
+        limitCost: COPILOTKU_PREMIUM_MODELS[model.id]?.limitCost || 1,
+        capabilities: {}
+    })).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 
 module.exports = {
@@ -409,11 +437,12 @@ module.exports = {
     getConfiguredTTSVoices,
     fetchTTSVoices,
     fetchModels,
-    resolveXKiroModel,
-    XKIRO_PREMIUM_MODELS,
-    isXKiroModelFree,
-    isXKiroModelAllowed,
-    getXKiroModelCost,
-    formatXKiroPricing,
-    XKIRO_API_KEYS
+    resolveCopilotkuModel,
+    COPILOTKU_PREMIUM_MODELS,
+    isCopilotkuCatalogModel,
+    isCopilotkuModelFree,
+    isCopilotkuModelAllowed,
+    getCopilotkuModelCost,
+    formatCopilotkuPricing,
+    COPILOTKU_API_KEYS
 };

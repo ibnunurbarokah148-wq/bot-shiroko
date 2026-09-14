@@ -17,6 +17,7 @@ module.exports = {
     userOllamaModel: {},
     userArisuModel: {},
     ownerArisuModel: null,
+    ownerCopilotkuModel: null,
     ownerMood: null,
 
     // Status ComfyUI
@@ -41,7 +42,6 @@ module.exports = {
     sesiArisuMode: {},
     sesiOpenRouterMode: {},
     sesiCloudflareMode: {},
-    sesiXKiroMode: {},
     sesiAIMode: {},
     sesiCabutRole: {},
     sesiModelGambar: {},
@@ -52,8 +52,8 @@ module.exports = {
     // Model AI Pilihan User
     userOpenRouterModel: {},
     userCloudflareModel: {},
-    userXKiroModel: {},
-    userXKiroCost: {},
+    userCopilotkuModel: {},
+    userCopilotkuCost: {},
 
     // Cooldown anti-spam
     cooldownGacha: new Set(),

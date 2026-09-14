@@ -20,6 +20,22 @@ async function handle(ctx) {
     }
 
     /**
+     * Hitung biaya limit sekaligus pastikan akses provider valid.
+     * Copilotku hanya boleh dipakai Owner atau VIP Premium.
+     */
+    function resolveAkademikAccess() {
+        const userMode = AIProvider.getUserMode(senderId);
+        const { provider, model } = AIProvider.resolveMode(userMode, senderId);
+        const access = AIProvider.validateModelAccess(provider, model, { senderId, isOwner });
+        if (!access.allowed) return { allowed: false, reason: access.reason };
+        const cost = provider === 'copilotku' ? access.cost : getAiCost(userMode);
+        if (!Number.isInteger(cost) || cost < 0) {
+            return { allowed: false, reason: 'Biaya model ini tidak dapat ditentukan. Pilih ulang model lewat *!aimode*.' };
+        }
+        return { allowed: true, provider, model, cost };
+    }
+
+    /**
      * Helper eksekusi AI untuk fitur akademik.
      */
     async function prosesAkademikAI(promptAI) {
@@ -81,8 +97,9 @@ async function handle(ctx) {
     // ENTRY POINT KARYA ILMIAH (FIX BUG #4)
     // ==========================================
     if (textLower === '!karyailmiah') {
-        const userMode = AIProvider.getUserMode(senderId);
-        const cost = getAiCost(userMode);
+        const access = resolveAkademikAccess();
+        if (!access.allowed) { await reply(`Nn... ${access.reason}`); return true; }
+        const cost = access.cost;
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token harian Sensei habis. Butuh ${cost} limit.`); return true; }
         state.sesiKaryaIlmiah[senderId] = { step: 1 };
         await reply('Nn... Sensei ingin membuat karya ilmiah? Pilih jenisnya:\n\n*makalah*\n*artikel*\n*laporan*\n\n_Ketik *batal* untuk membatalkan._');
@@ -122,8 +139,9 @@ async function handle(ctx) {
         if (!teksAsli) { await reply('Nn... Mana teks yang mau diparafrase?'); return true; }
         try {
             await reply('Nn... Mengaktifkan protokol Anti-Plagiasi...');
-            const userMode = AIProvider.getUserMode(senderId);
-            const cost = getAiCost(userMode);
+            const access = resolveAkademikAccess();
+            if (!access.allowed) { await reply(`Nn... ${access.reason}`); return true; }
+            const cost = access.cost;
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
             const promptAI = `Parafrase teks ini ke bahasa Indonesia akademik formal: "${teksAsli}"`;
@@ -142,8 +160,9 @@ async function handle(ctx) {
         const teksAsli = teksInline || (isQuoted ? quotedText.trim() : '');
         if (!teksAsli) { await reply('Nn... Mana teks yang mau diringkas?'); return true; }
         try {
-            const userMode = AIProvider.getUserMode(senderId);
-            const cost = getAiCost(userMode);
+            const access = resolveAkademikAccess();
+            if (!access.allowed) { await reply(`Nn... ${access.reason}`); return true; }
+            const cost = access.cost;
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
             const promptAI = `Buatkan ringkasan bullet points dari teks ini: "${teksAsli}"`;
@@ -161,8 +180,9 @@ async function handle(ctx) {
         const jurusanTopik = textClean.substring(5).trim();
         if (!jurusanTopik) { await reply('Nn... Masukkan jurusan.'); return true; }
         try {
-            const userMode = AIProvider.getUserMode(senderId);
-            const cost = getAiCost(userMode);
+            const access = resolveAkademikAccess();
+            if (!access.allowed) { await reply(`Nn... ${access.reason}`); return true; }
+            const cost = access.cost;
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
             const promptAI = `Berikan 3 ide judul skripsi untuk jurusan "${jurusanTopik}" beserta fokus masalahnya.`;

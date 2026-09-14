@@ -1,23 +1,24 @@
-
 import "dotenv/config";
 import fs from "fs";
 
-const API_KEY = process.env.XKIRO_API_KEY;
+const API_KEY = process.env.COPILOTKU_API_KEY;
 
 if (!API_KEY) {
-  console.error("❌ XKIRO_API_KEY belum tersedia.");
+  console.error("❌ COPILOTKU_API_KEY belum tersedia.");
   console.error("Set API key terlebih dahulu.");
   process.exit(1);
 }
 
-const XKIRO_URL = "https://api.xkiro.com/v1/models";
+// Mengupdate endpoint sesuai permintaan
+const COPILOTKU_URL = "https://anthropic.platfrom-claude.com/v1/models";
 const CONFIG_FILE = "./opencode.json";
-const CATALOG_FILE = "./xkiro-models.json";
+// Mengubah nama file output katalog
+const CATALOG_FILE = "./copilotku-models.json";
 
 async function main() {
-  console.log("🔄 Mengambil daftar model dari xKiro...");
+  console.log("🔄 Mengambil daftar model dari Copilotku...");
 
-  const response = await fetch(XKIRO_URL, {
+  const response = await fetch(COPILOTKU_URL, {
     headers: {
       Authorization: `Bearer ${API_KEY}`,
     },
@@ -25,14 +26,14 @@ async function main() {
 
   if (!response.ok) {
     throw new Error(
-      `xKiro API error: ${response.status} ${response.statusText}`
+      `Copilotku API error: ${response.status} ${response.statusText}`
     );
   }
 
   const result = await response.json();
 
   if (!Array.isArray(result.data)) {
-    throw new Error("Format response xKiro tidak sesuai.");
+    throw new Error("Format response Copilotku tidak sesuai.");
   }
 
   const models = result.data
@@ -65,18 +66,20 @@ async function main() {
     config.provider = {};
   }
 
-  if (!config.provider.xkiro) {
-    config.provider.xkiro = {};
+  // Mengubah dari copilotku menjadi copilotku
+  if (!config.provider.copilotku) {
+    config.provider.copilotku = {};
   }
 
-  const xkiro = config.provider.xkiro;
+  const copilotku = config.provider.copilotku;
 
   // Pertahankan konfigurasi provider yang sudah ada
-  xkiro.npm ??= "@ai-sdk/openai-compatible";
-  xkiro.name ??= "xKiro Gateway";
+  copilotku.npm ??= "@ai-sdk/openai-compatible";
+  copilotku.name ??= "Copilotku Gateway";
 
-  xkiro.options ??= {};
-  xkiro.options.baseURL ??= "https://api.xkiro.com/v1";
+  copilotku.options ??= {};
+  // Mengupdate baseURL ke domain yang baru
+  copilotku.options.baseURL = "https://anthropic.platfrom-claude.com/v1";
 
   // Generate semua model
   const modelMap = {};
@@ -87,7 +90,7 @@ async function main() {
     };
   }
 
-  xkiro.models = modelMap;
+  copilotku.models = modelMap;
 
   fs.writeFileSync(
     CONFIG_FILE,
@@ -96,7 +99,7 @@ async function main() {
   );
 
   console.log("✅ opencode.json berhasil diperbarui.");
-  console.log(`📦 Total model xKiro: ${models.length}`);
+  console.log(`📦 Total model Copilotku: ${models.length}`);
 
   console.log("\nModel tersedia:");
 
@@ -106,7 +109,7 @@ async function main() {
     );
   }
 
-  console.log("\n🎉 Sinkronisasi xKiro selesai.");
+  console.log("\n🎉 Sinkronisasi Copilotku selesai.");
 }
 
 main().catch(error => {

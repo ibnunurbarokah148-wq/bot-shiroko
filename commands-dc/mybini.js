@@ -3,7 +3,7 @@ const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const AIProvider = require('../services/ai/AIProvider');
 const { fetchModels: fetchOpenRouterModels } = require('../services/ai/providers/openrouter');
 const { fetchModels: fetchCloudflareModels } = require('../services/ai/providers/cloudflare');
-const { fetchModels: fetchXKiroModels } = require('../services/ai/providers/xkiro');
+const { fetchModels: fetchCopilotkuModels } = require('../services/ai/providers/copilotku');
 const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
 const axios = require('axios');
 
@@ -89,7 +89,7 @@ module.exports = {
 
             // Tahap 2: Pilih Provider / Model AI
             const optionsModel = [
-                new StringSelectMenuOptionBuilder().setLabel('xKiro Multi-Model Gateway 🚀').setValue('xkiro'),
+                new StringSelectMenuOptionBuilder().setLabel('Copilotku Multi-Model Gateway 🚀').setValue('copilotku'),
                 new StringSelectMenuOptionBuilder().setLabel('Gemini (Cloud)').setValue('gemini'),
                 new StringSelectMenuOptionBuilder().setLabel('OpenRouter AI (Cloud)').setValue('openrouter'),
                 new StringSelectMenuOptionBuilder().setLabel('Cloudflare Workers AI').setValue('cloudflare'),
@@ -114,7 +114,7 @@ module.exports = {
             let ollamaModelName = '';
             let openrouterModelName = 'deepseek/deepseek-r1:free';
             let cloudflareModelName = '@cf/meta/llama-3-8b-instruct';
-            let xkiroModelName = 'openai/gpt-4o';
+            let copilotkuModelName = 'GPT-5.6 Luna';
 
             // Tahap 2.5: Pilih Spesifik Model (Ollama / OpenRouter / Cloudflare)
             if (chosenModel === 'ollama') {
@@ -152,16 +152,16 @@ module.exports = {
                 } catch (e) {
                     return promptMsg.edit({ content: 'Nn... Daftar model belum bisa dimuat. Silakan coba lagi nanti.', components: [] });
                 }
-            } else if (chosenModel === 'xkiro') {
-                await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model xKiro Gateway...', components: [] }).catch(()=>{});
+            } else if (chosenModel === 'copilotku') {
+                await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model Copilotku Gateway...', components: [] }).catch(()=>{});
                 try {
-                    const models = await fetchXKiroModels();
+                    const models = await fetchCopilotkuModels();
                     if (!models || models.length === 0) {
-                        return promptMsg.edit({ content: 'Nn... Tidak ada model xKiro yang tersedia. Pembuatan ruangan dibatalkan.' });
+                        return promptMsg.edit({ content: 'Nn... Tidak ada model Copilotku yang tersedia. Pembuatan ruangan dibatalkan.' });
                     }
-                    const result = await chooseModelPaginated(promptMsg, models, 'xkiro', 'Pilih model xKiro (semua model tersedia gratis di Discord)', message.author.id);
-                    xkiroModelName = result;
-                    await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan xKiro Gateway (**${xkiroModelName}**)...`, components: [] }).catch(()=>{});
+                    const result = await chooseModelPaginated(promptMsg, models, 'copilotku', 'Pilih model Copilotku (gratis, non-limit)', message.author.id);
+                    copilotkuModelName = result;
+                    await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan Copilotku Gateway (**${copilotkuModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: 'Nn... Daftar model belum bisa dimuat. Silakan coba lagi nanti.', components: [] });
                 }
@@ -203,7 +203,7 @@ module.exports = {
 
                 let noteModel = '';
                 if (chosenModel === 'gemini') noteModel = 'Jalur Cloud Gemini Flash';
-                else if (chosenModel === 'xkiro') noteModel = `Jalur xKiro Gateway (${xkiroModelName})`;
+                else if (chosenModel === 'copilotku') noteModel = `Jalur Copilotku Gateway (${copilotkuModelName})`;
                 else if (chosenModel === 'openrouter') noteModel = `Jalur OpenRouter (${openrouterModelName})`;
                 else if (chosenModel === 'cloudflare') noteModel = `Jalur Cloudflare AI (${cloudflareModelName})`;
                 else if (chosenModel === 'ollama') noteModel = `Jalur Lokal Ollama (${ollamaModelName})`;
@@ -240,10 +240,10 @@ module.exports = {
                             chatHistory.push({ role: 'user', parts: [{ text: m.content }] });
                             chatHistory.push({ role: 'model', parts: [{ text: balasanAI }] });
 
-                        } else if (chosenModel === 'xkiro') {
+                        } else if (chosenModel === 'copilotku') {
                             balasanAI = await AIProvider.generate({
-                                provider: 'xkiro',
-                                model: xkiroModelName,
+                                provider: 'copilotku',
+                                model: copilotkuModelName,
                                 prompt: m.content,
                                 senderId: message.author.id,
                                 isOwner: true,

@@ -1,7 +1,7 @@
 // ==========================================
 // KATALOG MODEL AI — Mapping nama model ke tingkatan provider
 // Standard  -> ArisuSoft (semua user)
-// Premium   -> xKiro Gateway (khusus VIP Premium / Owner)
+// Premium   -> Copilotku Gateway (khusus VIP Premium / Owner)
 // Open Source -> OpenRouter & Cloudflare (semua user)
 // ==========================================
 
@@ -10,43 +10,43 @@ const MODEL_FAMILIES = [
         key: 'ds3',
         label: 'Deepseek V3.2',
         standardMode: 'ds3',
-        xkiroPatterns: [/deepseek.*v3\.2/i, /deepseek.*v3/i, /deepseek/i]
+        copilotkuPatterns: [/fable-5\.1/i, /fable-5/i]
     },
     {
         key: 'ds4',
         label: 'Deepseek V4 Pro',
         standardMode: 'ds4',
-        xkiroPatterns: [/deepseek.*v4.*pro/i, /deepseek.*v4/i, /deepseek/i]
+        copilotkuPatterns: [/opus-4\.8/i, /opus-4\.7/i, /opus/i]
     },
     {
         key: 'gemini',
         label: 'Gemini',
         standardMode: 'arisu-gemini',
-        xkiroPatterns: [/gemini.*flash/i, /gemini/i, /google/i]
+        copilotkuPatterns: [/gemini.*flash/i, /gemini/i, /google/i]
     },
     {
         key: 'glm',
         label: 'GLM',
         standardMode: 'glm',
-        xkiroPatterns: [/glm/i, /z-ai/i]
+        copilotkuPatterns: [/glm/i, /z-ai/i]
     },
     {
         key: 'qwen',
         label: 'Qwen',
         standardMode: 'qwen',
-        xkiroPatterns: [/qwen.*flash/i, /qwen/i]
+        copilotkuPatterns: [/raptor mini/i]
     },
     {
         key: 'gpt',
         label: 'GPT',
         standardMode: 'gpt',
-        xkiroPatterns: [/gpt-5/i, /gpt/i, /openai/i]
+        copilotkuPatterns: [/gpt-5/i, /gpt/i, /openai/i]
     },
     {
         key: 'grok',
         label: 'Grok',
         standardMode: 'grok',
-        xkiroPatterns: [/grok/i, /x-ai/i]
+        copilotkuPatterns: [/grok/i, /x-ai/i]
     },
     {
         key: 'opensource',
@@ -73,21 +73,21 @@ function getFamilyByKey(key) {
 }
 
 /**
- * Pilih model xKiro terbaik untuk sebuah keluarga model.
+ * Pilih model Copilotku terbaik untuk sebuah keluarga model.
  * Hanya model yang benar-benar boleh dipakai (allowlist premium atau free)
  * yang dipertimbangkan agar biaya limit selalu dapat dihitung.
  *
  * @param {object} family - Entry dari MODEL_FAMILIES
- * @param {Array} models - Daftar model live dari xKiro
+ * @param {Array} models - Daftar model live dari Copilotku
  * @param {(model: object) => boolean} isUsable - Predikat kelayakan model
  * @returns {object|null}
  */
-function resolveXKiroModel(family, models, isUsable) {
-    if (!family?.xkiroPatterns || !Array.isArray(models)) return null;
+function resolveCopilotkuModel(family, models, isUsable) {
+    if (!family?.copilotkuPatterns || !Array.isArray(models)) return null;
     const usable = models.filter(model => isUsable(model));
     if (usable.length === 0) return null;
 
-    for (const pattern of family.xkiroPatterns) {
+    for (const pattern of family.copilotkuPatterns) {
         const matched = usable.filter(model => pattern.test(`${model.id} ${model.name}`));
         if (matched.length === 0) continue;
         // Utamakan model berbayar (kualitas premium) sebelum model gratis.
@@ -103,5 +103,5 @@ module.exports = {
     getFamilies,
     getFamilyByIndex,
     getFamilyByKey,
-    resolveXKiroModel
+    resolveCopilotkuModel
 };

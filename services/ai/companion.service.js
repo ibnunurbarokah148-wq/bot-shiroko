@@ -67,7 +67,7 @@ function detectHeuristicIntent(textLower, hasImage) {
     return null;
 }
 
-const XKIRO_COMPANION_TOOLS = Object.freeze([
+const COPILOTKU_COMPANION_TOOLS = Object.freeze([
     {
         type: 'function',
         function: {
@@ -221,7 +221,7 @@ Format wajib:
     };
 }
 
-function createXkiroToolExecutor(ctx) {
+function createCopilotkuToolExecutor(ctx) {
     return async (name, args = {}) => {
         const { senderId, isOwner } = ctx;
         if (name === 'get_current_appearance') {
@@ -240,16 +240,16 @@ function createXkiroToolExecutor(ctx) {
                 return { ok: false, error: 'Render tidak diizinkan untuk intent ini.' };
             }
             const appearance = appearanceState.getAppearance(senderId);
-            const queued = await renderAndSendCharacter({ ...ctx, provider: 'xkiro' }, appearance, args.reason || ctx.textClean);
+            const queued = await renderAndSendCharacter({ ...ctx, provider: 'copilotku' }, appearance, args.reason || ctx.textClean);
             return { ok: queued, status: queued ? 'image_queued' : 'image_not_queued', reason: args.reason || null };
         }
         return { ok: false, error: `Tool tidak dikenal: ${name}` };
     };
 }
 
-async function handleXkiroCompanionFlow(ctx) {
+async function handleCopilotkuCompanionFlow(ctx) {
     const { provider, model, senderId, isOwner, textClean, companionIntent, companionRenderAllowed, systemPrompt: providedSystemPrompt, moodContext } = ctx;
-    if (provider !== 'xkiro' || !companionIntent) return false;
+    if (provider !== 'copilotku' || !companionIntent) return false;
     const appearanceContext = appearanceState.buildAppearanceContext(appearanceState.getAppearance(senderId));
     const systemPrompt = `${providedSystemPrompt || getShirokoSystemPrompt(isOwner)}
 
@@ -265,14 +265,14 @@ Gunakan get_current_appearance jika perlu mengetahui state penampilan saat ini.
 Gunakan reset_appearance jika pengguna meminta kembali ke penampilan default.
 Penampilan saat ini (referensi awal):
 ${appearanceContext}`;
-    const result = await require('./providers/xkiro').generateWithTools({
+    const result = await require('./providers/copilotku').generateWithTools({
         prompt: textClean,
         senderId,
         isOwner,
         model,
         systemPrompt,
-        tools: XKIRO_COMPANION_TOOLS,
-        executeTool: createXkiroToolExecutor(ctx),
+        tools: COPILOTKU_COMPANION_TOOLS,
+        executeTool: createCopilotkuToolExecutor(ctx),
         imageBuffer: ctx.chatImageBuffer,
         imageMimeType: ctx.chatImageMime
     });
@@ -530,7 +530,7 @@ async function renderAndSendCharacter(ctx, appearanceData, sceneContextText, ren
  */
 async function handleCompanionFlow(ctx) {
     const { textClean, textLower, chatImageBuffer, senderId, isOwner, reply, provider, model, userMode } = ctx;
-    // Arisu memakai flow legacy berbasis trigger/classifier. xKiro diproses
+    // Arisu memakai flow legacy berbasis trigger/classifier. Copilotku diproses
     // setelah validasi dan pemotongan biaya model di commands/ai.js.
     if (provider !== 'arisu') return false;
     const hasImage = !!chatImageBuffer;
@@ -751,6 +751,6 @@ module.exports = {
     extractAppearanceFromText,
     generateShirokoRoleplayReply,
     renderAndSendCharacter,
-    handleXkiroCompanionFlow,
+    handleCopilotkuCompanionFlow,
     handleCompanionFlow
 };

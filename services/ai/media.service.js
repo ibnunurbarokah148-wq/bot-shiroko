@@ -84,7 +84,7 @@ const AUDIO_API_FORMATS = new Set(['wav', 'mp3']);
 /**
  * Konversi nyata audio buffer ke WAV 16kHz mono via ffmpeg-static.
  * Diperlukan karena VN WhatsApp adalah OGG/Opus, sedangkan endpoint
- * input_audio OpenAI/xKiro hanya menerima wav/mp3 yang benar-benar valid.
+ * input_audio OpenAI/Copilotku hanya menerima wav/mp3 yang benar-benar valid.
  * @param {Buffer} buffer
  * @param {string} mime
  * @returns {{ buffer: Buffer, format: string, converted: boolean }}

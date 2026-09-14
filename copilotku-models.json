@@ -1,0 +1,142 @@
+[
+  {
+    "id": "fable-5",
+    "name": "fable-5",
+    "provider": "Anthropic"
+  },
+  {
+    "id": "fable-5.1",
+    "name": "fable-5.1",
+    "provider": "Anthropic"
+  },
+  {
+    "id": "opus[1m]",
+    "name": "opus[1m]",
+    "provider": "Anthropic"
+  },
+  {
+    "id": "Opus-4.8",
+    "name": "Opus-4.8",
+    "provider": "Anthropic"
+  },
+  {
+    "id": "Opus-4.7",
+    "name": "Opus-4.7",
+    "provider": "Anthropic"
+  },
+  {
+    "id": "Haiku-4.5",
+    "name": "Haiku-4.5",
+    "provider": "Anthropic"
+  },
+  {
+    "id": "Sonnet-5",
+    "name": "Sonnet-5",
+    "provider": "Anthropic"
+  },
+  {
+    "id": "GLM-5.3",
+    "name": "GLM-5.3",
+    "provider": "Z.ai"
+  },
+  {
+    "id": "GPT-6 Astra",
+    "name": "GPT-6 Astra",
+    "provider": "OpenAI"
+  },
+  {
+    "id": "GPT-5.6 Sol",
+    "name": "GPT-5.6 Sol",
+    "provider": "OpenAI"
+  },
+  {
+    "id": "GPT-5.6 Terra",
+    "name": "GPT-5.6 Terra",
+    "provider": "OpenAI"
+  },
+  {
+    "id": "GPT-5.6 Luna",
+    "name": "GPT-5.6 Luna",
+    "provider": "OpenAI"
+  },
+  {
+    "id": "GPT-5.5",
+    "name": "GPT-5.5",
+    "provider": "OpenAI"
+  },
+  {
+    "id": "GPT-5.4",
+    "name": "GPT-5.4",
+    "provider": "OpenAI"
+  },
+  {
+    "id": "GPT-5.4 mini",
+    "name": "GPT-5.4 mini",
+    "provider": "OpenAI"
+  },
+  {
+    "id": "GPT-5.3-Codex",
+    "name": "GPT-5.3-Codex",
+    "provider": "OpenAI"
+  },
+  {
+    "id": "GPT-5 mini",
+    "name": "GPT-5 mini",
+    "provider": "OpenAI"
+  },
+  {
+    "id": "Gemini 3.6 Flash",
+    "name": "Gemini 3.6 Flash",
+    "provider": "Google"
+  },
+  {
+    "id": "Gemini 3.7 Flash",
+    "name": "Gemini 3.7 Flash",
+    "provider": "Google"
+  },
+  {
+    "id": "Gemini 3.8 Flash",
+    "name": "Gemini 3.8 Flash",
+    "provider": "Google"
+  },
+  {
+    "id": "GLM-5.3-Flash",
+    "name": "GLM-5.3-Flash",
+    "provider": "Z.ai"
+  },
+  {
+    "id": "Gemini 3.5 Flash",
+    "name": "Gemini 3.5 Flash",
+    "provider": "Google"
+  },
+  {
+    "id": "Gemini 3.1 Pro",
+    "name": "Gemini 3.1 Pro",
+    "provider": "Google"
+  },
+  {
+    "id": "Grok 4.5",
+    "name": "Grok 4.5",
+    "provider": "xAI"
+  },
+  {
+    "id": "Grok 4.6",
+    "name": "Grok 4.6",
+    "provider": "xAI"
+  },
+  {
+    "id": "Raptor mini",
+    "name": "Raptor mini",
+    "provider": "Lainnya"
+  },
+  {
+    "id": "Kimi K2.7 Code",
+    "name": "Kimi K2.7 Code",
+    "provider": "Lainnya"
+  },
+  {
+    "id": "Kimi K3",
+    "name": "Kimi K3",
+    "provider": "Moonshot"
+  }
+]

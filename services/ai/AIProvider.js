@@ -7,7 +7,7 @@ const ollamaProvider = require('./providers/ollama');
 const openrouterProvider = require('./providers/openrouter');
 const cloudflareProvider = require('./providers/cloudflare');
 const arisuProvider = require('./providers/arisu');
-const xkiroProvider = require('./providers/xkiro');
+const copilotkuProvider = require('./providers/copilotku');
 const fishProvider = require('./providers/fish');
 const memory = require('./memory');
 const state = require('../../config/state');
@@ -39,8 +39,8 @@ function getUserMode(senderId) {
 function getModelCost(provider, model, context = {}) {
     if (provider === 'ollama') return 0;
     if (provider === 'openrouter' || provider === 'cloudflare') return 1;
-    if (provider === 'xkiro') {
-        return xkiroProvider.getXKiroModelCost(model, context);
+    if (provider === 'copilotku') {
+        return copilotkuProvider.getCopilotkuModelCost(model, context);
     }
     if (provider === 'arisu') {
         const arisuModel = arisuProvider.fetchModels().find(item => item.id === model);
@@ -49,25 +49,82 @@ function getModelCost(provider, model, context = {}) {
     return 2;
 }
 
+const COPILOTKU_DENIED_REASON = 'Tingkatan Premium hanya tersedia untuk VIP Premium. Gunakan tingkatan Standard atau Open Source.';
+const COPILOTKU_UNKNOWN_MODEL_REASON = 'Model Copilotku ini tidak tersedia di menu *!aimode*. Pilih ulang model lewat *!aimode*.';
+
+function isOwnerId(senderId) {
+    if (!senderId) return false;
+    const core = getCoreNumber(senderId);
+    return ID_OWNER.some(ownerId => ownerId === senderId || ownerId === core);
+}
+
+function hasActivePremium(senderId) {
+    if (!senderId) return false;
+    const { dbPremium } = require('../../config/db');
+    const core = getCoreNumber(senderId);
+    for (const key of [senderId, core]) {
+        if (!key) continue;
+        const entry = dbPremium[key];
+        if (entry && (entry === true || entry > Date.now())) return true;
+    }
+    return false;
+}
+
+/**
+ * Penjaga tunggal akses Copilotku.
+ * Copilotku hanya boleh dipakai Owner atau VIP Premium, dan model wajib
+ * berasal dari katalog yang ditampilkan lewat menu !aimode.
+ * @param {string} model
+ * @param {object} context
+ * @returns {{ allowed: boolean, reason?: string }}
+ */
+function ensureCopilotkuAccess(model, context = {}) {
+    const senderId = context.senderId || null;
+    const isOwner = context.isOwner === true || isOwnerId(senderId);
+    if (isOwner) {
+        return copilotkuProvider.isCopilotkuCatalogModel(model)
+            ? { allowed: true }
+            : { allowed: false, reason: COPILOTKU_UNKNOWN_MODEL_REASON };
+    }
+
+    const isPremium = context.isPremium === true || hasActivePremium(senderId);
+    if (!isPremium) return { allowed: false, reason: COPILOTKU_DENIED_REASON };
+    if (!copilotkuProvider.isCopilotkuCatalogModel(model)) {
+        return { allowed: false, reason: COPILOTKU_UNKNOWN_MODEL_REASON };
+    }
+    if (!copilotkuProvider.isCopilotkuModelAllowed(model, { isPremium: true })) {
+        return { allowed: false, reason: COPILOTKU_DENIED_REASON };
+    }
+    return { allowed: true };
+}
+
+function ensureCopilotkuProviderAccess(context = {}) {
+    const senderId = context.senderId || null;
+    if (context.isOwner === true || isOwnerId(senderId)) return { allowed: true };
+    if (context.isPremium === true || hasActivePremium(senderId)) return { allowed: true };
+    return { allowed: false, reason: COPILOTKU_DENIED_REASON };
+}
+
+function assertCopilotkuAccess(model, context = {}) {
+    const verdict = ensureCopilotkuAccess(model, context);
+    if (!verdict.allowed) throw new Error(verdict.reason);
+}
+
 function validateModelAccess(provider, model, context = {}) {
-    if (provider !== 'xkiro') return { allowed: true, cost: getModelCost(provider, model, context) };
+    if (provider !== 'copilotku') return { allowed: true, cost: getModelCost(provider, model, context) };
     const metadata = context.metadata || null;
-    // Tingkatan Premium sepenuhnya dikunci untuk VIP Premium dan Owner.
-    const allowed = context.isOwner === true || (context.isPremium === true && (
-        xkiroProvider.isXKiroModelAllowed(model, { isOwner: false, isPremium: true }) ||
-        xkiroProvider.isXKiroModelFree(metadata)
-    ));
-    if (!allowed) return { allowed: false, cost: null, reason: 'Tingkatan Premium hanya tersedia untuk VIP Premium. Gunakan tingkatan Standard atau Open Source.' };
+    const verdict = ensureCopilotkuAccess(model, context);
+    if (!verdict.allowed) return { allowed: false, cost: null, reason: verdict.reason };
     return { allowed: true, cost: getModelCost(provider, model, { ...context, model: metadata }) };
 }
 
 function resolveMode(mode, senderId) {
     const core = getCoreNumber(senderId);
     const isOwner = ID_OWNER.some(ownerId => ownerId === senderId || ownerId === core);
-    const xkiroModel = state.userXKiroModel[senderId] ||
-        (core && state.userXKiroModel[core]) ||
-        (isOwner && state.ownerXKiroModel) ||
-        'deepseek/deepseek-v4-flash';
+    const copilotkuModel = state.userCopilotkuModel[senderId] ||
+        (core && state.userCopilotkuModel[core]) ||
+        (isOwner && state.ownerCopilotkuModel) ||
+        'GPT-5.6 Luna';
     const modeMap = {
         'gemini':       { provider: 'gemini',      model: 'gemini-2.5-flash-lite' },
         'ollama':       { provider: 'ollama',      model: state.userOllamaModel[senderId] || (core && state.userOllamaModel[core]) || 'gemma3:4b' },
@@ -75,8 +132,7 @@ function resolveMode(mode, senderId) {
         'or':           { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || 'deepseek/deepseek-r1:free' },
         'cloudflare':   { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
         'cf':           { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
-        'xkiro':        { provider: 'xkiro',       model: xkiroModel },
-        'xk':           { provider: 'xkiro',       model: xkiroModel },
+        'copilotku':        { provider: 'copilotku',       model: copilotkuModel },
         'arisu':        { provider: 'arisu',       model: state.userArisuModel[senderId] || (core && state.userArisuModel[core]) || state.ownerArisuModel || 'deepseek-v3' },
         'ds3':          { provider: 'arisu',       model: 'deepseek-v3' },
         'ds4':          { provider: 'arisu',       model: 'deepseek-v4' },
@@ -93,7 +149,7 @@ function resolveMode(mode, senderId) {
 /**
  * Generate teks AI via provider yang sesuai.
  * @param {object} options
- * @param {string} options.provider - 'gemini' | 'ollama' | 'openrouter' | 'cloudflare' | 'arisu' | 'xkiro'
+ * @param {string} options.provider - 'gemini' | 'ollama' | 'openrouter' | 'cloudflare' | 'arisu' | 'copilotku'
  * @param {string} [options.model] - Model spesifik
  * @param {string} options.prompt - Pesan user
  * @param {string} options.senderId - ID pengirim
@@ -119,8 +175,9 @@ async function generate(options) {
             result = await cloudflareProvider.generate(options); break;
         case 'arisu':
             result = await arisuProvider.generate(options); break;
-        case 'xkiro':
-            result = await xkiroProvider.generate(options); break;
+        case 'copilotku':
+            assertCopilotkuAccess(options.model || resolveMode('copilotku', options.senderId).model, options);
+            result = await copilotkuProvider.generate(options); break;
         default:
             throw new Error(`Provider tidak dikenali: ${provider}`);
     }
@@ -140,17 +197,20 @@ async function transcribe(options) {
         gemini: geminiProvider,
         openrouter: openrouterProvider,
         cloudflare: cloudflareProvider,
-        xkiro: xkiroProvider
+        copilotku: copilotkuProvider
     }[provider];
     if (!providerModule?.transcribe) {
         throw new Error(`Provider ${provider} belum mendukung transkripsi audio.`);
+    }
+    if (provider === 'copilotku') {
+        assertCopilotkuAccess(options.model || resolveMode('copilotku', options.senderId).model, options);
     }
     try {
         return await providerModule.transcribe(options);
     } catch (err) {
         // Panggil Gemini secara langsung satu kali agar tidak kembali masuk ke router ini.
-        if (provider === 'xkiro' && !options.geminiFallbackAttempted && geminiProvider?.transcribe) {
-            console.warn(`[AUDIO] xKiro gagal memproses audio (${err.message}). Fallback ke Gemini...`);
+        if (provider === 'copilotku' && !options.geminiFallbackAttempted && geminiProvider?.transcribe) {
+            console.warn(`[AUDIO] Copilotku gagal memproses audio (${err.message}). Fallback ke Gemini...`);
             return geminiProvider.transcribe({
                 audioBuffer: options.audioBuffer,
                 mimeType: options.mimeType,
@@ -184,7 +244,7 @@ function isMemoryGenerationCurrent(senderId, generation) {
 
 /**
  * Scan daftar model dari provider tertentu.
- * @param {string} provider - 'openrouter' | 'cloudflare' | 'xkiro'
+ * @param {string} provider - 'openrouter' | 'cloudflare' | 'copilotku'
  * @returns {Promise<Array<{id: string, name: string}>>}
  */
 async function fetchModels(provider) {
@@ -193,8 +253,8 @@ async function fetchModels(provider) {
             return openrouterProvider.fetchModels();
         case 'cloudflare':
             return cloudflareProvider.fetchModels();
-        case 'xkiro':
-            return xkiroProvider.fetchModels();
+        case 'copilotku':
+            return copilotkuProvider.fetchModels();
         case 'arisu':
             return arisuProvider.fetchModels();
         default:
@@ -231,8 +291,11 @@ async function textToSpeech(provider, text, model, options = {}) {
             return cloudflareProvider.textToSpeech(text, model);
         case 'arisu':
             return arisuProvider.textToSpeech(text, model);
-        case 'xkiro':
-            return xkiroProvider.textToSpeech(text, model, options);
+        case 'copilotku': {
+            const verdict = ensureCopilotkuProviderAccess(options);
+            if (!verdict.allowed) throw new Error(verdict.reason);
+            return copilotkuProvider.textToSpeech(text, model, options);
+        }
         case 'fish':
             return fishProvider.textToSpeech(text, model, options);
         default:
@@ -265,8 +328,8 @@ async function fetchTTSModels(provider) {
             return cloudflareProvider.fetchTTSModels();
         case 'arisu':
             return arisuProvider.fetchTTSModels();
-        case 'xkiro':
-            return xkiroProvider.fetchTTSVoices();
+        case 'copilotku':
+            return copilotkuProvider.fetchTTSVoices();
         case 'fish':
             return [{ id: process.env.SHIROKO_VOICE_ID || 'configured-voice', name: 'Fish Audio Voice', desc: 'Reference voice' }];
         default:
@@ -282,6 +345,9 @@ module.exports = {
     DEFAULT_AI_MODE,
     getModelCost,
     validateModelAccess,
+    ensureCopilotkuAccess,
+    ensureCopilotkuProviderAccess,
+    hasActivePremium,
     clearMemory,
     getMemoryGeneration,
     isMemoryGenerationCurrent,
@@ -297,7 +363,8 @@ module.exports = {
         ollama: ollamaProvider,
         openrouter: openrouterProvider,
         cloudflare: cloudflareProvider,
-        arisu: arisuProvider
+        arisu: arisuProvider,
+        copilotku: copilotkuProvider
     },
 
     // Re-export memory manager

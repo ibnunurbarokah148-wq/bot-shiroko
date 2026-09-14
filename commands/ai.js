@@ -18,11 +18,12 @@ const moodState = require('../services/ai/mood.state');
 const waifuService = require('../services/waifu.service');
 const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
 const {
-    isXKiroModelFree,
-    isXKiroModelAllowed,
-    getXKiroModelCost,
-    formatXKiroPricing
-} = require('../services/ai/providers/xkiro');
+    isCopilotkuCatalogModel,
+    isCopilotkuModelFree,
+    isCopilotkuModelAllowed,
+    getCopilotkuModelCost,
+    formatCopilotkuPricing
+} = require('../services/ai/providers/copilotku');
 const modelCatalog = require('../services/ai/model.catalog');
 
 const PESAN_GANGGUAN_AI = 'Nn... Maaf, layanan AI sedang mengalami gangguan. Silakan coba lagi beberapa saat lagi.';
@@ -33,20 +34,21 @@ function hasActivePremium(senderId) {
     return !!entry && (entry === true || entry > Date.now());
 }
 
-function isXKiroModelUsable(model, { isOwner, isPremium }) {
+function isCopilotkuModelUsable(model, { isOwner, isPremium }) {
+    if (!isCopilotkuCatalogModel(model.id)) return false;
     if (isOwner) return true;
     if (!isPremium) return false;
-    return isXKiroModelFree(model) || isXKiroModelAllowed(model.id, { isPremium: true });
+    return isCopilotkuModelAllowed(model.id, { isPremium: true });
 }
 
-function formatXKiroModelLine(model, { isOwner, isPremium }) {
-    const limitCost = getXKiroModelCost(model.id, { isOwner, isPremium, model });
-    if (isXKiroModelFree(model)) {
+function formatCopilotkuModelLine(model, { isOwner, isPremium }) {
+    const limitCost = getCopilotkuModelCost(model.id, { isOwner, isPremium, model });
+    if (isCopilotkuModelFree(model)) {
         return `*${model.name}*\n   └ FREE • 1 limit/request`;
     }
     if (isOwner) {
         const tier = (model.accessTier || model.billingType || 'paid').toUpperCase();
-        return `*${model.name}*\n   └ ${tier}/WALLET • ${formatXKiroPricing(model.pricing)} • limit bot unlimited`;
+        return `*${model.name}*\n   └ ${tier}/WALLET • ${formatCopilotkuPricing(model.pricing)} • limit bot unlimited`;
     }
     return `*${model.name}*\n   └ PREMIUM/WALLET • ${limitCost} limit/request`;
 }
@@ -347,8 +349,8 @@ async function handle(ctx) {
 
                 try {
                     await reply('Nn... Sedang menyiapkan otak Premium...');
-                    const models = await AIProvider.fetchModels('xkiro');
-                    const chosenModel = modelCatalog.resolveXKiroModel(family, models, model => isXKiroModelUsable(model, { isOwner, isPremium }));
+                    const models = await AIProvider.fetchModels('copilotku');
+                    const chosenModel = modelCatalog.resolveCopilotkuModel(family, models, model => isCopilotkuModelUsable(model, { isOwner, isPremium }));
 
                     if (!chosenModel) {
                         delete state.sesiAIMode[senderId];
@@ -356,16 +358,16 @@ async function handle(ctx) {
                         return true;
                     }
 
-                    state.userXKiroModel[senderId] = chosenModel.id;
-                    if (core) state.userXKiroModel[core] = chosenModel.id;
+                    state.userCopilotkuModel[senderId] = chosenModel.id;
+                    if (core) state.userCopilotkuModel[core] = chosenModel.id;
                     if (isOwner) {
-                        state.ownerXKiroModel = chosenModel.id;
-                        db.setSetting('ownerXKiroModel', chosenModel.id);
+                        state.ownerCopilotkuModel = chosenModel.id;
+                        db.setSetting('ownerCopilotkuModel', chosenModel.id);
                     }
-                    db.setSetting('userXKiroModel', state.userXKiroModel);
-                    simpanMode('xkiro');
+                    db.setSetting('userCopilotkuModel', state.userCopilotkuModel);
+                    simpanMode('copilotku');
 
-                    const biaya = getXKiroModelCost(chosenModel.id, { isOwner, isPremium, model: chosenModel });
+                    const biaya = getCopilotkuModelCost(chosenModel.id, { isOwner, isPremium, model: chosenModel });
                     const biayaTeks = isOwner ? 'unlimited (Owner)' : `${biaya} limit/request`;
                     delete state.sesiAIMode[senderId];
                     await replyNow(`✅ *MODE PREMIUM AKTIF*\n\nNn... Otak Shiroko sekarang memakai *${family.label}* (Premium).\nBiaya: *${biayaTeks}*. ✨`);
@@ -545,53 +547,6 @@ async function handle(ctx) {
     }
 
     // ==========================================
-    // HANDLER SESI MILIH MODEL XKIRO
-    // ==========================================
-    if (state.sesiXKiroMode && state.sesiXKiroMode[senderId]) {
-        const pilihan = textLower;
-        if (pilihan === 'batal' || pilihan === 'cancel') {
-            delete state.sesiXKiroMode[senderId];
-            await reply('Nn... Pemilihan otak xKiro dibatalkan.');
-            return true;
-        }
-
-        const num = parseInt(pilihan) - 1;
-        const listModels = state.sesiXKiroMode[senderId].list;
-
-        if (isNaN(num) || num < 0 || num >= listModels.length) {
-            await reply('Nn... Angka tidak valid, Sensei. Balas dengan angka yang ada di daftar, atau ketik *batal*.');
-            return true;
-        }
-
-        const chosenModel = listModels[num];
-        const chosenIsPremium = hasActivePremium(senderId);
-        if (!isXKiroModelUsable(chosenModel, { isOwner, isPremium: chosenIsPremium })) {
-            delete state.sesiXKiroMode[senderId];
-            await reply('Nn... Tingkatan Premium hanya tersedia untuk VIP Premium. Gunakan tingkatan *Standard* atau *Open Source*.');
-            return true;
-        }
-        const core = getCoreNumber(senderId);
-        state.userXKiroModel[senderId] = chosenModel.id;
-        if (core) state.userXKiroModel[core] = chosenModel.id;
-        state.userAIMode[senderId] = 'xkiro';
-        if (core) state.userAIMode[core] = 'xkiro';
-
-        if (isOwner) {
-            state.ownerXKiroModel = chosenModel.id;
-            state.ownerAIMode = 'xkiro';
-            db.setSetting('ownerXKiroModel', chosenModel.id);
-            db.setSetting('ownerAIMode', 'xkiro');
-        }
-        db.setSetting('userXKiroModel', state.userXKiroModel);
-        db.setSetting('userAIMode', state.userAIMode);
-
-        delete state.sesiXKiroMode[senderId];
-
-        await reply(`✅ *MODE XKIRO GATEWAY AKTIF*\n\nNn... Otak xKiro berhasil dikunci ke model:\n*${chosenModel.name}* (\`${chosenModel.id}\`). ✨`);
-        return true;
-    }
-
-    // ==========================================
     // MY BINI / WAIFU MODE
     // ==========================================
     if (textLower === '!mybini' || textLower === '!waifu' || textLower === '!bini' || textLower === '!gantiwaifu') {
@@ -711,7 +666,6 @@ async function handle(ctx) {
         delete state.sesiArisuMode[senderId];
         delete state.sesiOpenRouterMode[senderId];
         delete state.sesiCloudflareMode[senderId];
-        delete state.sesiXKiroMode[senderId];
         state.sesiAIMode[senderId] = { step: 'family' };
 
         let teks = `🧠 *PILIH OTAK AI SHIROKO*\n\nNn... Pilih model yang ingin dipakai:\n\n`;
@@ -728,7 +682,18 @@ async function handle(ctx) {
     if (textLower.startsWith('!shiroko_pintar ')) {
         const core = getCoreNumber(senderId);
         const userMode = AIProvider.getUserMode(senderId);
-        const cost = 3;
+        const pintarMode = AIProvider.resolveMode(userMode, senderId);
+        const pintarAccess = AIProvider.validateModelAccess(pintarMode.provider, pintarMode.model, {
+            senderId,
+            isOwner,
+            isPremium: hasActivePremium(senderId)
+        });
+        if (!pintarAccess.allowed) { await reply(`Nn... ${pintarAccess.reason}`); return true; }
+        const cost = pintarMode.provider === 'copilotku' ? pintarAccess.cost : 3;
+        if (!Number.isInteger(cost) || cost < 0) {
+            await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model lewat *!aimode*.');
+            return true;
+        }
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
         const pesanInstruksi = textClean.substring(16).trim();
@@ -881,7 +846,7 @@ async function handle(ctx) {
             ctx.moodProcessed = true;
         }
 
-        // Companion legacy hanya untuk Arisu. xKiro memakai native tools
+        // Companion legacy hanya untuk Arisu. Copilotku memakai native tools
         // setelah biaya dan capability model divalidasi di bawah.
         const companionHandled = await companionService.handleCompanionFlow({
             ...ctx,
@@ -901,18 +866,18 @@ async function handle(ctx) {
         const userMode = AIProvider.getUserMode(senderId);
         const { provider: costProvider, model: costModel } = AIProvider.resolveMode(userMode, senderId);
         const isPremium = hasActivePremium(senderId);
-        let xkiroMetadata = null;
-        if (costProvider === 'xkiro') {
+        let copilotkuMetadata = null;
+        if (costProvider === 'copilotku') {
             try {
-                xkiroMetadata = (await AIProvider.fetchModels('xkiro')).find(item => item.id === costModel) || null;
+                copilotkuMetadata = (await AIProvider.fetchModels('copilotku')).find(item => item.id === costModel) || null;
             } catch (err) {
-                console.warn(`[XKIRO] Gagal memvalidasi katalog model: ${err.message}`);
+                console.warn(`[COPILOTKU] Gagal memvalidasi katalog model: ${err.message}`);
             }
         }
         const access = AIProvider.validateModelAccess(costProvider, costModel, {
             isOwner,
             isPremium,
-            metadata: xkiroMetadata
+            metadata: copilotkuMetadata
         });
         if (!access.allowed) {
             await reply(`Nn... ${access.reason}`);
@@ -920,26 +885,26 @@ async function handle(ctx) {
         }
         const cost = access.cost;
         if (!Number.isInteger(cost) || cost < 0) {
-            await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model Xkiro dari *!aimode xkiro*.');
+            await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model Copilotku dari *!aimode copilotku*.');
             return true;
         }
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
-        if (costProvider === 'xkiro') {
+        if (costProvider === 'copilotku') {
             const companionIntent = companionService.detectHeuristicIntent(textLower, !!chatImageBuffer);
             const visualIntent = companionIntent && !['NORMAL_CHAT', 'OUTFIT_DISCUSSION', 'VISION_ANALYSIS'].includes(companionIntent.intent);
 
             if (visualIntent) {
-                if (!xkiroMetadata?.capabilities?.tools) {
+                if (!copilotkuMetadata?.capabilities?.tools) {
                     kembalikanLimit(senderId, cost);
-                    await reply('Nn... Model xKiro ini belum mendukung native tool calling untuk aksi visual. Pilih model lain yang memiliki capability tools.');
+                    await reply('Nn... Model Copilotku ini belum mendukung native tool calling untuk aksi visual. Pilih model lain yang memiliki capability tools.');
                     return true;
                 }
                 const activePrompt = triggerType === 'shiroko'
                     ? getShirokoSystemPrompt(isOwner)
                     : (state.userSystemPrompt?.[senderId] || (core && state.userSystemPrompt?.[core])) || getShirokoSystemPrompt(isOwner);
                 try {
-                    return await companionService.handleXkiroCompanionFlow({
+                    return await companionService.handleCopilotkuCompanionFlow({
                         ...ctx,
                         userMode,
                         provider: costProvider,
@@ -953,7 +918,7 @@ async function handle(ctx) {
                     });
                 } catch (error) {
                     kembalikanLimit(senderId, cost);
-                    console.error('🚨 xKiro Native Tool Error:', error);
+                    console.error('🚨 Copilotku Native Tool Error:', error);
                     await reply(PESAN_GANGGUAN_AI);
                     return true;
                 }
@@ -969,7 +934,7 @@ async function handle(ctx) {
 
             // Media processing must remain on the selected provider; Arisu has no media adapter.
             if (provider === 'arisu' && (chatAudioBuffer || extractedFileText.startsWith('[ISI ARSIP ZIP:'))) {
-                throw new Error('Mode ArisuSoft belum mendukung pemrosesan audio atau ZIP. Silakan pilih Gemini, OpenRouter, Cloudflare, atau xKiro.');
+                throw new Error('Mode ArisuSoft belum mendukung pemrosesan audio atau ZIP. Silakan pilih Gemini, OpenRouter, Cloudflare, atau Copilotku.');
             }
 
             // Dokumen panjang diproses bertahap agar seluruh isi tetap terbaca tanpa

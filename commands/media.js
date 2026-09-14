@@ -497,7 +497,7 @@ async function handle(ctx) {
         if (sesi.step === 1) {
             const { fetchCloudflareTTSModels } = require('../services/ai/providers/cloudflare');
             const { fetchTTSModels: fetchArisuTTSModels } = require('../services/ai/providers/arisu');
-            const { getConfiguredTTSVoices } = require('../services/ai/providers/xkiro');
+            const { getConfiguredTTSVoices } = require('../services/ai/providers/copilotku');
 
             if (pilihan === '1' || pilihan === 'cloudflare') {
                 await reply('⏳ Nn... Memindai semua model suara dari Cloudflare Workers AI...');
@@ -529,14 +529,20 @@ async function handle(ctx) {
                 await reply(menuText);
                 return true;
 
-            } else if (pilihan === '3' || pilihan === 'xkiro') {
-                const xkiroVoices = getConfiguredTTSVoices();
+            } else if (pilihan === '3' || pilihan === 'copilotku') {
+                const ttsAccess = AIProvider.ensureCopilotkuProviderAccess({ senderId, isOwner });
+                if (!ttsAccess.allowed) {
+                    delete state.sesiTTS[senderId];
+                    await reply(`Nn... ${ttsAccess.reason}`);
+                    return true;
+                }
+                const copilotkuVoices = getConfiguredTTSVoices();
                 sesi.step = 2;
-                sesi.provider = 'xkiro';
-                sesi.models = xkiroVoices;
+                sesi.provider = 'copilotku';
+                sesi.models = copilotkuVoices;
 
-                let menuText = `🎙️ *VOICE XKIRO*\n\nNn... Balas dengan angka untuk memilih voice (biaya 2 limit):\n\n`;
-                xkiroVoices.forEach((voice, i) => {
+                let menuText = `🎙️ *VOICE COPILOTKU*\n\nNn... Balas dengan angka untuk memilih voice (biaya 2 limit):\n\n`;
+                copilotkuVoices.forEach((voice, i) => {
                     menuText += `${i + 1}. *${voice.name}* (\`${voice.id}\`)\n`;
                 });
                 menuText += `\nKetik *batal* untuk membatalkan.`;
@@ -584,7 +590,7 @@ async function handle(ctx) {
                 return true;
 
             } else {
-                await reply('Nn... Pilihan tidak valid. Balas *1* (Cloudflare), *2* (ArisuSoft), *3* (xKiro), atau *4* (Fish Audio). Atau ketik *batal*.');
+                await reply('Nn... Pilihan tidak valid. Balas *1* (Cloudflare), *2* (ArisuSoft), *3* (Copilotku), atau *4* (Fish Audio). Atau ketik *batal*.');
                 return true;
             }
         }
@@ -632,8 +638,8 @@ async function handle(ctx) {
                     const res = await textToSpeechArisu(textTTS, chosenModel.id);
                     buffer = res.buffer;
                     mime = res.mime;
-                } else if (sesi.provider === 'xkiro') {
-                    const res = await AIProvider.textToSpeech('xkiro', textTTS, chosenModel.id, { responseFormat: 'mp3' });
+                } else if (sesi.provider === 'copilotku') {
+                    const res = await AIProvider.textToSpeech('copilotku', textTTS, chosenModel.id, { responseFormat: 'mp3', senderId, isOwner });
                     buffer = res.buffer;
                     mime = res.mime;
                 } else if (sesi.provider === 'fish') {
@@ -695,7 +701,7 @@ async function handle(ctx) {
             `Nn... Pilih Provider / Server Suara dengan membalas angka:\n\n` +
             `1️⃣ *Cloudflare Workers AI* ⚡ (Multi-Language & Realtime Voice)\n` +
             `2️⃣ *ArisuSoft Satelit AI* 🛰️ (Bahasa Indonesia & Voicevox Anime JP)\n` +
-            `3️⃣ *xKiro Voice* (OpenAI-compatible TTS)\n` +
+            `3️⃣ *Copilotku Voice* (OpenAI-compatible TTS)\n` +
             `${process.env.FISH_API_KEY && process.env.SHIROKO_VOICE_ID ? '4️⃣ *Fish Audio* (Reference Voice)\n' : ''}\n` +
             `Ketik *batal* untuk membatalkan.`;
 
@@ -813,7 +819,13 @@ async function handle(ctx) {
                     const currentMode = AIProvider.getUserMode(senderId);
                     const { provider, model } = AIProvider.resolveMode(currentMode, senderId);
                     if (provider === 'arisu') {
-                        await reply('Nn... Mode ArisuSoft belum mendukung transkripsi audio. Pilih Gemini, OpenRouter, Cloudflare, atau xKiro terlebih dahulu.');
+                        await reply('Nn... Mode ArisuSoft belum mendukung transkripsi audio. Pilih Gemini, OpenRouter, Cloudflare, atau Copilotku terlebih dahulu.');
+                        kembalikanLimit(senderId);
+                        return true;
+                    }
+                    const audioAccess = AIProvider.validateModelAccess(provider, model, { senderId, isOwner });
+                    if (!audioAccess.allowed) {
+                        await reply(`Nn... ${audioAccess.reason}`);
                         kembalikanLimit(senderId);
                         return true;
                     }
@@ -821,6 +833,8 @@ async function handle(ctx) {
                         const transcript = await AIProvider.transcribe({
                             provider,
                             model,
+                            senderId,
+                            isOwner,
                             audioBuffer: mediaBuffer,
                             mimeType: messageToDownload.mimetype || 'audio/ogg'
                         });
