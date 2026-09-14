@@ -4,6 +4,7 @@ const AIProvider = require('../services/ai/AIProvider');
 const { fetchModels: fetchOpenRouterModels } = require('../services/ai/providers/openrouter');
 const { fetchModels: fetchCloudflareModels } = require('../services/ai/providers/cloudflare');
 const { fetchModels: fetchCopilotkuModels } = require('../services/ai/providers/copilotku');
+const { fetchModels: fetchShirokoAiModels } = require('../services/ai/providers/vpsmurah');
 const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
 const axios = require('axios');
 
@@ -89,6 +90,7 @@ module.exports = {
 
             // Tahap 2: Pilih Provider / Model AI
             const optionsModel = [
+                new StringSelectMenuOptionBuilder().setLabel('Shiroko Ai 🚀').setValue('shirokoai'),
                 new StringSelectMenuOptionBuilder().setLabel('Copilotku Multi-Model Gateway 🚀').setValue('copilotku'),
                 new StringSelectMenuOptionBuilder().setLabel('Gemini (Cloud)').setValue('gemini'),
                 new StringSelectMenuOptionBuilder().setLabel('OpenRouter AI (Cloud)').setValue('openrouter'),
@@ -115,6 +117,7 @@ module.exports = {
             let openrouterModelName = 'deepseek/deepseek-r1:free';
             let cloudflareModelName = '@cf/meta/llama-3-8b-instruct';
             let copilotkuModelName = 'GPT-5.6 Luna';
+            let shirokoAiModelName = 'luna';
 
             // Tahap 2.5: Pilih Spesifik Model (Ollama / OpenRouter / Cloudflare)
             if (chosenModel === 'ollama') {
@@ -165,6 +168,19 @@ module.exports = {
                 } catch (e) {
                     return promptMsg.edit({ content: 'Nn... Daftar model belum bisa dimuat. Silakan coba lagi nanti.', components: [] });
                 }
+            } else if (chosenModel === 'shirokoai') {
+                await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model Shiroko Ai...', components: [] }).catch(()=>{});
+                try {
+                    const models = await fetchShirokoAiModels({ all: true });
+                    if (!models || models.length === 0) {
+                        return promptMsg.edit({ content: 'Nn... Tidak ada model Shiroko Ai yang tersedia. Pembuatan ruangan dibatalkan.' });
+                    }
+                    const result = await chooseModelPaginated(promptMsg, models, 'shirokoai', 'Pilih model Shiroko Ai (gratis, non-limit)', message.author.id);
+                    shirokoAiModelName = result;
+                    await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan Shiroko Ai (**${shirokoAiModelName}**)...`, components: [] }).catch(()=>{});
+                } catch (e) {
+                    return promptMsg.edit({ content: 'Nn... Daftar model belum bisa dimuat. Silakan coba lagi nanti.', components: [] });
+                }
             } else if (chosenModel === 'cloudflare') {
                 await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model Cloudflare Workers AI...', components: [] }).catch(()=>{});
                 try {
@@ -204,6 +220,7 @@ module.exports = {
                 let noteModel = '';
                 if (chosenModel === 'gemini') noteModel = 'Jalur Cloud Gemini Flash';
                 else if (chosenModel === 'copilotku') noteModel = `Jalur Copilotku Gateway (${copilotkuModelName})`;
+                else if (chosenModel === 'shirokoai') noteModel = `Jalur Shiroko Ai (${shirokoAiModelName})`;
                 else if (chosenModel === 'openrouter') noteModel = `Jalur OpenRouter (${openrouterModelName})`;
                 else if (chosenModel === 'cloudflare') noteModel = `Jalur Cloudflare AI (${cloudflareModelName})`;
                 else if (chosenModel === 'ollama') noteModel = `Jalur Lokal Ollama (${ollamaModelName})`;
@@ -247,6 +264,16 @@ module.exports = {
                                 prompt: m.content,
                                 senderId: message.author.id,
                                 isOwner: true,
+                                systemPrompt: systemInstruction
+                            });
+                        } else if (chosenModel === 'shirokoai') {
+                            balasanAI = await AIProvider.generate({
+                                provider: 'vpsmurah',
+                                model: shirokoAiModelName,
+                                prompt: m.content,
+                                senderId: message.author.id,
+                                isOwner: true,
+                                allowAllModels: true,
                                 systemPrompt: systemInstruction
                             });
                         } else if (chosenModel === 'openrouter') {

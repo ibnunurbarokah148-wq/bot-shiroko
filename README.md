@@ -28,6 +28,7 @@ Bot ini mendukung beberapa provider AI yang dapat dipilih melalui mode AI:
 - **Ollama (Lokal)**: Menjalankan model LLM dari komputer/server lokal.
 - **ArisuSoft**: Provider satelit dengan beberapa pilihan model.
 - **Copilotku**: Gateway multi-model dengan akses model berdasarkan status Premium.
+- **VPSMurah**: Endpoint OpenAI-compatible untuk model Premium tertentu (`deepseek-v32`, `deepseek-v3`, `luna`, `qwen3-max`).
 - **Fallback payload otomatis**: Menangani perbedaan format provider dan membersihkan output thinking seperti `<think>...</think>`.
 - **Auto Thinking Log Stripper**: Menyaring tag pemikiran (`<think>...</think>`) secara otomatis agar jawaban AI bersih dan langsung ke poin.
 - **Unified Memory Reset (`!lupa`)**: Mereset riwayat memori percakapan di seluruh 5 provider AI dengan 1 perintah.
@@ -190,7 +191,7 @@ cp .env.example .env
 
 Kelompok konfigurasi yang tersedia:
 
-- Provider AI: Gemini, OpenRouter, Cloudflare, ArisuSoft, Hugging Face, Ollama, dan Copilotku.
+- Provider AI: Gemini, OpenRouter, Cloudflare, ArisuSoft, Hugging Face, Ollama, Copilotku, dan VPSMurah.
 - Platform: `DISCORD_TOKEN`, `WA_PHONE_NUMBER`, `ID_OWNER`, dan `LOG_LEVEL`.
 - Image rendering: PixAI, Pixiv, ConvertAPI, ComfyUI/Vast.ai, dan CivitAI.
 - QRIS: `STATIC_QRIS` untuk fitur top-up.

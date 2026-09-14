@@ -8,6 +8,7 @@ const openrouterProvider = require('./providers/openrouter');
 const cloudflareProvider = require('./providers/cloudflare');
 const arisuProvider = require('./providers/arisu');
 const copilotkuProvider = require('./providers/copilotku');
+const vpsMurahProvider = require('./providers/vpsmurah');
 const fishProvider = require('./providers/fish');
 const memory = require('./memory');
 const state = require('../../config/state');
@@ -42,6 +43,9 @@ function getModelCost(provider, model, context = {}) {
     if (provider === 'copilotku') {
         return copilotkuProvider.getCopilotkuModelCost(model, context);
     }
+    if (provider === 'vpsmurah') {
+        return vpsMurahProvider.getVpsMurahModelCost(model, context);
+    }
     if (provider === 'arisu') {
         const arisuModel = arisuProvider.fetchModels().find(item => item.id === model);
         return arisuModel?.limitCost || (model === 'deepseek-v4' ? 4 : 2);
@@ -51,6 +55,7 @@ function getModelCost(provider, model, context = {}) {
 
 const COPILOTKU_DENIED_REASON = 'Tingkatan Premium hanya tersedia untuk VIP Premium. Gunakan tingkatan Standard atau Open Source.';
 const COPILOTKU_UNKNOWN_MODEL_REASON = 'Model Copilotku ini tidak tersedia di menu *!aimode*. Pilih ulang model lewat *!aimode*.';
+const VPSMURAH_UNKNOWN_MODEL_REASON = 'Model VPSMurah ini tidak tersedia pada endpoint.';
 
 function isOwnerId(senderId) {
     if (!senderId) return false;
@@ -58,12 +63,22 @@ function isOwnerId(senderId) {
     return ID_OWNER.some(ownerId => ownerId === senderId || ownerId === core);
 }
 
-function hasActivePremium(senderId) {
-    if (!senderId) return false;
+function hasActivePremium(senderId, alternateId = null) {
     const { dbPremium } = require('../../config/db');
-    const core = getCoreNumber(senderId);
-    for (const key of [senderId, core]) {
-        if (!key) continue;
+    const keys = new Set();
+    for (const value of [senderId, alternateId]) {
+        if (!value) continue;
+        const raw = String(value);
+        const core = getCoreNumber(raw);
+        keys.add(raw);
+        if (core) keys.add(core);
+        const digits = raw.split('@')[0].split(':')[0].replace(/\D/g, '');
+        if (digits) {
+            keys.add(digits);
+            keys.add(`${digits}@s.whatsapp.net`);
+        }
+    }
+    for (const key of keys) {
         const entry = dbPremium[key];
         if (entry && (entry === true || entry > Date.now())) return true;
     }
@@ -87,7 +102,7 @@ function ensureCopilotkuAccess(model, context = {}) {
             : { allowed: false, reason: COPILOTKU_UNKNOWN_MODEL_REASON };
     }
 
-    const isPremium = context.isPremium === true || hasActivePremium(senderId);
+    const isPremium = context.isPremium === true || hasActivePremium(senderId, context.alternateId);
     if (!isPremium) return { allowed: false, reason: COPILOTKU_DENIED_REASON };
     if (!copilotkuProvider.isCopilotkuCatalogModel(model)) {
         return { allowed: false, reason: COPILOTKU_UNKNOWN_MODEL_REASON };
@@ -101,7 +116,7 @@ function ensureCopilotkuAccess(model, context = {}) {
 function ensureCopilotkuProviderAccess(context = {}) {
     const senderId = context.senderId || null;
     if (context.isOwner === true || isOwnerId(senderId)) return { allowed: true };
-    if (context.isPremium === true || hasActivePremium(senderId)) return { allowed: true };
+    if (context.isPremium === true || hasActivePremium(senderId, context.alternateId)) return { allowed: true };
     return { allowed: false, reason: COPILOTKU_DENIED_REASON };
 }
 
@@ -110,12 +125,39 @@ function assertCopilotkuAccess(model, context = {}) {
     if (!verdict.allowed) throw new Error(verdict.reason);
 }
 
+function ensureVpsMurahAccess(model, context = {}) {
+    const isOwner = context.isOwner === true || isOwnerId(context.senderId);
+    const isPremium = context.isPremium === true || hasActivePremium(context.senderId, context.alternateId);
+    if (isOwner && context.allowAllModels === true) return { allowed: true };
+    if (!isOwner && !isPremium) return { allowed: false, reason: COPILOTKU_DENIED_REASON };
+    if (!vpsMurahProvider.isVpsMurahModelAllowed(model)) return { allowed: false, reason: VPSMURAH_UNKNOWN_MODEL_REASON };
+    return { allowed: true };
+}
+
+function assertVpsMurahAccess(model, context = {}) {
+    const verdict = ensureVpsMurahAccess(model, context);
+    if (!verdict.allowed) throw new Error(verdict.reason);
+}
+
 function validateModelAccess(provider, model, context = {}) {
-    if (provider !== 'copilotku') return { allowed: true, cost: getModelCost(provider, model, context) };
+    const accessContext = {
+        ...context,
+        isOwner: context.isOwner === true || isOwnerId(context.senderId),
+        isPremium: context.isPremium === true || hasActivePremium(context.senderId, context.alternateId)
+    };
+    if (provider === 'vpsmurah') {
+        const verdict = ensureVpsMurahAccess(model, accessContext);
+        if (!verdict.allowed) return { allowed: false, cost: null, reason: verdict.reason };
+        const cost = getModelCost(provider, model, accessContext);
+        return Number.isInteger(cost) && cost >= 0
+            ? { allowed: true, cost }
+            : { allowed: false, cost: null, reason: COPILOTKU_DENIED_REASON };
+    }
+    if (provider !== 'copilotku') return { allowed: true, cost: getModelCost(provider, model, accessContext) };
     const metadata = context.metadata || null;
-    const verdict = ensureCopilotkuAccess(model, context);
+    const verdict = ensureCopilotkuAccess(model, accessContext);
     if (!verdict.allowed) return { allowed: false, cost: null, reason: verdict.reason };
-    return { allowed: true, cost: getModelCost(provider, model, { ...context, model: metadata }) };
+    return { allowed: true, cost: getModelCost(provider, model, { ...accessContext, model: metadata }) };
 }
 
 function resolveMode(mode, senderId) {
@@ -125,6 +167,10 @@ function resolveMode(mode, senderId) {
         (core && state.userCopilotkuModel[core]) ||
         (isOwner && state.ownerCopilotkuModel) ||
         'GPT-5.6 Luna';
+    const vpsMurahModel = state.userVpsMurahModel[senderId] ||
+        (core && state.userVpsMurahModel[core]) ||
+        (isOwner && state.ownerVpsMurahModel) ||
+        'luna';
     const modeMap = {
         'gemini':       { provider: 'gemini',      model: 'gemini-2.5-flash-lite' },
         'ollama':       { provider: 'ollama',      model: state.userOllamaModel[senderId] || (core && state.userOllamaModel[core]) || 'gemma3:4b' },
@@ -132,12 +178,13 @@ function resolveMode(mode, senderId) {
         'or':           { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || 'deepseek/deepseek-r1:free' },
         'cloudflare':   { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
         'cf':           { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
-        'copilotku':        { provider: 'copilotku',       model: copilotkuModel },
-        'arisu':        { provider: 'arisu',       model: state.userArisuModel[senderId] || (core && state.userArisuModel[core]) || state.ownerArisuModel || 'deepseek-v3' },
-        'ds3':          { provider: 'arisu',       model: 'deepseek-v3' },
-        'ds4':          { provider: 'arisu',       model: 'deepseek-v4' },
-        'glm':          { provider: 'arisu',       model: 'glm' },
-        'qwen':         { provider: 'arisu',       model: 'qwen' },
+        'copilotku':    { provider: 'copilotku', model: copilotkuModel },
+        'vpsmurah':     { provider: 'vpsmurah', model: vpsMurahModel },
+        'arisu':        { provider: 'arisu', model: state.userArisuModel[senderId] || (core && state.userArisuModel[core]) || state.ownerArisuModel || 'deepseek-v3' },
+        'ds3':          { provider: 'arisu', model: 'deepseek-v3' },
+        'ds4':          { provider: 'arisu', model: 'deepseek-v4' },
+        'glm':          { provider: 'arisu', model: 'glm' },
+        'qwen':         { provider: 'arisu', model: 'qwen' },
         'arisu-gemini': { provider: 'arisu',       model: 'gemini' },
         'gpt':          { provider: 'arisu',       model: 'gpt' },
         'grok':         { provider: 'arisu',       model: 'grok' }
@@ -149,7 +196,7 @@ function resolveMode(mode, senderId) {
 /**
  * Generate teks AI via provider yang sesuai.
  * @param {object} options
- * @param {string} options.provider - 'gemini' | 'ollama' | 'openrouter' | 'cloudflare' | 'arisu' | 'copilotku'
+ * @param {string} options.provider - 'gemini' | 'ollama' | 'openrouter' | 'cloudflare' | 'arisu' | 'copilotku' | 'vpsmurah'
  * @param {string} [options.model] - Model spesifik
  * @param {string} options.prompt - Pesan user
  * @param {string} options.senderId - ID pengirim
@@ -178,6 +225,9 @@ async function generate(options) {
         case 'copilotku':
             assertCopilotkuAccess(options.model || resolveMode('copilotku', options.senderId).model, options);
             result = await copilotkuProvider.generate(options); break;
+        case 'vpsmurah':
+            assertVpsMurahAccess(options.model || resolveMode('vpsmurah', options.senderId).model, options);
+            result = await vpsMurahProvider.generate(options); break;
         default:
             throw new Error(`Provider tidak dikenali: ${provider}`);
     }
@@ -197,7 +247,8 @@ async function transcribe(options) {
         gemini: geminiProvider,
         openrouter: openrouterProvider,
         cloudflare: cloudflareProvider,
-        copilotku: copilotkuProvider
+        copilotku: copilotkuProvider,
+        vpsmurah: vpsMurahProvider
     }[provider];
     if (!providerModule?.transcribe) {
         throw new Error(`Provider ${provider} belum mendukung transkripsi audio.`);
@@ -205,12 +256,15 @@ async function transcribe(options) {
     if (provider === 'copilotku') {
         assertCopilotkuAccess(options.model || resolveMode('copilotku', options.senderId).model, options);
     }
+    if (provider === 'vpsmurah') {
+        assertVpsMurahAccess(options.model || resolveMode('vpsmurah', options.senderId).model, options);
+    }
     try {
         return await providerModule.transcribe(options);
     } catch (err) {
         // Panggil Gemini secara langsung satu kali agar tidak kembali masuk ke router ini.
-        if (provider === 'copilotku' && !options.geminiFallbackAttempted && geminiProvider?.transcribe) {
-            console.warn(`[AUDIO] Copilotku gagal memproses audio (${err.message}). Fallback ke Gemini...`);
+        if ((provider === 'copilotku' || provider === 'vpsmurah') && !options.geminiFallbackAttempted && geminiProvider?.transcribe) {
+            console.warn(`[AUDIO] ${provider} gagal memproses audio (${err.message}). Fallback ke Gemini...`);
             return geminiProvider.transcribe({
                 audioBuffer: options.audioBuffer,
                 mimeType: options.mimeType,
@@ -244,7 +298,7 @@ function isMemoryGenerationCurrent(senderId, generation) {
 
 /**
  * Scan daftar model dari provider tertentu.
- * @param {string} provider - 'openrouter' | 'cloudflare' | 'copilotku'
+ * @param {string} provider - 'openrouter' | 'cloudflare' | 'copilotku' | 'vpsmurah'
  * @returns {Promise<Array<{id: string, name: string}>>}
  */
 async function fetchModels(provider) {
@@ -255,6 +309,8 @@ async function fetchModels(provider) {
             return cloudflareProvider.fetchModels();
         case 'copilotku':
             return copilotkuProvider.fetchModels();
+        case 'vpsmurah':
+            return vpsMurahProvider.fetchModels();
         case 'arisu':
             return arisuProvider.fetchModels();
         default:
@@ -347,6 +403,7 @@ module.exports = {
     validateModelAccess,
     ensureCopilotkuAccess,
     ensureCopilotkuProviderAccess,
+    ensureVpsMurahAccess,
     hasActivePremium,
     clearMemory,
     getMemoryGeneration,
@@ -364,7 +421,8 @@ module.exports = {
         openrouter: openrouterProvider,
         cloudflare: cloudflareProvider,
         arisu: arisuProvider,
-        copilotku: copilotkuProvider
+        copilotku: copilotkuProvider,
+        vpsmurah: vpsMurahProvider
     },
 
     // Re-export memory manager

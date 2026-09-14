@@ -1,7 +1,7 @@
 // ==========================================
 // KATALOG MODEL AI — Mapping nama model ke tingkatan provider
 // Standard  -> ArisuSoft (semua user)
-// Premium   -> Copilotku Gateway (khusus VIP Premium / Owner)
+// Premium   -> VPSMurah atau Copilotku Gateway (khusus VIP Premium / Owner)
 // Open Source -> OpenRouter & Cloudflare (semua user)
 // ==========================================
 
@@ -10,13 +10,15 @@ const MODEL_FAMILIES = [
         key: 'ds3',
         label: 'Deepseek V3.2',
         standardMode: 'ds3',
-        copilotkuPatterns: [/fable-5\.1/i, /fable-5/i]
+        premiumProvider: 'vpsmurah',
+        premiumModel: 'deepseek-v32'
     },
     {
         key: 'ds4',
         label: 'Deepseek V4 Pro',
         standardMode: 'ds4',
-        copilotkuPatterns: [/opus-4\.8/i, /opus-4\.7/i, /opus/i]
+        premiumProvider: 'vpsmurah',
+        premiumModel: 'deepseek-v3'
     },
     {
         key: 'gemini',
@@ -34,13 +36,15 @@ const MODEL_FAMILIES = [
         key: 'qwen',
         label: 'Qwen',
         standardMode: 'qwen',
-        copilotkuPatterns: [/raptor mini/i]
+        premiumProvider: 'vpsmurah',
+        premiumModel: 'qwen3-max'
     },
     {
         key: 'gpt',
         label: 'GPT',
         standardMode: 'gpt',
-        copilotkuPatterns: [/gpt-5/i, /gpt/i, /openai/i]
+        premiumProvider: 'vpsmurah',
+        premiumModel: 'luna'
     },
     {
         key: 'grok',

@@ -14,7 +14,7 @@ const { getCoreNumber } = require('../utils/helpers');
 const moodState = require('./ai/mood.state');
 
 const OWNER_JID = ID_OWNER[0] + '@s.whatsapp.net';
-const ALARM_MEMORY_PROVIDERS = ['gemini', 'arisu', 'cloudflare', 'openrouter', 'ollama', 'copilotku'];
+const ALARM_MEMORY_PROVIDERS = ['gemini', 'arisu', 'cloudflare', 'openrouter', 'ollama', 'copilotku', 'vpsmurah'];
 
 /**
  * Mendapatkan statistik kedisiplinan alarm dari SQLite

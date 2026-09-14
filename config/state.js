@@ -18,6 +18,7 @@ module.exports = {
     userArisuModel: {},
     ownerArisuModel: null,
     ownerCopilotkuModel: null,
+    ownerVpsMurahModel: null,
     ownerMood: null,
 
     // Status ComfyUI
@@ -53,6 +54,7 @@ module.exports = {
     userOpenRouterModel: {},
     userCloudflareModel: {},
     userCopilotkuModel: {},
+    userVpsMurahModel: {},
     userCopilotkuCost: {},
 
     // Cooldown anti-spam

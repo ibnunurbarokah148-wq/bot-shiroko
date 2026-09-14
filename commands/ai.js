@@ -29,9 +29,8 @@ const modelCatalog = require('../services/ai/model.catalog');
 const PESAN_GANGGUAN_AI = 'Nn... Maaf, layanan AI sedang mengalami gangguan. Silakan coba lagi beberapa saat lagi.';
 const PESAN_GAGAL_MODEL = 'Nn... Daftar model belum bisa dimuat sekarang. Silakan coba lagi nanti.';
 
-function hasActivePremium(senderId) {
-    const entry = dbPremium[senderId];
-    return !!entry && (entry === true || entry > Date.now());
+function hasActivePremium(senderId, alternateId = null) {
+    return AIProvider.hasActivePremium(senderId, alternateId);
 }
 
 function isCopilotkuModelUsable(model, { isOwner, isPremium }) {
@@ -56,6 +55,7 @@ function formatCopilotkuModelLine(model, { isOwner, isPremium }) {
 async function handle(ctx) {
     const { sock, msg, normalizedMessage, from, senderId, callTarget, isOwner, isGroup, textClean, textLower,
             msgType, isQuoted, quotedMsg, quotedType, reply, replyNow, downloadMediaBaileys } = ctx;
+    const premiumIdentity = callTarget ? `${callTarget}@s.whatsapp.net` : null;
 
     if (textLower === '!callai' || textLower === '!telponai') {
         if (!isOwner || isGroup) {
@@ -340,7 +340,7 @@ async function handle(ctx) {
             }
 
             if (num === 2) {
-                const isPremium = hasActivePremium(senderId);
+                const isPremium = hasActivePremium(senderId, premiumIdentity);
                 if (!isOwner && !isPremium) {
                     delete state.sesiAIMode[senderId];
                     await reply('Nn... Tingkatan Premium hanya untuk VIP Premium. Silakan pilih tingkatan *Standard* atau *Open Source*, atau aktifkan VIP Premium dulu.');
@@ -349,25 +349,45 @@ async function handle(ctx) {
 
                 try {
                     await reply('Nn... Sedang menyiapkan otak Premium...');
-                    const models = await AIProvider.fetchModels('copilotku');
-                    const chosenModel = modelCatalog.resolveCopilotkuModel(family, models, model => isCopilotkuModelUsable(model, { isOwner, isPremium }));
+                    const premiumProvider = family.premiumProvider || 'copilotku';
+                    let chosenModel;
+                    let biaya;
 
-                    if (!chosenModel) {
-                        delete state.sesiAIMode[senderId];
-                        await reply('Nn... Versi Premium untuk model ini sedang tidak tersedia. Silakan pilih tingkatan *Standard*.');
-                        return true;
+                    if (premiumProvider === 'vpsmurah') {
+                        const models = await AIProvider.fetchModels('vpsmurah');
+                        chosenModel = models.find(model => model.id === family.premiumModel);
+                        if (!chosenModel) throw new Error(`Model ${family.premiumModel} tidak tersedia pada endpoint VPSMurah.`);
+                        const access = AIProvider.validateModelAccess('vpsmurah', chosenModel.id, { isOwner, isPremium });
+                        if (!access.allowed) throw new Error(access.reason);
+                        state.userVpsMurahModel[senderId] = chosenModel.id;
+                        if (core) state.userVpsMurahModel[core] = chosenModel.id;
+                        if (isOwner) {
+                            state.ownerVpsMurahModel = chosenModel.id;
+                            db.setSetting('ownerVpsMurahModel', chosenModel.id);
+                        }
+                        db.setSetting('userVpsMurahModel', state.userVpsMurahModel);
+                        simpanMode('vpsmurah');
+                        biaya = access.cost;
+                    } else {
+                        const models = await AIProvider.fetchModels('copilotku');
+                        chosenModel = modelCatalog.resolveCopilotkuModel(family, models, model => isCopilotkuModelUsable(model, { isOwner, isPremium }));
+
+                        if (!chosenModel) {
+                            delete state.sesiAIMode[senderId];
+                            await reply('Nn... Versi Premium untuk model ini sedang tidak tersedia. Silakan pilih tingkatan *Standard*.');
+                            return true;
+                        }
+
+                        state.userCopilotkuModel[senderId] = chosenModel.id;
+                        if (core) state.userCopilotkuModel[core] = chosenModel.id;
+                        if (isOwner) {
+                            state.ownerCopilotkuModel = chosenModel.id;
+                            db.setSetting('ownerCopilotkuModel', chosenModel.id);
+                        }
+                        db.setSetting('userCopilotkuModel', state.userCopilotkuModel);
+                        simpanMode('copilotku');
+                        biaya = getCopilotkuModelCost(chosenModel.id, { isOwner, isPremium, model: chosenModel });
                     }
-
-                    state.userCopilotkuModel[senderId] = chosenModel.id;
-                    if (core) state.userCopilotkuModel[core] = chosenModel.id;
-                    if (isOwner) {
-                        state.ownerCopilotkuModel = chosenModel.id;
-                        db.setSetting('ownerCopilotkuModel', chosenModel.id);
-                    }
-                    db.setSetting('userCopilotkuModel', state.userCopilotkuModel);
-                    simpanMode('copilotku');
-
-                    const biaya = getCopilotkuModelCost(chosenModel.id, { isOwner, isPremium, model: chosenModel });
                     const biayaTeks = isOwner ? 'unlimited (Owner)' : `${biaya} limit/request`;
                     delete state.sesiAIMode[senderId];
                     await replyNow(`✅ *MODE PREMIUM AKTIF*\n\nNn... Otak Shiroko sekarang memakai *${family.label}* (Premium).\nBiaya: *${biayaTeks}*. ✨`);
@@ -686,10 +706,10 @@ async function handle(ctx) {
         const pintarAccess = AIProvider.validateModelAccess(pintarMode.provider, pintarMode.model, {
             senderId,
             isOwner,
-            isPremium: hasActivePremium(senderId)
+            isPremium: hasActivePremium(senderId, premiumIdentity)
         });
         if (!pintarAccess.allowed) { await reply(`Nn... ${pintarAccess.reason}`); return true; }
-        const cost = pintarMode.provider === 'copilotku' ? pintarAccess.cost : 3;
+        const cost = pintarMode.provider === 'copilotku' || pintarMode.provider === 'vpsmurah' ? pintarAccess.cost : 3;
         if (!Number.isInteger(cost) || cost < 0) {
             await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model lewat *!aimode*.');
             return true;
@@ -721,13 +741,22 @@ async function handle(ctx) {
                     prompt: pesanInstruksi,
                     senderId,
                     isOwner,
+                    isPremium: hasActivePremium(senderId, premiumIdentity),
+                    alternateId: premiumIdentity,
                     systemPrompt: academicPrompt
                 });
                 await reply(`🧠 *SHIROKO AKADEMIK (GOOGLE SCHOLAR ENGINE)*\n\n${jawaban}`);
             } else {
                 await reply(`Nn... Membuka jalur perpustakaan ${provider.toUpperCase()} (${model})...`);
                 const jawaban = await AIProvider.generate({
-                    provider, model, prompt: pesanInstruksi, senderId, isOwner, systemPrompt: academicPrompt
+                    provider,
+                    model,
+                    prompt: pesanInstruksi,
+                    senderId,
+                    isOwner,
+                    isPremium: hasActivePremium(senderId, premiumIdentity),
+                    alternateId: premiumIdentity,
+                    systemPrompt: academicPrompt
                 });
                 await reply(`🧠 *SHIROKO PINTAR (${model.toUpperCase()})*\n\n${jawaban}`);
             }
@@ -865,7 +894,7 @@ async function handle(ctx) {
         const core = getCoreNumber(senderId);
         const userMode = AIProvider.getUserMode(senderId);
         const { provider: costProvider, model: costModel } = AIProvider.resolveMode(userMode, senderId);
-        const isPremium = hasActivePremium(senderId);
+        const isPremium = hasActivePremium(senderId, premiumIdentity);
         let copilotkuMetadata = null;
         if (costProvider === 'copilotku') {
             try {
@@ -885,7 +914,7 @@ async function handle(ctx) {
         }
         const cost = access.cost;
         if (!Number.isInteger(cost) || cost < 0) {
-            await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model Copilotku dari *!aimode copilotku*.');
+            await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model lewat *!aimode*.');
             return true;
         }
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
@@ -934,7 +963,7 @@ async function handle(ctx) {
 
             // Media processing must remain on the selected provider; Arisu has no media adapter.
             if (provider === 'arisu' && (chatAudioBuffer || extractedFileText.startsWith('[ISI ARSIP ZIP:'))) {
-                throw new Error('Mode ArisuSoft belum mendukung pemrosesan audio atau ZIP. Silakan pilih Gemini, OpenRouter, Cloudflare, atau Copilotku.');
+                throw new Error('Mode ArisuSoft belum mendukung pemrosesan audio atau ZIP. Silakan pilih Gemini, OpenRouter, Cloudflare, Copilotku, atau VPSMurah.');
             }
 
             // Dokumen panjang diproses bertahap agar seluruh isi tetap terbaca tanpa
@@ -953,6 +982,8 @@ async function handle(ctx) {
                             prompt: chunkPrompt,
                             senderId,
                             isOwner,
+                            isPremium,
+                            alternateId: premiumIdentity,
                             useMemory: false,
                             syncSharedMemory: false,
                             systemPrompt: 'Anda adalah analis dokumen. Keluarkan catatan faktual ringkas dalam bahasa yang sama dengan dokumen.'
@@ -971,6 +1002,10 @@ async function handle(ctx) {
                 const transcript = await AIProvider.transcribe({
                     provider,
                     model,
+                    senderId,
+                    isOwner,
+                    isPremium,
+                    alternateId: premiumIdentity,
                     audioBuffer: chatAudioBuffer,
                     mimeType: chatAudioMime
                 });
@@ -1005,6 +1040,8 @@ async function handle(ctx) {
                 prompt: finalPrompt,
                 senderId,
                 isOwner,
+                isPremium,
+                alternateId: premiumIdentity,
                 systemPrompt: effectiveSystemPrompt,
                 imageBuffer: chatImageBuffer,
                 imageMimeType: chatImageMime,

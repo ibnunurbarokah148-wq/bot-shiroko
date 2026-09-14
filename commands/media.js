@@ -43,9 +43,10 @@ function watermarkSvg(width, height, options) {
 }
 
 async function handle(ctx) {
-    const { sock, msg, normalizedMessage, from, senderId, isOwner, textClean, textLower, msgType,
+    const { sock, msg, normalizedMessage, from, senderId, callTarget, isOwner, textClean, textLower, msgType,
             isQuoted, quotedMsg, quotedType, albumMessages, albumParentId,
             getAlbumMessagesForMessage, getImageMessage, reply, downloadMediaBaileys } = ctx;
+    const premiumIdentity = callTarget ? `${callTarget}@s.whatsapp.net` : null;
 
     // ==========================================
     // HANDLER !PIXAI (PIXAI.ART ANIME GENERATOR)
@@ -802,7 +803,13 @@ async function handle(ctx) {
     // DENGAR / TRANSKRIP AUDIO
     // ==========================================
     if (textLower === '!dengar' || textLower === '!transkrip') {
-        if (!cekDanPotongLimit(senderId)) { await reply('Nn... Token harian Sensei sudah habis.'); return true; }
+        const currentMode = AIProvider.getUserMode(senderId);
+        const { provider, model } = AIProvider.resolveMode(currentMode, senderId);
+        const audioAccess = AIProvider.validateModelAccess(provider, model, { senderId, alternateId: premiumIdentity, isOwner });
+        if (!audioAccess.allowed) { await reply(`Nn... ${audioAccess.reason}`); return true; }
+        const audioCost = audioAccess.cost;
+        if (!Number.isInteger(audioCost) || audioCost < 0) { await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model lewat *!aimode*.'); return true; }
+        if (!cekDanPotongLimit(senderId, audioCost)) { await reply(`Nn... Token harian Sensei tidak cukup. Butuh ${audioCost} limit.`); return true; }
 
         const isQuotedAudio = isQuoted && (quotedType === 'audioMessage' || quotedType === 'documentMessage');
 
@@ -816,17 +823,9 @@ async function handle(ctx) {
 
                     const mediaBuffer = await downloadMediaBaileys(messageToDownload, quotedType === 'audioMessage' ? 'audio' : 'document');
                     const core = getCoreNumber(senderId);
-                    const currentMode = AIProvider.getUserMode(senderId);
-                    const { provider, model } = AIProvider.resolveMode(currentMode, senderId);
                     if (provider === 'arisu') {
-                        await reply('Nn... Mode ArisuSoft belum mendukung transkripsi audio. Pilih Gemini, OpenRouter, Cloudflare, atau Copilotku terlebih dahulu.');
-                        kembalikanLimit(senderId);
-                        return true;
-                    }
-                    const audioAccess = AIProvider.validateModelAccess(provider, model, { senderId, isOwner });
-                    if (!audioAccess.allowed) {
-                        await reply(`Nn... ${audioAccess.reason}`);
-                        kembalikanLimit(senderId);
+                        await reply('Nn... Mode ArisuSoft belum mendukung transkripsi audio. Pilih Gemini, OpenRouter, Cloudflare, Copilotku, atau VPSMurah terlebih dahulu.');
+                        kembalikanLimit(senderId, audioCost);
                         return true;
                     }
                     try {
@@ -835,6 +834,8 @@ async function handle(ctx) {
                             model,
                             senderId,
                             isOwner,
+                            isPremium: AIProvider.hasActivePremium(senderId, premiumIdentity),
+                            alternateId: premiumIdentity,
                             audioBuffer: mediaBuffer,
                             mimeType: messageToDownload.mimetype || 'audio/ogg'
                         });
@@ -842,15 +843,17 @@ async function handle(ctx) {
                      } catch (error) {
                          throw error;
                      }
-                 } else {
-                    await reply('Nn... Format salah. Pastikan me-reply Audio/VN.');
-                }
-            } catch (error) {
-                kembalikanLimit(senderId);
+                  } else {
+                     kembalikanLimit(senderId, audioCost);
+                     await reply('Nn... Format salah. Pastikan me-reply Audio/VN.');
+                 }
+             } catch (error) {
+                kembalikanLimit(senderId, audioCost);
                 console.error('[AUDIO ERROR]', error?.response?.data || error?.message || error);
                 await reply('Nn... Audio belum bisa diproses sekarang. Silakan kirim ulang atau coba lagi nanti.');
             }
         } else {
+            kembalikanLimit(senderId, audioCost);
             await reply('Nn... Sensei harus me-reply sebuah pesan suara sambil mengetik perintah ini.');
         }
         return true;

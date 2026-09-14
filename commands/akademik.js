@@ -8,7 +8,8 @@ const { cekDanPotongLimit, kembalikanLimit } = require('../config/db');
 const AIProvider = require('../services/ai/AIProvider');
 
 async function handle(ctx) {
-    const { sock, from, senderId, isOwner, textClean, textLower, quotedText, isQuoted, reply } = ctx;
+    const { sock, from, senderId, callTarget, isOwner, textClean, textLower, quotedText, isQuoted, reply } = ctx;
+    const premiumIdentity = callTarget ? `${callTarget}@s.whatsapp.net` : null;
 
     function getAiCost(mode) {
         const costMap = {
@@ -26,9 +27,9 @@ async function handle(ctx) {
     function resolveAkademikAccess() {
         const userMode = AIProvider.getUserMode(senderId);
         const { provider, model } = AIProvider.resolveMode(userMode, senderId);
-        const access = AIProvider.validateModelAccess(provider, model, { senderId, isOwner });
+        const access = AIProvider.validateModelAccess(provider, model, { senderId, alternateId: premiumIdentity, isOwner });
         if (!access.allowed) return { allowed: false, reason: access.reason };
-        const cost = provider === 'copilotku' ? access.cost : getAiCost(userMode);
+        const cost = provider === 'copilotku' || provider === 'vpsmurah' ? access.cost : getAiCost(userMode);
         if (!Number.isInteger(cost) || cost < 0) {
             return { allowed: false, reason: 'Biaya model ini tidak dapat ditentukan. Pilih ulang model lewat *!aimode*.' };
         }
@@ -51,6 +52,8 @@ async function handle(ctx) {
             prompt: promptAI,
             senderId,
             isOwner,
+            isPremium: AIProvider.hasActivePremium(senderId, premiumIdentity),
+            alternateId: premiumIdentity,
             systemPrompt
         });
     }
@@ -62,7 +65,7 @@ async function handle(ctx) {
         const sesi = state.sesiKaryaIlmiah[senderId];
         if (textLower === 'batal') {
             delete state.sesiKaryaIlmiah[senderId];
-            kembalikanLimit(senderId);
+            kembalikanLimit(senderId, sesi.cost || 1);
             await reply('Nn... Pembuatan karya ilmiah dibatalkan.');
             return true;
         }
@@ -85,7 +88,7 @@ async function handle(ctx) {
                 const hasilTeks = await prosesAkademikAI(promptAI);
                 await reply(`📚 *HASIL ${sesi.jenis.toUpperCase()}*\n\n${hasilTeks}`);
             } catch (err) {
-                kembalikanLimit(senderId);
+                kembalikanLimit(senderId, sesi.cost || 1);
                 await reply('Nn... Mesin penulis akademik mengalami gangguan.');
             }
             delete state.sesiKaryaIlmiah[senderId];
@@ -101,7 +104,7 @@ async function handle(ctx) {
         if (!access.allowed) { await reply(`Nn... ${access.reason}`); return true; }
         const cost = access.cost;
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token harian Sensei habis. Butuh ${cost} limit.`); return true; }
-        state.sesiKaryaIlmiah[senderId] = { step: 1 };
+        state.sesiKaryaIlmiah[senderId] = { step: 1, cost };
         await reply('Nn... Sensei ingin membuat karya ilmiah? Pilih jenisnya:\n\n*makalah*\n*artikel*\n*laporan*\n\n_Ketik *batal* untuk membatalkan._');
         return true;
     }
@@ -137,18 +140,23 @@ async function handle(ctx) {
     if (textLower.startsWith('!para ') || textLower.startsWith('!paraphrase ')) {
         const teksAsli = textClean.replace(/^!(para|paraphrase)\s+/i, '').trim();
         if (!teksAsli) { await reply('Nn... Mana teks yang mau diparafrase?'); return true; }
+        let chargedCost = 0;
         try {
             await reply('Nn... Mengaktifkan protokol Anti-Plagiasi...');
             const access = resolveAkademikAccess();
             if (!access.allowed) { await reply(`Nn... ${access.reason}`); return true; }
             const cost = access.cost;
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
+            chargedCost = cost;
 
             const promptAI = `Parafrase teks ini ke bahasa Indonesia akademik formal: "${teksAsli}"`;
             const hasilTeks = await prosesAkademikAI(promptAI);
 
             await reply(`*📝 HASIL PARAFRASE*\n\n${hasilTeks}`);
-        } catch (error) { await reply('Nn... Mesin pengolah kata error.'); }
+        } catch (error) {
+            if (chargedCost > 0) kembalikanLimit(senderId, chargedCost);
+            await reply('Nn... Mesin pengolah kata error.');
+        }
         return true;
     }
 
@@ -159,17 +167,22 @@ async function handle(ctx) {
         const teksInline = textClean.substring(8).trim();
         const teksAsli = teksInline || (isQuoted ? quotedText.trim() : '');
         if (!teksAsli) { await reply('Nn... Mana teks yang mau diringkas?'); return true; }
+        let chargedCost = 0;
         try {
             const access = resolveAkademikAccess();
             if (!access.allowed) { await reply(`Nn... ${access.reason}`); return true; }
             const cost = access.cost;
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
+            chargedCost = cost;
 
             const promptAI = `Buatkan ringkasan bullet points dari teks ini: "${teksAsli}"`;
             const hasilTeks = await prosesAkademikAI(promptAI);
 
             await reply(`*📑 HASIL RINGKASAN*\n\n${hasilTeks}`);
-        } catch (error) { await reply('Nn... Gagal meringkas.'); }
+        } catch (error) {
+            if (chargedCost > 0) kembalikanLimit(senderId, chargedCost);
+            await reply('Nn... Gagal meringkas.');
+        }
         return true;
     }
 
@@ -179,17 +192,22 @@ async function handle(ctx) {
     if (textLower.startsWith('!ide ')) {
         const jurusanTopik = textClean.substring(5).trim();
         if (!jurusanTopik) { await reply('Nn... Masukkan jurusan.'); return true; }
+        let chargedCost = 0;
         try {
             const access = resolveAkademikAccess();
             if (!access.allowed) { await reply(`Nn... ${access.reason}`); return true; }
             const cost = access.cost;
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
+            chargedCost = cost;
 
             const promptAI = `Berikan 3 ide judul skripsi untuk jurusan "${jurusanTopik}" beserta fokus masalahnya.`;
             const hasilTeks = await prosesAkademikAI(promptAI);
 
             await reply(`*💡 REKOMENDASI PENELITIAN*\n\n${hasilTeks}`);
-        } catch (error) { await reply('Nn... Generator ide error.'); }
+        } catch (error) {
+            if (chargedCost > 0) kembalikanLimit(senderId, chargedCost);
+            await reply('Nn... Generator ide error.');
+        }
         return true;
     }
 

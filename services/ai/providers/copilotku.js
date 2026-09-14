@@ -380,8 +380,8 @@ async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId
  * @returns {Promise<Array<{id: string, name: string}>>}
  */
 async function fetchModels() {
-    const apiKey = getRandomKey();
     try {
+        const apiKey = getRandomKey();
         const res = await axios.get(`${BASE_URL}/models`, {
             headers: { 'Authorization': `Bearer ${apiKey}` },
             timeout: 15000

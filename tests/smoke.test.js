@@ -61,4 +61,15 @@ assert.throws(
     'Parser Companion harus menolak fallback teks provider tanpa memunculkan SyntaxError mentah.'
 );
 
-console.log(`Smoke test lulus: ${files.length} file JavaScript valid, roster 11 waifu, dan parser Companion valid.`);
+const modelCatalog = require('../services/ai/model.catalog');
+const premiumModelMap = Object.fromEntries(modelCatalog.getFamilies()
+    .filter(family => family.premiumProvider === 'vpsmurah')
+    .map(family => [family.key, family.premiumModel]));
+assert.deepStrictEqual(premiumModelMap, {
+    ds3: 'deepseek-v32',
+    ds4: 'deepseek-v3',
+    qwen: 'qwen3-max',
+    gpt: 'luna'
+}, 'Mapping model Premium VPSMurah harus sesuai menu !aimode.');
+
+console.log(`Smoke test lulus: ${files.length} file JavaScript valid, roster 11 waifu, parser Companion, dan mapping Premium valid.`);
