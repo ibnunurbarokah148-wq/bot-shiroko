@@ -287,7 +287,6 @@ async function handle(ctx) {
             }
 
             const chosenProvider = providers[num - 1];
-            delete state.sesiAIMode[senderId];
 
             try {
                 await reply(`Nn... Sedang memuat daftar model ${chosenProvider.label}...`);
@@ -303,6 +302,7 @@ async function handle(ctx) {
 
                 if (chosenProvider.key === 'openrouter') state.sesiOpenRouterMode[senderId] = { list: models };
                 else state.sesiCloudflareMode[senderId] = { list: models };
+                delete state.sesiAIMode[senderId];
 
                 const roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
                 let teks = `🌱 *DAFTAR MODEL ${chosenProvider.label.toUpperCase()}*${roleNotice}\n\nNn... Pilih model dengan membalas angkanya (1 limit/request):\n\n`;
@@ -325,10 +325,15 @@ async function handle(ctx) {
             }
 
             if (num === 1) {
-                delete state.sesiAIMode[senderId];
-                simpanMode(family.standardMode);
-                const arisuModel = AIProvider.providers.arisu.fetchModels().find(m => m.id === AIProvider.resolveMode(family.standardMode, senderId).model);
-                await reply(`✅ *MODE STANDARD AKTIF*\n\nNn... Otak Shiroko sekarang memakai *${family.label}* (Standard).\nBiaya: *${arisuModel?.limitCost || 2} limit/request*. ✨`);
+                try {
+                    simpanMode(family.standardMode);
+                    const arisuModel = AIProvider.providers.arisu.fetchModels().find(m => m.id === AIProvider.resolveMode(family.standardMode, senderId).model);
+                    delete state.sesiAIMode[senderId];
+                    await replyNow(`✅ *MODE STANDARD AKTIF*\n\nNn... Otak Shiroko sekarang memakai *${family.label}* (Standard).\nBiaya: *${arisuModel?.limitCost || 2} limit/request*. ✨`);
+                } catch (err) {
+                    console.error('[AIMODE] Gagal mengaktifkan mode Standard:', err);
+                    await replyNow(PESAN_GANGGUAN_AI);
+                }
                 return true;
             }
 
@@ -351,7 +356,6 @@ async function handle(ctx) {
                         return true;
                     }
 
-                    delete state.sesiAIMode[senderId];
                     state.userXKiroModel[senderId] = chosenModel.id;
                     if (core) state.userXKiroModel[core] = chosenModel.id;
                     if (isOwner) {
@@ -363,11 +367,11 @@ async function handle(ctx) {
 
                     const biaya = getXKiroModelCost(chosenModel.id, { isOwner, isPremium, model: chosenModel });
                     const biayaTeks = isOwner ? 'unlimited (Owner)' : `${biaya} limit/request`;
-                    await reply(`✅ *MODE PREMIUM AKTIF*\n\nNn... Otak Shiroko sekarang memakai *${family.label}* (Premium).\nBiaya: *${biayaTeks}*. ✨`);
+                    delete state.sesiAIMode[senderId];
+                    await replyNow(`✅ *MODE PREMIUM AKTIF*\n\nNn... Otak Shiroko sekarang memakai *${family.label}* (Premium).\nBiaya: *${biayaTeks}*. ✨`);
                 } catch (err) {
                     console.error('[AIMODE] Gagal menyiapkan model premium:', err);
-                    delete state.sesiAIMode[senderId];
-                    await reply(PESAN_GAGAL_MODEL);
+                    await replyNow(PESAN_GAGAL_MODEL);
                 }
                 return true;
             }
@@ -703,6 +707,11 @@ async function handle(ctx) {
         const currentMode = AIProvider.getUserMode(senderId);
         const families = modelCatalog.getFamilies();
 
+        delete state.sesiOllamaMode[senderId];
+        delete state.sesiArisuMode[senderId];
+        delete state.sesiOpenRouterMode[senderId];
+        delete state.sesiCloudflareMode[senderId];
+        delete state.sesiXKiroMode[senderId];
         state.sesiAIMode[senderId] = { step: 'family' };
 
         let teks = `🧠 *PILIH OTAK AI SHIROKO*\n\nNn... Pilih model yang ingin dipakai:\n\n`;

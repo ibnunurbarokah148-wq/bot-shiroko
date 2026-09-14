@@ -303,7 +303,8 @@ async function textToSpeech(textInput, modelName = '@cf/myshell-ai/melotts') {
 async function fetchModels() {
     const { accountId, token } = getCloudflarePair();
     const res = await axios.get(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?task=Text%20Generation`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        timeout: 15000
     });
 
     let result = res.data.result || [];

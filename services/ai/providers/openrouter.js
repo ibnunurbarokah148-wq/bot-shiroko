@@ -125,7 +125,8 @@ async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model }) {
 async function fetchModels() {
     const apiKey = getRandomKey();
     const res = await axios.get('https://openrouter.ai/api/v1/models', {
-        headers: { 'Authorization': `Bearer ${apiKey}` }
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+        timeout: 15000
     });
 
     const allModels = res.data.data || [];
