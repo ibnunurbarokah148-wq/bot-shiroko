@@ -165,6 +165,26 @@ async function getUserCredits(token) {
 /**
  * Memeriksa status & masa aktif token PixAI
  */
+async function verifyTokenWithPixai(token) {
+    if (!token) return false;
+    const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+    try {
+        const response = await axios.post('https://api.pixai.art/graphql', {
+            query: 'query { me { id } }'
+        }, {
+            headers: {
+                Authorization: authHeader,
+                'Content-Type': 'application/json'
+            },
+            timeout: 8000,
+            validateStatus: () => true
+        });
+        return response.status >= 200 && response.status < 300 && Boolean(response.data?.data?.me?.id) && !response.data?.errors;
+    } catch (error) {
+        return false;
+    }
+}
+
 async function checkTokenStatus(token) {
     if (!token) {
         console.log('❌ [ERROR] Token kosong / tidak valid!');
@@ -378,6 +398,7 @@ module.exports = {
     saveTokenPoolToEnv,
     addTokenToEnv,
     checkTokenStatus,
+    verifyTokenWithPixai,
     loginWithCredentials,
     refreshAllCredentials
 };

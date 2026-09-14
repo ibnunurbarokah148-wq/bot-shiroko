@@ -14,6 +14,7 @@ const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 const otpSessions = new Map();
 const nonceSessions = new Map();
 const attempts = new Map();
+const MAX_OTP_SESSIONS_PER_OWNER = 3;
 
 function purgeExpired(now = Date.now()) {
     for (const [key, session] of otpSessions.entries()) {
@@ -46,10 +47,21 @@ function isRateLimited(clientKey) {
 
 function createOtp(ownerJid) {
     purgeExpired();
+    const owner = ownerJid || null;
+    const ownerSessions = [...otpSessions.values()].filter(session => session.ownerJid === owner);
+    while (ownerSessions.length >= MAX_OTP_SESSIONS_PER_OWNER) {
+        const oldest = ownerSessions.shift();
+        for (const [key, session] of otpSessions.entries()) {
+            if (session === oldest) {
+                otpSessions.delete(key);
+                break;
+            }
+        }
+    }
     // 5 byte = 40 bit entropi (sebelumnya hanya 16 bit).
     const otp = `SRO-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
     otpSessions.set(otp, {
-        ownerJid: ownerJid || null,
+        ownerJid: owner,
         createdAt: Date.now(),
         expiresAt: Date.now() + OTP_TTL_MS
     });

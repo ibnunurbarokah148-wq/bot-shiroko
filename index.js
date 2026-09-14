@@ -251,8 +251,9 @@ setInterval(async () => {
 // Endpoint API Dashboard Web Shiroko
 app.get('/api/dashboard', (req, res) => {
     const requestStartedAt = Date.now();
-    // Memberikan izin CORS agar web eksternal bisa mengakses
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const dashboardOrigin = (process.env.WEB_SHIROKO_URL || 'https://shiroko-project.com').split(',')[0].trim();
+    res.setHeader('Access-Control-Allow-Origin', dashboardOrigin);
+    res.setHeader('Vary', 'Origin');
     
     let whatsappUsers = 0;
     let totalChat = 0;
@@ -431,6 +432,10 @@ app.post('/api/save-pixai-token', async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Token sudah kedaluwarsa.' });
         }
 
+        const verified = await pixaiAuth.verifyTokenWithPixai(cleanToken);
+        if (!verified) {
+            return res.status(400).json({ status: 'error', message: 'Token ditolak oleh API PixAI atau tidak aktif.' });
+        }
         pixaiAuth.addTokenToEnv(cleanToken);
 
         const diffDays = payload.exp
@@ -484,7 +489,7 @@ app.post('/api/generate-bookmarklet', (req, res) => {
 
     const nonce = pixaiWebAuth.createNonce(verdict.session);
 
-    const botUrl = process.env.WEB_SHIROKO_URL || 'https://shiroko-project.my.id';
+    const botUrl = process.env.WEB_SHIROKO_URL || 'https://shiroko-project.com';
     
     function toHex(str) { return str.split('').map(c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0')).join(''); }
     const errPrompt = toHex('Koneksi otomatis gagal. Salin Kode ini lalu paste di Opsi B Web Auth:');
@@ -498,8 +503,12 @@ app.post('/api/generate-bookmarklet', (req, res) => {
 const http = require('http');
 const server = http.createServer(app);
 const { Server } = require('socket.io');
+const dashboardOrigins = (process.env.WEB_SHIROKO_URL || 'https://shiroko-project.com')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
 const io = new Server(server, {
-    cors: { origin: '*' }
+    cors: { origin: dashboardOrigins }
 });
 global.io = io; // Jadikan global agar bisa diakses handler
 createCallAIBridge();

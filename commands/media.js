@@ -92,7 +92,7 @@ async function handle(ctx) {
         const webAuth = require('../services/pixai-web-auth.service');
         const { otp, expiresInMinutes } = webAuth.createOtp(msg.key.remoteJid);
 
-        const webUrl = process.env.WEB_SHIROKO_URL || 'https://shiroko-project.my.id';
+        const webUrl = process.env.WEB_SHIROKO_URL || 'https://shiroko-project.com';
         let linkMsg = `🌐 *[ PIXAI WEB AUTH OTP ]*\n\n`;
         linkMsg += `Nn... Akses generator Web Auth untuk akun Anda.\n\n`;
         linkMsg += `🔗 *Website:* ${webUrl}/pixai-api\n`;
