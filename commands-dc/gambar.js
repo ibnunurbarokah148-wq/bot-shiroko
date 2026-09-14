@@ -112,7 +112,7 @@ module.exports = {
                     incrementStat('imageGenerated');
                 } catch (error) {
                     console.error("🚨 ERROR ARISUSOFT DISCORD:", error.message);
-                    await message.reply(`Nn... Gagal membuat gambar via ArisuSoft.\n*Laporan:* ${error.message}`);
+                    await message.reply('Nn... Gambar belum bisa dibuat sekarang. Silakan coba lagi nanti.');
                 }
             }
         });

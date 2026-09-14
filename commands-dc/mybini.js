@@ -150,7 +150,7 @@ module.exports = {
                     openrouterModelName = result;
                     await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan OpenRouter (**${openrouterModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
-                    return promptMsg.edit({ content: `Nn... Gagal mengambil model OpenRouter: ${e.message}`, components: [] });
+                    return promptMsg.edit({ content: 'Nn... Daftar model belum bisa dimuat. Silakan coba lagi nanti.', components: [] });
                 }
             } else if (chosenModel === 'xkiro') {
                 await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model xKiro Gateway...', components: [] }).catch(()=>{});
@@ -163,7 +163,7 @@ module.exports = {
                     xkiroModelName = result;
                     await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan xKiro Gateway (**${xkiroModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
-                    return promptMsg.edit({ content: `Nn... Gagal mengambil model xKiro: ${e.message}`, components: [] });
+                    return promptMsg.edit({ content: 'Nn... Daftar model belum bisa dimuat. Silakan coba lagi nanti.', components: [] });
                 }
             } else if (chosenModel === 'cloudflare') {
                 await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model Cloudflare Workers AI...', components: [] }).catch(()=>{});
@@ -176,7 +176,7 @@ module.exports = {
                     cloudflareModelName = result;
                     await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan Cloudflare (**${cloudflareModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
-                    return promptMsg.edit({ content: `Nn... Gagal mengambil model Cloudflare: ${e.message}`, components: [] });
+                    return promptMsg.edit({ content: 'Nn... Daftar model belum bisa dimuat. Silakan coba lagi nanti.', components: [] });
                 }
             } else {
                 await interactionModel.update({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan otak **${chosenModel.toUpperCase()}**...`, components: [] }).catch(()=>{});
@@ -308,7 +308,8 @@ module.exports = {
                                 chatHistoryArisu.push({ role: 'assistant', content: balasanAI });
                             } else {
                                 chatHistoryArisu.pop();
-                                balasanAI = '*(Error Arisu: Balasan gagal diproses)*';
+                                console.error('[MYBINI] Balasan Arisu tidak valid:', JSON.stringify(response.data)?.slice(0, 500));
+                                balasanAI = 'Nn... Maaf, layanan AI sedang mengalami gangguan. Silakan coba lagi beberapa saat lagi.';
                             }
                         }
 

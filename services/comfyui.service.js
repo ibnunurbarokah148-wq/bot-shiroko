@@ -273,12 +273,12 @@ async function prosesAntrianGambar() {
                 } catch (arisuErr) {
                     if (!pesanan.isDiscord) kembalikanLimit(senderId);
                     console.error("🚨 ERROR ARISUSOFT FALLBACK:", arisuErr.message);
-                    await reply(`Nn... Gagal menginisiasi fallback. \n*Laporan Sistem:* ${arisuErr.message}`);
+                    await reply('Nn... Gambar belum bisa dibuat sekarang. Silakan coba lagi nanti.');
                 }
             } else {
                 if (!pesanan.isDiscord) kembalikanLimit(senderId);
                 console.error("🚨 ERROR COMFYUI API:", error.message);
-                await reply(`Nn... Gagal membuat gambar di mesin lokal. \n*Laporan Sistem:* ${error.message}`);
+                await reply('Nn... Gambar belum bisa dibuat sekarang. Silakan coba lagi nanti.');
             }
         }
 

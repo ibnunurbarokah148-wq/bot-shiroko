@@ -115,7 +115,7 @@ _Command yang ditandai dengan backtick ( \` ) memakan Token Limit_
 *╔═══「 AI ASSISTANT 」*
 *║* ➸ \`!shiroko [pesan]\`
 *║* ➸ \`!shiroko_pintar [tanya]\`
-*║* ➸ !aimode [mode] (Ganti Otak AI; !aimode arisu untuk pilih model)
+*║* ➸ !aimode (Pilih model & tingkatan otak AI)
 *║* ➸ !jadwal (Jadwal Salat & Imsakiyah)
 *║* ➸ !lupa (Reset Memori AI)
 *║* ➸ !limit (Cek Sisa Limit)

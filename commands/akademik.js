@@ -23,8 +23,7 @@ async function handle(ctx) {
      * Helper eksekusi AI untuk fitur akademik.
      */
     async function prosesAkademikAI(promptAI) {
-        const defaultMode = isOwner ? 'gemini' : 'xkiro';
-        const userMode = state.userAIMode[senderId] || defaultMode;
+        const userMode = AIProvider.getUserMode(senderId);
         const { provider, model } = AIProvider.resolveMode(userMode, senderId);
         
         // Custom system prompt agar AI menjawab dengan gaya asisten akademik formal (bukan Shiroko yang biasa)
@@ -82,8 +81,7 @@ async function handle(ctx) {
     // ENTRY POINT KARYA ILMIAH (FIX BUG #4)
     // ==========================================
     if (textLower === '!karyailmiah') {
-        const defaultMode = isOwner ? 'gemini' : 'xkiro';
-        const userMode = state.userAIMode[senderId] || defaultMode;
+        const userMode = AIProvider.getUserMode(senderId);
         const cost = getAiCost(userMode);
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token harian Sensei habis. Butuh ${cost} limit.`); return true; }
         state.sesiKaryaIlmiah[senderId] = { step: 1 };
@@ -124,8 +122,7 @@ async function handle(ctx) {
         if (!teksAsli) { await reply('Nn... Mana teks yang mau diparafrase?'); return true; }
         try {
             await reply('Nn... Mengaktifkan protokol Anti-Plagiasi...');
-            const defaultMode = isOwner ? 'gemini' : 'xkiro';
-            const userMode = state.userAIMode[senderId] || defaultMode;
+            const userMode = AIProvider.getUserMode(senderId);
             const cost = getAiCost(userMode);
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
@@ -145,8 +142,7 @@ async function handle(ctx) {
         const teksAsli = teksInline || (isQuoted ? quotedText.trim() : '');
         if (!teksAsli) { await reply('Nn... Mana teks yang mau diringkas?'); return true; }
         try {
-            const defaultMode = isOwner ? 'gemini' : 'xkiro';
-            const userMode = state.userAIMode[senderId] || defaultMode;
+            const userMode = AIProvider.getUserMode(senderId);
             const cost = getAiCost(userMode);
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
@@ -165,8 +161,7 @@ async function handle(ctx) {
         const jurusanTopik = textClean.substring(5).trim();
         if (!jurusanTopik) { await reply('Nn... Masukkan jurusan.'); return true; }
         try {
-            const defaultMode = isOwner ? 'gemini' : 'xkiro';
-            const userMode = state.userAIMode[senderId] || defaultMode;
+            const userMode = AIProvider.getUserMode(senderId);
             const cost = getAiCost(userMode);
             if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 

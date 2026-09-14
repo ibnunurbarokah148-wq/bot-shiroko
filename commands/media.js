@@ -76,7 +76,7 @@ async function handle(ctx) {
             onError: async (error) => {
                 console.error('🚨 ERROR PIXAI:', error.message);
                 kembalikanLimit(senderId, cost);
-                await reply(`❌ Nn... Gagal generate gambar via PixAI:\n_${error.message}_`);
+                await reply('❌ Nn... Gambar belum bisa dibuat sekarang. Silakan coba lagi nanti.');
             }
         });
 
@@ -354,7 +354,7 @@ async function handle(ctx) {
                     onError: async (error) => {
                         console.error('🚨 ERROR PIXAI:', error.message);
                         kembalikanLimit(senderId, cost);
-                        await reply(`❌ Nn... Gagal render gambar via PixAI:\n_${error.message}_`);
+                        await reply('❌ Nn... Gambar belum bisa dibuat sekarang. Silakan coba lagi nanti.');
                     }
                 });
 
@@ -507,7 +507,7 @@ async function handle(ctx) {
                 } catch (error) {
                     delete state.sesiTTS[senderId];
                     console.error('ERROR SCAN TTS CLOUDFLARE:', error.message);
-                    await reply(`⚠️ Nn... Gagal mengambil daftar model suara Cloudflare. Sesi TTS dibatalkan.\n*Laporan Sistem:* ${error.message}`);
+                    await reply('⚠️ Nn... Daftar model suara belum bisa dimuat. Sesi TTS dibatalkan.');
                     return true;
                 }
                 if (!Array.isArray(cfModels) || cfModels.length === 0) {
@@ -561,7 +561,7 @@ async function handle(ctx) {
                 } catch (error) {
                     delete state.sesiTTS[senderId];
                     console.error('ERROR SCAN TTS ARISU:', error.message);
-                    await reply(`⚠️ Nn... Gagal mengambil daftar model suara ArisuSoft. Sesi TTS dibatalkan.\n*Laporan Sistem:* ${error.message}`);
+                    await reply('⚠️ Nn... Daftar model suara belum bisa dimuat. Sesi TTS dibatalkan.');
                     return true;
                 }
                 if (!Array.isArray(arisuModels) || arisuModels.length === 0) {
@@ -668,7 +668,7 @@ async function handle(ctx) {
             } catch (ttsErr) {
                 if (!isOwner) kembalikanLimit(senderId, cost);
                 console.error("🚨 ERROR TTS:", ttsErr.message);
-                await reply(`⚠️ Nn... Gagal membuat suara AI.\n*Laporan Sistem:* ${ttsErr.message}\nToken limit dikembalikan.`);
+                await reply('⚠️ Nn... Suara AI belum bisa dibuat sekarang. Token limit dikembalikan.');
             }
             return true;
         }
@@ -810,7 +810,7 @@ async function handle(ctx) {
 
                     const mediaBuffer = await downloadMediaBaileys(messageToDownload, quotedType === 'audioMessage' ? 'audio' : 'document');
                     const core = getCoreNumber(senderId);
-                    const currentMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || 'xkiro';
+                    const currentMode = AIProvider.getUserMode(senderId);
                     const { provider, model } = AIProvider.resolveMode(currentMode, senderId);
                     if (provider === 'arisu') {
                         await reply('Nn... Mode ArisuSoft belum mendukung transkripsi audio. Pilih Gemini, OpenRouter, Cloudflare, atau xKiro terlebih dahulu.');
@@ -834,7 +834,7 @@ async function handle(ctx) {
             } catch (error) {
                 kembalikanLimit(senderId);
                 console.error('[AUDIO ERROR]', error?.response?.data || error?.message || error);
-                await reply(`Nn... Gagal mengunduh dan memproses audio.\nDetail: ${error?.message || 'Tidak ada detail error.'}`);
+                await reply('Nn... Audio belum bisa diproses sekarang. Silakan kirim ulang atau coba lagi nanti.');
             }
         } else {
             await reply('Nn... Sensei harus me-reply sebuah pesan suara sambil mengetik perintah ini.');
@@ -1062,7 +1062,7 @@ async function handle(ctx) {
             } catch (error) {
                 kembalikanLimit(senderId);
                 console.error('🚨 ERROR PDF2JPG:', error.message);
-                await reply(`Nn... Gagal mengonversi PDF.\n*Laporan:* ${error.message}`);
+                await reply('Nn... PDF belum bisa dikonversi sekarang. Silakan coba lagi nanti.');
             }
         } else {
             await reply('Nn... Sensei harus me-reply sebuah file PDF dengan perintah *!pdf2jpg*.');

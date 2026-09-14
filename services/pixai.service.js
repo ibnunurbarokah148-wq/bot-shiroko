@@ -429,7 +429,7 @@ async function prosesAntrianPixAI() {
             if (onError) {
                 await onError(err);
             } else if (reply) {
-                await reply(`❌ Nn... Gagal generate gambar via PixAI:\n_${err.message}_`);
+                await reply('❌ Nn... Gambar belum bisa dibuat sekarang. Silakan coba lagi nanti.');
             }
         } catch (callbackError) {
             console.error('[PIXAI QUEUE CALLBACK ERROR]:', callbackError.message);

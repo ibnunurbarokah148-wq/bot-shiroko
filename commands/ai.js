@@ -23,10 +23,20 @@ const {
     getXKiroModelCost,
     formatXKiroPricing
 } = require('../services/ai/providers/xkiro');
+const modelCatalog = require('../services/ai/model.catalog');
+
+const PESAN_GANGGUAN_AI = 'Nn... Maaf, layanan AI sedang mengalami gangguan. Silakan coba lagi beberapa saat lagi.';
+const PESAN_GAGAL_MODEL = 'Nn... Daftar model belum bisa dimuat sekarang. Silakan coba lagi nanti.';
 
 function hasActivePremium(senderId) {
     const entry = dbPremium[senderId];
     return !!entry && (entry === true || entry > Date.now());
+}
+
+function isXKiroModelUsable(model, { isOwner, isPremium }) {
+    if (isOwner) return true;
+    if (!isPremium) return false;
+    return isXKiroModelFree(model) || isXKiroModelAllowed(model.id, { isPremium: true });
 }
 
 function formatXKiroModelLine(model, { isOwner, isPremium }) {
@@ -60,7 +70,8 @@ async function handle(ctx) {
             const result = await callService.startCall(target);
             await reply(`Nn... Panggilan AI sedang dimulai. Status: *${result.state || 'ringing'}*.`);
         } catch (error) {
-            await reply(`Nn... Gagal memulai panggilan AI.\n_${error.message}_`);
+            console.error('[CALL] Gagal memulai panggilan AI:', error);
+            await reply('Nn... Layanan panggilan AI sedang tidak tersedia. Silakan coba lagi nanti.');
         }
         return true;
     }
@@ -74,7 +85,8 @@ async function handle(ctx) {
             await require('../services/call.service').hangup();
             await reply('Nn... Panggilan AI sudah diakhiri.');
         } catch (error) {
-            await reply(`Nn... Gagal mengakhiri panggilan.\n_${error.message}_`);
+            console.error('[CALL] Gagal mengakhiri panggilan:', error);
+            await reply('Nn... Panggilan belum bisa diakhiri sekarang. Silakan coba lagi nanti.');
         }
         return true;
     }
@@ -88,7 +100,8 @@ async function handle(ctx) {
             const status = await require('../services/call.service').status();
             await reply(`☎️ *STATUS AI CALL*\n\n• Service: *${status.connected ? 'CONNECTED' : 'OFFLINE'}*\n• Login: *${status.loggedIn ? 'READY' : 'BELUM PAIRING'}*\n• Call: *${status.state || 'idle'}*\n• Peer: ${status.peer || '-'}`);
         } catch (error) {
-            await reply(`Nn... Call service belum bisa dihubungi.\n_${error.message}_`);
+            console.error('[CALL] Status call service gagal diambil:', error);
+            await reply('Nn... Call service belum bisa dihubungi. Silakan coba lagi nanti.');
         }
         return true;
     }
@@ -114,7 +127,8 @@ async function handle(ctx) {
             await reply(`🎵 Nn... Musik diterima (${musicCost} limit). Status: *${result.position === 0 ? 'sedang diputar' : `antrean call #${result.position}`}*.`);
         } catch (error) {
             if (!isOwner) kembalikanLimit(senderId, musicCost);
-            await reply(`Nn... Gagal memutar musik.\n_${error.message}_`);
+            console.error('[MUSIC] Gagal memutar musik:', error);
+            await reply('Nn... Musik belum bisa diputar sekarang. Silakan coba lagi nanti.');
         }
         return true;
     }
@@ -122,28 +136,28 @@ async function handle(ctx) {
     if (['!pause', '!pausemusic'].includes(textLower)) {
         if (isGroup) { await reply('Nn... Kontrol musik call hanya tersedia melalui chat pribadi.'); return true; }
         try { await require('../services/call.service').pauseMusic(callTarget); await reply('⏸️ Musik call dijeda.'); }
-        catch (error) { await reply(`Nn... Gagal menjeda musik.\n_${error.message}_`); }
+        catch (error) { console.error('[MUSIC] Gagal menjeda musik:', error); await reply('Nn... Musik belum bisa dijeda sekarang.'); }
         return true;
     }
 
     if (['!resume', '!resumemusic'].includes(textLower)) {
         if (isGroup) { await reply('Nn... Kontrol musik call hanya tersedia melalui chat pribadi.'); return true; }
         try { await require('../services/call.service').resumeMusic(callTarget); await reply('▶️ Musik call dilanjutkan.'); }
-        catch (error) { await reply(`Nn... Gagal melanjutkan musik.\n_${error.message}_`); }
+        catch (error) { console.error('[MUSIC] Gagal melanjutkan musik:', error); await reply('Nn... Musik belum bisa dilanjutkan sekarang.'); }
         return true;
     }
 
     if (textLower === '!skip') {
         if (isGroup) { await reply('Nn... Kontrol musik call hanya tersedia melalui chat pribadi.'); return true; }
         try { await require('../services/call.service').skipMusic(callTarget); await reply('⏭️ Musik dilewati.'); }
-        catch (error) { await reply(`Nn... Gagal melewati musik.\n_${error.message}_`); }
+        catch (error) { console.error('[MUSIC] Gagal melewati musik:', error); await reply('Nn... Musik belum bisa dilewati sekarang.'); }
         return true;
     }
 
     if (['!stopmusic', '!stop'].includes(textLower)) {
         if (isGroup) { await reply('Nn... Kontrol musik call hanya tersedia melalui chat pribadi.'); return true; }
         try { await require('../services/call.service').stopMusic(callTarget); await reply('⏹️ Musik call dihentikan dan antrean dikosongkan.'); }
-        catch (error) { await reply(`Nn... Gagal menghentikan musik.\n_${error.message}_`); }
+        catch (error) { console.error('[MUSIC] Gagal menghentikan musik:', error); await reply('Nn... Musik belum bisa dihentikan sekarang.'); }
         return true;
     }
 
@@ -152,7 +166,7 @@ async function handle(ctx) {
         try {
             const queue = await require('../services/call.service').musicQueue(callTarget);
             await reply(`🎶 *MUSIC CALL*\n\n• Sedang diputar: *${queue.playing ? 'Ya' : 'Tidak'}*\n• Antrean berikutnya: *${queue.queued || 0}*`);
-        } catch (error) { await reply(`Nn... Gagal mengambil antrean musik.\n_${error.message}_`); }
+        } catch (error) { console.error('[MUSIC] Gagal mengambil antrean musik:', error); await reply('Nn... Antrean musik belum bisa dibaca sekarang.'); }
         return true;
     }
 
@@ -197,8 +211,7 @@ async function handle(ctx) {
 
             const chosen = WAIFU_CHARACTERS[num - 1];
             const core = getCoreNumber(senderId);
-            const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'xkiro';
-            const chosenModel = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
+            const chosenModel = AIProvider.getUserMode(senderId);
             const charName = chosen.name;
             const characterId = chosen.id;
             state.userAIMode[senderId] = chosenModel;
@@ -212,6 +225,159 @@ async function handle(ctx) {
             await replyNow(`✅ *MODE WAIFU (${charName}) AKTIF*\n\nDi PM, cukup chat biasa. Di grup, gunakan *!chat [pesan]*. Otak AI: *${chosenModel.toUpperCase()}*.`);
             return true;
         }
+    }
+
+    // ==========================================
+    // HANDLER SESI PEMILIHAN AI MODE (2 TAHAP)
+    // ==========================================
+    if (state.sesiAIMode && state.sesiAIMode[senderId]) {
+        const sesi = state.sesiAIMode[senderId];
+        const pilihan = textLower.trim();
+
+        if (pilihan === 'batal' || pilihan === 'cancel') {
+            delete state.sesiAIMode[senderId];
+            await reply('Nn... Pemilihan mode AI dibatalkan.');
+            return true;
+        }
+
+        const num = parseInt(pilihan);
+        const core = getCoreNumber(senderId);
+
+        function simpanMode(mode) {
+            state.userAIMode[senderId] = mode;
+            if (core) state.userAIMode[core] = mode;
+            if (isOwner) {
+                state.ownerAIMode = mode;
+                db.setSetting('ownerAIMode', mode);
+            }
+            db.setSetting('userAIMode', state.userAIMode);
+            AIProvider.clearMemory(senderId);
+            if (core) AIProvider.clearMemory(core);
+        }
+
+        if (sesi.step === 'family') {
+            const families = modelCatalog.getFamilies();
+            if (isNaN(num) || num < 1 || num > families.length) {
+                await reply(`Nn... Angka tidak valid. Balas dengan angka 1-${families.length}, atau ketik *batal*.`);
+                return true;
+            }
+
+            const family = families[num - 1];
+
+            if (family.openSource) {
+                sesi.step = 'opensource';
+                let teks = `🌱 *${family.label.toUpperCase()}*\n\nNn... Pilih penyedia open source:\n\n`;
+                modelCatalog.OPEN_SOURCE_PROVIDERS.forEach((p, i) => { teks += `*${i + 1}.* ${p.label} — 1 limit/request\n`; });
+                teks += `\n_Semua user bisa memakai tingkatan ini._\n_Ketik *batal* untuk membatalkan._`;
+                await reply(teks);
+                return true;
+            }
+
+            sesi.step = 'tier';
+            sesi.familyKey = family.key;
+            await reply(`🎚️ *PILIH TINGKATAN — ${family.label.toUpperCase()}*\n\n*1.* Standard — untuk semua user\n*2.* Premium — khusus VIP Premium\n\n_Ketik *batal* untuk membatalkan._`);
+            return true;
+        }
+
+        if (sesi.step === 'opensource') {
+            const providers = modelCatalog.OPEN_SOURCE_PROVIDERS;
+            if (isNaN(num) || num < 1 || num > providers.length) {
+                await reply(`Nn... Angka tidak valid. Balas dengan angka 1-${providers.length}, atau ketik *batal*.`);
+                return true;
+            }
+
+            const chosenProvider = providers[num - 1];
+            delete state.sesiAIMode[senderId];
+
+            try {
+                await reply(`Nn... Sedang memuat daftar model ${chosenProvider.label}...`);
+                const userRole = state.userRole ? (state.userRole[senderId] || (core && state.userRole[core])) : null;
+                let models = await AIProvider.fetchModels(chosenProvider.key);
+
+                if (!models || models.length === 0) {
+                    await reply(PESAN_GAGAL_MODEL);
+                    return true;
+                }
+
+                models = filterModelsByRole(models, userRole, chosenProvider.key);
+
+                if (chosenProvider.key === 'openrouter') state.sesiOpenRouterMode[senderId] = { list: models };
+                else state.sesiCloudflareMode[senderId] = { list: models };
+
+                const roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
+                let teks = `🌱 *DAFTAR MODEL ${chosenProvider.label.toUpperCase()}*${roleNotice}\n\nNn... Pilih model dengan membalas angkanya (1 limit/request):\n\n`;
+                models.forEach((m, i) => { teks += `*${i + 1}.* ${m.name}\n`; });
+                teks += `\n_Ketik *batal* untuk membatalkan._`;
+                await reply(teks);
+            } catch (err) {
+                console.error(`[AIMODE] Gagal memuat model ${chosenProvider.key}:`, err);
+                await reply(PESAN_GAGAL_MODEL);
+            }
+            return true;
+        }
+
+        if (sesi.step === 'tier') {
+            const family = modelCatalog.getFamilyByKey(sesi.familyKey);
+            if (!family) {
+                delete state.sesiAIMode[senderId];
+                await reply('Nn... Sesi pemilihan mode sudah tidak valid. Ketik *!aimode* untuk mengulang.');
+                return true;
+            }
+
+            if (num === 1) {
+                delete state.sesiAIMode[senderId];
+                simpanMode(family.standardMode);
+                const arisuModel = AIProvider.providers.arisu.fetchModels().find(m => m.id === AIProvider.resolveMode(family.standardMode, senderId).model);
+                await reply(`✅ *MODE STANDARD AKTIF*\n\nNn... Otak Shiroko sekarang memakai *${family.label}* (Standard).\nBiaya: *${arisuModel?.limitCost || 2} limit/request*. ✨`);
+                return true;
+            }
+
+            if (num === 2) {
+                const isPremium = hasActivePremium(senderId);
+                if (!isOwner && !isPremium) {
+                    delete state.sesiAIMode[senderId];
+                    await reply('Nn... Tingkatan Premium hanya untuk VIP Premium. Silakan pilih tingkatan *Standard* atau *Open Source*, atau aktifkan VIP Premium dulu.');
+                    return true;
+                }
+
+                try {
+                    await reply('Nn... Sedang menyiapkan otak Premium...');
+                    const models = await AIProvider.fetchModels('xkiro');
+                    const chosenModel = modelCatalog.resolveXKiroModel(family, models, model => isXKiroModelUsable(model, { isOwner, isPremium }));
+
+                    if (!chosenModel) {
+                        delete state.sesiAIMode[senderId];
+                        await reply('Nn... Versi Premium untuk model ini sedang tidak tersedia. Silakan pilih tingkatan *Standard*.');
+                        return true;
+                    }
+
+                    delete state.sesiAIMode[senderId];
+                    state.userXKiroModel[senderId] = chosenModel.id;
+                    if (core) state.userXKiroModel[core] = chosenModel.id;
+                    if (isOwner) {
+                        state.ownerXKiroModel = chosenModel.id;
+                        db.setSetting('ownerXKiroModel', chosenModel.id);
+                    }
+                    db.setSetting('userXKiroModel', state.userXKiroModel);
+                    simpanMode('xkiro');
+
+                    const biaya = getXKiroModelCost(chosenModel.id, { isOwner, isPremium, model: chosenModel });
+                    const biayaTeks = isOwner ? 'unlimited (Owner)' : `${biaya} limit/request`;
+                    await reply(`✅ *MODE PREMIUM AKTIF*\n\nNn... Otak Shiroko sekarang memakai *${family.label}* (Premium).\nBiaya: *${biayaTeks}*. ✨`);
+                } catch (err) {
+                    console.error('[AIMODE] Gagal menyiapkan model premium:', err);
+                    delete state.sesiAIMode[senderId];
+                    await reply(PESAN_GAGAL_MODEL);
+                }
+                return true;
+            }
+
+            await reply('Nn... Angka tidak valid. Balas *1* untuk Standard atau *2* untuk Premium, atau ketik *batal*.');
+            return true;
+        }
+
+        delete state.sesiAIMode[senderId];
+        return true;
     }
 
     // ==========================================
@@ -395,9 +561,9 @@ async function handle(ctx) {
 
         const chosenModel = listModels[num];
         const chosenIsPremium = hasActivePremium(senderId);
-        if (!isOwner && !isXKiroModelFree(chosenModel) && !isXKiroModelAllowed(chosenModel.id, { isPremium: chosenIsPremium })) {
+        if (!isXKiroModelUsable(chosenModel, { isOwner, isPremium: chosenIsPremium })) {
             delete state.sesiXKiroMode[senderId];
-            await reply('Nn... Model ini tidak termasuk akses akunmu. Gunakan model FREE atau aktifkan VIP Premium.');
+            await reply('Nn... Tingkatan Premium hanya tersedia untuk VIP Premium. Gunakan tingkatan *Standard* atau *Open Source*.');
             return true;
         }
         const core = getCoreNumber(senderId);
@@ -533,151 +699,17 @@ async function handle(ctx) {
     }
 
     if (textLower.startsWith('!aimode')) {
-        const args = textClean.split(' ')[1];
-        const allowedModes = ['gemini', 'ollama', 'openrouter', 'or', 'cloudflare', 'cf', 'xkiro', 'xk', 'arisu', 'ds3', 'ds4', 'glm', 'qwen', 'arisu-gemini', 'gpt', 'grok'];
-        
         const core = getCoreNumber(senderId);
-        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'xkiro';
-        const currentMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || defaultMode;
-        const currentOllama = state.userOllamaModel[senderId] || (core && state.userOllamaModel[core]) || state.ownerOllamaModel || 'gemma3:4b';
-        const currentOR = state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || state.ownerOpenRouterModel || 'deepseek/deepseek-r1:free';
-        const currentCF = state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || state.ownerCloudflareModel || '@cf/meta/llama-3-8b-instruct';
-        const currentXK = state.userXKiroModel[senderId] || (core && state.userXKiroModel[core]) || (isOwner && state.ownerXKiroModel) || 'deepseek/deepseek-v4-flash';
+        const currentMode = AIProvider.getUserMode(senderId);
+        const families = modelCatalog.getFamilies();
 
-        if (!args || !allowedModes.includes(args)) {
-            let listModes = isOwner 
-                ? `🔹 *!aimode gemini* (Gemini Cloud)\n🔹 *!aimode ollama* (Lokal Offline)\n` 
-                : ``;
-            listModes += `🔹 *!aimode xkiro* (Live xKiro Multi-Model Gateway)\n🔹 *!aimode arisu* (Pilih model ArisuSoft)\n🔹 *!aimode openrouter* (Live OpenRouter Scanner)\n🔹 *!aimode cloudflare* (Live Cloudflare AI Scanner)\n🔹 *!aimode ds3* (Deepseek V3.2)\n🔹 *!aimode ds4* (Deepseek V4 Pro)\n🔹 *!aimode glm* (GLM AI)\n🔹 *!aimode qwen* (Qwen AI)\n🔹 *!aimode arisu-gemini* (Gemini via Arisu)\n🔹 *!aimode gpt* (GPT 5 Nano)\n🔹 *!aimode grok* (Grok 4.1)`;
-            
-            await reply(`Nn... Format salah, Sensei. Pilih salah satu mode di bawah ini:\n\n${listModes}\n\nMode saat ini: *${currentMode.toUpperCase()}*\nxKiro Aktif: *${currentXK}*\nOpenRouter Aktif: *${currentOR}*\nCloudflare Aktif: *${currentCF}*`);
-            return true;
-        }
+        state.sesiAIMode[senderId] = { step: 'family' };
 
-        if (args === 'ollama') {
-            try {
-                await reply('Nn... Mengecek daftar otak buatan di laptop lokal...');
-                const resTags = await axios.get('http://localhost:11434/api/tags');
-                const models = resTags.data.models;
+        let teks = `🧠 *PILIH OTAK AI SHIROKO*\n\nNn... Pilih model yang ingin dipakai:\n\n`;
+        families.forEach((family, i) => { teks += `*${i + 1}.* ${family.label}\n`; });
+        teks += `\nMode saat ini: *${currentMode.toUpperCase()}*\n\n_Balas dengan angka, atau ketik *batal*._`;
 
-                if (!models || models.length === 0) { await reply('Nn... Tidak ada model Ollama yang terinstall di laptop Sensei.'); return true; }
-
-                const modelNames = models.map(m => m.name);
-                state.sesiOllamaMode[senderId] = { list: modelNames };
-
-                let roleNotice = '';
-                let teksList = `🤖 *DAFTAR MODEL OLLAMA LOKAL*${roleNotice}\n\nNn... Sensei, pilih otak mana yang mau dipakai dengan membalas angkanya:\n\n`;
-                modelNames.forEach((name, i) => { teksList += `*${i + 1}.* ${name}\n`; });
-                teksList += `\n_Ketik *batal* untuk membatalkan._`;
-
-                await reply(teksList);
-            } catch (err) {
-                console.error('Error cek Ollama:', err.message);
-                await reply('Nn... Gagal nyambung ke Ollama. Pastikan aplikasi Ollama di laptop udah nyala.');
-            }
-        } else if (args === 'arisu') {
-            try {
-                const models = await AIProvider.fetchModels('arisu');
-                state.sesiArisuMode[senderId] = { list: models };
-                let teksList = `🛰️ *DAFTAR MODEL ARISUSOFT*\n\nNn... Pilih model ArisuSoft (biaya per request):\n\n`;
-                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name} — *${m.limitCost} limit*\n`; });
-                teksList += `\n_Ketik *batal* untuk membatalkan._`;
-                await reply(teksList);
-            } catch (err) {
-                console.error('Error daftar Arisu:', err.message);
-                await reply(`Nn... Gagal memuat model ArisuSoft: ${err.message}`);
-            }
-        } else if (args === 'xkiro' || args === 'xk') {
-            try {
-                await reply('Nn... Men-scan daftar model live dari xKiro Multi-Model Gateway...');
-                let models = await AIProvider.fetchModels('xkiro');
-
-                if (!models || models.length === 0) { await reply('Nn... Tidak ada model xKiro yang ditemukan.'); return true; }
-
-                const userRole = state.userRole ? (state.userRole[senderId] || (core && state.userRole[core])) : null;
-                const isPremium = hasActivePremium(senderId);
-                models = filterModelsByRole(models, userRole, 'xkiro').filter(model => {
-                    if (isOwner) return true;
-                    if (isXKiroModelFree(model)) return true;
-                    return isXKiroModelAllowed(model.id, { isPremium });
-                });
-
-                if (models.length === 0) {
-                    await reply('Nn... Tidak ada model xKiro yang sesuai dengan akses akun ini.');
-                    return true;
-                }
-
-                state.sesiXKiroMode[senderId] = { list: models };
-
-                const roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
-                const audience = isOwner ? 'OWNER' : (isPremium ? 'VIP PREMIUM' : 'FREE');
-                let teksList = `🚀 *DAFTAR MODEL XKIRO ${audience}*${roleNotice}\n\nNn... Pilih model dengan membalas angkanya:\n\n`;
-                models.forEach((m, i) => { teksList += `*${i + 1}.* ${formatXKiroModelLine(m, { isOwner, isPremium })}\n`; });
-                if (!isOwner && isPremium) {
-                    teksList += `\n_Catatan: akses VIP tidak mencakup saldo wallet Xkiro. Model PREMIUM/WALLET tetap membutuhkan saldo provider._\n`;
-                }
-                teksList += `\n_Ketik *batal* untuk membatalkan._`;
-
-                await reply(teksList);
-            } catch (err) {
-                console.error('Error scan xKiro:', err.message);
-                await reply(`Nn... Gagal men-scan xKiro AI: ${err.message}`);
-            }
-        } else if (args === 'openrouter' || args === 'or') {
-            try {
-                await reply('Nn... Men-scan daftar model live dari OpenRouter API...');
-                let models = await AIProvider.fetchModels('openrouter');
-
-                if (!models || models.length === 0) { await reply('Nn... Tidak ada model OpenRouter yang tersedia.'); return true; }
-
-                const userRole = state.userRole ? (state.userRole[senderId] || (core && state.userRole[core])) : null;
-                models = filterModelsByRole(models, userRole, 'openrouter');
-
-                state.sesiOpenRouterMode[senderId] = { list: models };
-
-                let roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
-                let teksList = `🌐 *DAFTAR MODEL OPENROUTER LIVE*${roleNotice}\n\nNn... Sensei, pilih model FREE OpenRouter (1 limit/request):\n\n`;
-                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name} — *1 limit*\n`; });
-                teksList += `\n_Ketik *batal* untuk membatalkan._`;
-
-                await reply(teksList);
-            } catch (err) {
-                console.error('Error scan OpenRouter:', err.message);
-                await reply(`Nn... Gagal men-scan OpenRouter: ${err.message}`);
-            }
-        } else if (args === 'cloudflare' || args === 'cf') {
-            try {
-                await reply('Nn... Men-scan daftar model AI resmi dari Cloudflare...');
-                let models = await AIProvider.fetchModels('cloudflare');
-
-                if (!models || models.length === 0) { await reply('Nn... Tidak ada model Cloudflare yang ditemukan.'); return true; }
-
-                const userRole = state.userRole ? (state.userRole[senderId] || (core && state.userRole[core])) : null;
-                models = filterModelsByRole(models, userRole, 'cloudflare');
-
-                state.sesiCloudflareMode[senderId] = { list: models };
-
-                let roleNotice = userRole && userRole !== 'normal' ? ` (Sesuai Peran: ${userRole.toUpperCase()})` : '';
-                let teksList = `☁️ *DAFTAR MODEL CLOUDFLARE AI LIVE*${roleNotice}\n\nNn... Sensei, pilih model Cloudflare (1 limit/request):\n\n`;
-                models.forEach((m, i) => { teksList += `*${i + 1}.* ${m.name} — *1 limit*\n`; });
-                teksList += `\n_Ketik *batal* untuk membatalkan._`;
-
-                await reply(teksList);
-            } catch (err) {
-                console.error('Error scan Cloudflare:', err.message);
-                await reply(`Nn... Gagal men-scan Cloudflare AI: ${err.message}`);
-            }
-        } else {
-            const core = getCoreNumber(senderId);
-            state.userAIMode[senderId] = args;
-            if (core) state.userAIMode[core] = args;
-            if (isOwner) {
-                state.ownerAIMode = args;
-                db.setSetting('ownerAIMode', args);
-            }
-            db.setSetting('userAIMode', state.userAIMode);
-            await reply(`✅ *MODE OPERASIONAL DIUBAH*\n\nNn... Mulai sekarang, khusus untuk chat dari Sensei, Shiroko akan berpikir menggunakan otak *${args.toUpperCase()}*. ✨`);
-        }
+        await reply(teks);
         return true;
     }
 
@@ -686,8 +718,7 @@ async function handle(ctx) {
     // ==========================================
     if (textLower.startsWith('!shiroko_pintar ')) {
         const core = getCoreNumber(senderId);
-        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'xkiro';
-        const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
+        const userMode = AIProvider.getUserMode(senderId);
         const cost = 3;
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
@@ -730,7 +761,7 @@ async function handle(ctx) {
         } catch (error) {
             kembalikanLimit(senderId, cost);
             console.error('🚨 ERROR SHIROKO PINTAR:', error);
-            await reply(`Nn... Mesin kecerdasan akademik sedang mengalami gangguan teknis:\n_${error.message}_`);
+            await reply(PESAN_GANGGUAN_AI);
         }
         return true;
     }
@@ -753,6 +784,7 @@ async function handle(ctx) {
             state.sesiKaryaIlmiah[senderId] || state.sesiPixiv[senderId] || state.sesiWaifu[senderId] || state.sesiMybini[senderId] ||
             state.sesiTopup[senderId] || state.sesiMeme[senderId] || state.sesiOllamaMode[senderId] ||
             state.sesiOpenRouterMode[senderId] || state.sesiCloudflareMode[senderId] ||
+            state.sesiAIMode[senderId] ||
             state.sesiCabutRole[senderId] || state.sesiModelGambar[senderId];
         if (msgType === 'audioMessage' && normalizedMessage.audioMessage?.ptt === true && !sedangSesiLain) {
             pemicuObrolan = true;
@@ -830,8 +862,7 @@ async function handle(ctx) {
 
         // Resolve mode sekali agar companion dan chat normal memakai mode yang sama.
         const core = getCoreNumber(senderId);
-        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'xkiro';
-        const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
+        const userMode = AIProvider.getUserMode(senderId);
         const resolvedMode = AIProvider.resolveMode(userMode, senderId);
 
         // Perbarui mood sebelum companion flow agar jalur visual tidak melewati state mood.
@@ -858,8 +889,7 @@ async function handle(ctx) {
     // ==========================================
     if (pemicuObrolan && (pesanUser || chatImageBuffer || chatAudioBuffer || extractedFileText)) {
         const core = getCoreNumber(senderId);
-        const defaultMode = isOwner ? (state.ownerAIMode || 'gemini') : 'xkiro';
-        const userMode = state.userAIMode[senderId] || (core && state.userAIMode[core]) || (isOwner && state.ownerAIMode) || defaultMode;
+        const userMode = AIProvider.getUserMode(senderId);
         const { provider: costProvider, model: costModel } = AIProvider.resolveMode(userMode, senderId);
         const isPremium = hasActivePremium(senderId);
         let xkiroMetadata = null;
@@ -915,7 +945,7 @@ async function handle(ctx) {
                 } catch (error) {
                     kembalikanLimit(senderId, cost);
                     console.error('🚨 xKiro Native Tool Error:', error);
-                    await reply(`Nn... Terjadi kesalahan saat menjalankan aksi native xKiro:\n_${error.message}_`);
+                    await reply(PESAN_GANGGUAN_AI);
                     return true;
                 }
             }
@@ -1012,7 +1042,7 @@ async function handle(ctx) {
         } catch (error) {
             kembalikanLimit(senderId, cost);
             console.error('🚨 AI Chat Error:', error);
-            await reply(`Nn... Terjadi kesalahan dari server AI:\n_${error.message}_\n\n*(Coba ketik !lupa jika dirasa memori percakapan nyangkut)*`);
+            await reply(`${PESAN_GANGGUAN_AI}\n\n_(Coba ketik !lupa jika dirasa memori percakapan nyangkut)_`);
         }
         return true;
     }

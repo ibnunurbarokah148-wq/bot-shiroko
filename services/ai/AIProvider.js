@@ -15,6 +15,21 @@ const state = require('../../config/state');
 const { getCoreNumber } = require('../../utils/helpers');
 const { ID_OWNER } = require('../../config/constants');
 
+// Mode default bot: DeepSeek V4 Pro melalui ArisuSoft (tingkatan Standard).
+const DEFAULT_AI_MODE = 'ds4';
+
+/**
+ * Ambil mode AI aktif milik user, dengan fallback ke mode default bot.
+ * @param {string} senderId
+ * @returns {string}
+ */
+function getUserMode(senderId) {
+    const core = getCoreNumber(senderId);
+    return state.userAIMode[senderId] ||
+        (core && state.userAIMode[core]) ||
+        DEFAULT_AI_MODE;
+}
+
 /**
  * Mapping dari !aimode shortcut ke { provider, model }.
  * @param {string} mode - Mode AI dari !aimode (misal 'ds3', 'cloudflare')
@@ -37,11 +52,12 @@ function getModelCost(provider, model, context = {}) {
 function validateModelAccess(provider, model, context = {}) {
     if (provider !== 'xkiro') return { allowed: true, cost: getModelCost(provider, model, context) };
     const metadata = context.metadata || null;
-    const allowed = xkiroProvider.isXKiroModelAllowed(model, {
-        isOwner: context.isOwner,
-        isPremium: context.isPremium
-    }) || xkiroProvider.isXKiroModelFree(metadata);
-    if (!allowed) return { allowed: false, cost: null, reason: 'Model Xkiro ini hanya tersedia untuk Owner atau VIP Premium yang diizinkan.' };
+    // Tingkatan Premium sepenuhnya dikunci untuk VIP Premium dan Owner.
+    const allowed = context.isOwner === true || (context.isPremium === true && (
+        xkiroProvider.isXKiroModelAllowed(model, { isOwner: false, isPremium: true }) ||
+        xkiroProvider.isXKiroModelFree(metadata)
+    ));
+    if (!allowed) return { allowed: false, cost: null, reason: 'Tingkatan Premium hanya tersedia untuk VIP Premium. Gunakan tingkatan Standard atau Open Source.' };
     return { allowed: true, cost: getModelCost(provider, model, { ...context, model: metadata }) };
 }
 
@@ -71,7 +87,7 @@ function resolveMode(mode, senderId) {
         'grok':         { provider: 'arisu',       model: 'grok' }
     };
 
-    return modeMap[mode] || { provider: 'gemini', model: 'gemini-2.5-flash-lite' };
+    return modeMap[mode] || modeMap[DEFAULT_AI_MODE];
 }
 
 /**
@@ -262,6 +278,8 @@ module.exports = {
     generate,
     transcribe,
     resolveMode,
+    getUserMode,
+    DEFAULT_AI_MODE,
     getModelCost,
     validateModelAccess,
     clearMemory,

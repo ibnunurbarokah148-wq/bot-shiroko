@@ -42,6 +42,7 @@ module.exports = {
     sesiOpenRouterMode: {},
     sesiCloudflareMode: {},
     sesiXKiroMode: {},
+    sesiAIMode: {},
     sesiCabutRole: {},
     sesiModelGambar: {},
     sesiArisu: {},

@@ -102,7 +102,7 @@ function createCallAIBridge() {
             });
         } catch (error) {
             console.error('[CALL AI]', error.message);
-            res.status(502).json({ error: error.message });
+            res.status(502).json({ error: 'Layanan panggilan AI sedang tidak tersedia.' });
         } finally {
             if (peer) callTurnsInFlight.delete(peer);
         }

@@ -511,7 +511,7 @@ async function renderAndSendCharacter(ctx, appearanceData, sceneContextText, ren
             onError: async (error) => {
                 console.error('🚨 [COMPANION] Render PixAI gagal:', error.message);
                 safeRefund();
-                await reply(`${roleplayText}\n\n_(Nn... Maaf Sensei, modul kamera PixAI sedang bermasalah: ${error.message}. Tapi Shiroko sudah siap!)_`);
+                await reply(`${roleplayText}\n\n_(Nn... Maaf Sensei, modul kamera PixAI sedang bermasalah. Tapi Shiroko sudah siap!)_`);
             }
         });
 
@@ -520,7 +520,7 @@ async function renderAndSendCharacter(ctx, appearanceData, sceneContextText, ren
     } catch (err) {
         console.error('🚨 [COMPANION] Gagal memproses render/queue PixAI:', err.message);
         safeRefund();
-        await reply(`❌ Nn... Terjadi kesalahan saat menyiapkan kamera render: _${err.message}_. Limit telah dikembalikan.`);
+        await reply('❌ Nn... Kamera render sedang bermasalah. Limit telah dikembalikan.');
         return false;
     }
 }

@@ -103,7 +103,7 @@ function getActiveAIModeForOwner(targetSenderId) {
            state.userAIMode[ID_OWNER[0]] ||
            (ownerCore && state.userAIMode[ownerCore]) ||
            state.ownerAIMode ||
-           'gemini';
+           'ds4';
 }
 
 /**
