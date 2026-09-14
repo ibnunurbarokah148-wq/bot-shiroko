@@ -303,7 +303,6 @@ app.get('/api/dashboard', (req, res) => {
         { name: 'Cloudflare AI', status: process.env.CLOUDFLARE_API_TOKEN ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-cloud' },
         { name: 'ArisuSoft AI', status: process.env.ARISU_API_KEY ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-robot' },
         { name: 'PixAI Engine', status: process.env.PIXAI_TOKEN ? 'ONLINE' : 'OFFLINE', icon: 'fas fa-palette' },
-        { name: 'Server Minecraft', status: 'ONLINE', icon: 'fas fa-cube' },
         { name: 'Local AI (Ollama)', status: ollamaStatus || 'STANDBY', icon: 'fas fa-server' }
     ];
 
