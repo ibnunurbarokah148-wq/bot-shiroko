@@ -48,16 +48,18 @@ function createCallAIBridge() {
 
             callTurnsInFlight.add(peer);
             const startedAt = Date.now();
-            const sttProvider = process.env.CALL_STT_PROVIDER || 'gemini';
-            const sttModel = process.env.CALL_STT_MODEL || 'gemini-2.5-flash';
-            const aiProvider = process.env.CALL_AI_PROVIDER || 'gemini';
-            const model = process.env.CALL_AI_MODEL || 'gemini-2.5-flash-lite';
+            const sttProvider = process.env.CALL_STT_PROVIDER || 'copilotku';
+            const sttModel = process.env.CALL_STT_MODEL || 'Gemini 3.5 Flash';
+            const aiProvider = process.env.CALL_AI_PROVIDER || 'copilotku';
+            const model = process.env.CALL_AI_MODEL || 'Gemini 3.5 Flash';
             const transcript = await AIProvider.transcribe({
                 provider: sttProvider,
                 model: sttModel,
                 senderId: `${peer}@s.whatsapp.net`,
+                isOwner: true,
                 audioBuffer,
-                mimeType: 'audio/wav'
+                mimeType: 'audio/wav',
+                allowGeminiFallback: false
             });
             console.log(`[CALL AI] STT selesai dalam ${Date.now() - startedAt}ms`);
             const cleanTranscript = String(transcript || '').trim().slice(0, MAX_TRANSCRIPT_CHARS);
@@ -72,7 +74,7 @@ function createCallAIBridge() {
                 systemPrompt: `${getShirokoSystemPrompt(true)}\n\n[MODE TELEPON]\nJawab dalam bahasa Indonesia yang natural dan ringkas. Maksimal 3 kalimat. Jangan memakai markdown, daftar, emoji, atau simbol dekoratif karena jawaban akan dibacakan.`,
                 useMemory: false
             });
-            console.log(`[CALL AI] Gemini selesai dalam ${Date.now() - startedAt}ms`);
+            console.log(`[CALL AI] Teks selesai dalam ${Date.now() - startedAt}ms provider=${aiProvider} model=${model}`);
             const spokenText = String(answer || '').replace(/[*_`#>]/g, '').trim().slice(0, MAX_REPLY_CHARS);
             if (!spokenText) throw new Error('Jawaban AI kosong.');
 

@@ -263,7 +263,7 @@ async function transcribe(options) {
         return await providerModule.transcribe(options);
     } catch (err) {
         // Panggil Gemini secara langsung satu kali agar tidak kembali masuk ke router ini.
-        if ((provider === 'copilotku' || provider === 'vpsmurah') && !options.geminiFallbackAttempted && geminiProvider?.transcribe) {
+        if (options.allowGeminiFallback !== false && (provider === 'copilotku' || provider === 'vpsmurah') && !options.geminiFallbackAttempted && geminiProvider?.transcribe) {
             console.warn(`[AUDIO] ${provider} gagal memproses audio (${err.message}). Fallback ke Gemini...`);
             return geminiProvider.transcribe({
                 audioBuffer: options.audioBuffer,
