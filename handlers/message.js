@@ -49,7 +49,7 @@ function registerMessageHandler(sock, isJadibot = false) {
             if (batchMessage?.message) cacheMessage(batchMessage.key.remoteJid, batchMessage);
         }
 
-        const msg = messages[0];
+        async function processMessage(msg) {
         if (!msg || !msg.message) return;
         if (msg.key.fromMe) return;
         if (wasAlreadyProcessed(msg.key.id)) {
@@ -104,8 +104,8 @@ function registerMessageHandler(sock, isJadibot = false) {
 
         // LOGIKA CACHE & GHOST MODE (REVOKE)
         if (msgType === 'protocolMessage') {
-            const protoMsg = msg.message.protocolMessage;
-            if (protoMsg.type === 14 || protoMsg.type === 'REVOKE') {
+            const protoMsg = normalizedMessage.protocolMessage;
+            if (protoMsg && (protoMsg.type === 14 || protoMsg.type === 'REVOKE') && protoMsg.key?.id) {
                 saveDeletedMessage(from, protoMsg.key.id);
             }
         }
@@ -158,6 +158,13 @@ function registerMessageHandler(sock, isJadibot = false) {
         async function downloadMediaBaileys(messageObj, type) {
             const mediaMessage = messageObj?.message || messageObj;
             const payload = mediaMessage?.[`${type}Message`] ? mediaMessage : { [`${type}Message`]: mediaMessage };
+            // Pesan media lama/tidak lengkap bisa kehilangan mediaKey sehingga Baileys
+            // melempar "Cannot derive from empty media key". Tolak lebih awal agar
+            // stack trace panjang tidak membanjiri log.
+            const mediaNode = payload?.[`${type}Message`];
+            if (!mediaNode?.mediaKey || !(mediaNode.url || mediaNode.directPath)) {
+                throw new Error(`Media ${type} tidak lengkap atau sudah kedaluwarsa di server WhatsApp.`);
+            }
             const isQuotedMedia = messageObj === quotedMsg ||
                 (quotedMsg && messageObj?.[`${type}Message`] === quotedMsg?.[`${type}Message`]);
             const sourceMessage = isQuotedMedia ? {
@@ -338,6 +345,15 @@ function registerMessageHandler(sock, isJadibot = false) {
                 setTimeout(() => {
                     global.io.emit('bot_status', { isTyping: false });
                 }, 1000);
+            }
+        }
+        }
+
+        for (const batchMessage of messages) {
+            try {
+                await processMessage(batchMessage);
+            } catch (error) {
+                console.error('🚨 ERROR MEMPROSES PESAN BATCH:', error);
             }
         }
     });

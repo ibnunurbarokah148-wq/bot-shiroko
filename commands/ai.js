@@ -830,7 +830,7 @@ async function handle(ctx) {
                     chatImageMime = messageToDownload.mimetype || 'image/jpeg';
                     if (!pesanUser) pesanUser = "Nn... Tolong deskripsikan gambar ini dengan detail.";
                 } catch (e) {
-                    console.error("Gagal download gambar chat:", e);
+                    console.warn(`Gagal download gambar chat (${msg.key?.id || 'tanpa id'}): ${e.message}`);
                 }
             }
         } else if (isTargetAudio || isQuotedAudio) {
@@ -841,7 +841,7 @@ async function handle(ctx) {
                     chatAudioMime = audioMsg.mimetype || 'audio/ogg';
                     if (!pesanUser) pesanUser = 'Transkripsikan dan jelaskan isi audio ini.';
                 } catch (e) {
-                    console.error('Gagal download audio chat:', e);
+                    console.warn(`Gagal download audio chat (${msg.key?.id || 'tanpa id'}): ${e.message}`);
                 }
             }
         } else if (isTargetDoc || isQuotedDoc) {
