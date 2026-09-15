@@ -103,7 +103,7 @@ function createCallAIBridge() {
                 mime: tts.mime || 'audio/mpeg'
             });
         } catch (error) {
-            console.error('[CALL AI]', error.message);
+            console.error('[CALL AI]', error.stack || error.message);
             res.status(502).json({ error: 'Layanan panggilan AI sedang tidak tersedia.' });
         } finally {
             if (peer) callTurnsInFlight.delete(peer);

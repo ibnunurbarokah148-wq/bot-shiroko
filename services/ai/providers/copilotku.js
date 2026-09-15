@@ -348,17 +348,12 @@ async function fetchTTSVoices(filters = {}) {
     }));
 }
 
-async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId }) {
-    const apiKey = getRandomKey();
-    const modelName = resolveCopilotkuModel({ model, senderId });
-    const { buffer: preparedAudio, format, converted } = prepareAudioForChatApi(audioBuffer, mimeType);
-
-    console.log(`[AUDIO] provider=copilotku model=${modelName} mime=${mimeType} format=${format} converted=${converted} bytes=${preparedAudio.length}`);
+async function requestAudioCompletion(apiKey, modelName, audioContent) {
     const response = await axios.post(`${BASE_URL}/chat/completions`, {
         model: modelName,
         messages: [{ role: 'user', content: [
             { type: 'text', text: 'Transkripsikan audio ini secara akurat. Keluarkan hanya transkripnya.' },
-            { type: 'input_audio', input_audio: { data: preparedAudio.toString('base64'), format } }
+            audioContent
         ] }]
     }, {
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -366,13 +361,36 @@ async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId
         maxContentLength: Infinity,
         maxBodyLength: Infinity
     });
-    const text = extractOpenRouterText(response.data);
-    if (!text) {
-        console.error('[AUDIO] Respons mentah Copilotku:', JSON.stringify(response.data).slice(0, 500));
+    return extractOpenRouterText(response.data);
+}
+
+async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId }) {
+    const apiKey = getRandomKey();
+    const modelName = resolveCopilotkuModel({ model, senderId });
+    const { buffer: preparedAudio, format, converted } = prepareAudioForChatApi(audioBuffer, mimeType);
+    const base64Audio = preparedAudio.toString('base64');
+    const audioMime = format === 'mp3' ? 'audio/mpeg' : 'audio/wav';
+
+    console.log(`[AUDIO] provider=copilotku model=${modelName} mime=${mimeType} format=${format} converted=${converted} bytes=${preparedAudio.length}`);
+    let text = '';
+    try {
+        text = await requestAudioCompletion(apiKey, modelName, {
+            type: 'input_audio',
+            input_audio: { data: base64Audio, format }
+        });
+        text = validateTranscript(cleanThinkingLogs(text), 'Copilotku', modelName);
+    } catch (err) {
+        // Sebagian model Copilotku (mis. Gemini) hanya membaca audio lewat jalur
+        // vision data-URL, bukan input_audio OpenAI-compatible.
+        console.warn(`[AUDIO] input_audio gagal (${err.message}). Mencoba jalur vision Copilotku...`);
+        text = await requestAudioCompletion(apiKey, modelName, {
+            type: 'image_url',
+            image_url: { url: `data:${audioMime};base64,${base64Audio}` }
+        });
+        text = validateTranscript(cleanThinkingLogs(text), 'Copilotku', modelName);
     }
-    const transcript = validateTranscript(cleanThinkingLogs(text), 'Copilotku', modelName);
-    console.log(`[AUDIO] Copilotku menjawab: ${transcript.slice(0, 200)}`);
-    return transcript;
+    console.log(`[AUDIO] Copilotku menjawab: ${text.slice(0, 200)}`);
+    return text;
 }
 
 /**
