@@ -17,6 +17,7 @@ const client = new Client({
         GatewayIntentBits.GuildVoiceStates
     ]
 });
+global.discordClient = client;
 
 // ==========================================
 // MODULE SHARE DENGAN WHATSAPP
@@ -42,6 +43,12 @@ client.once(Events.ClientReady, async () => {
     updateDiscordUsersCount(); // Run once at startup
     setInterval(updateDiscordUsersCount, 60000); // And every minute
     recordActivity({ platform: 'discord', type: 'connection', message: 'Discord Bot siap digunakan.' });
+});
+
+client.on(Events.Error, error => console.error('[DISCORD] Client error:', error.message));
+client.on(Events.ShardError, error => console.error('[DISCORD] Shard error:', error.message));
+client.on(Events.ShardDisconnect, (event, shardId) => {
+    console.warn(`[DISCORD] Shard ${shardId} disconnect (${event.code}). discord.js akan menangani reconnect bila memungkinkan.`);
 });
 
 // 3. DETEKSI PESAN DARI USER
@@ -71,9 +78,19 @@ client.on('messageCreate', async (message) => {
 });
 
 if (process.env.DISCORD_TOKEN && process.env.DISCORD_TOKEN.trim() && !process.env.DISCORD_TOKEN.includes('masukkan')) {
-    client.login(process.env.DISCORD_TOKEN).catch(err => {
-        console.warn('⚠️ [DISCORD] Gagal terhubung ke Discord:', err.message);
-    });
+    let loginAttempt = 0;
+    const loginDiscord = async () => {
+        try {
+            await client.login(process.env.DISCORD_TOKEN);
+            loginAttempt = 0;
+        } catch (err) {
+            loginAttempt += 1;
+            const delay = Math.min(60_000, 2_000 * (2 ** Math.min(loginAttempt - 1, 5)));
+            console.warn(`⚠️ [DISCORD] Login gagal (percobaan ${loginAttempt}), retry dalam ${delay}ms:`, err.message);
+            setTimeout(loginDiscord, delay).unref?.();
+        }
+    };
+    loginDiscord();
 } else {
     console.log('ℹ️ [DISCORD] DISCORD_TOKEN tidak terpasang di .env. Fitur Discord nonaktif.');
 }

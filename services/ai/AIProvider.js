@@ -7,8 +7,7 @@ const ollamaProvider = require('./providers/ollama');
 const openrouterProvider = require('./providers/openrouter');
 const cloudflareProvider = require('./providers/cloudflare');
 const arisuProvider = require('./providers/arisu');
-const copilotkuProvider = require('./providers/copilotku');
-const vpsMurahProvider = require('./providers/vpsmurah');
+const unorouterProvider = require('./providers/unorouter');
 const fishProvider = require('./providers/fish');
 const memory = require('./memory');
 const state = require('../../config/state');
@@ -40,12 +39,7 @@ function getUserMode(senderId) {
 function getModelCost(provider, model, context = {}) {
     if (provider === 'ollama') return 0;
     if (provider === 'openrouter' || provider === 'cloudflare') return 1;
-    if (provider === 'copilotku') {
-        return copilotkuProvider.getCopilotkuModelCost(model, context);
-    }
-    if (provider === 'vpsmurah') {
-        return vpsMurahProvider.getVpsMurahModelCost(model, context);
-    }
+    if (provider === 'unorouter') return unorouterProvider.getModelCost(model, context);
     if (provider === 'arisu') {
         const arisuModel = arisuProvider.fetchModels().find(item => item.id === model);
         return arisuModel?.limitCost || (model === 'deepseek-v4' ? 4 : 2);
@@ -53,9 +47,8 @@ function getModelCost(provider, model, context = {}) {
     return 2;
 }
 
-const COPILOTKU_DENIED_REASON = 'Tingkatan Premium hanya tersedia untuk VIP Premium. Gunakan tingkatan Standard atau Open Source.';
-const COPILOTKU_UNKNOWN_MODEL_REASON = 'Model Copilotku ini tidak tersedia di menu *!aimode*. Pilih ulang model lewat *!aimode*.';
-const VPSMURAH_UNKNOWN_MODEL_REASON = 'Model VPSMurah ini tidak tersedia pada endpoint.';
+const PREMIUM_DENIED_REASON = 'Tingkatan Premium hanya tersedia untuk VIP Premium. Gunakan tingkatan Standard atau Open Source.';
+const UNOROUTER_UNKNOWN_MODEL_REASON = 'Model UnoRouter ini tidak tersedia pada katalog premium.';
 
 function isOwnerId(senderId) {
     if (!senderId) return false;
@@ -86,56 +79,35 @@ function hasActivePremium(senderId, alternateId = null) {
 }
 
 /**
- * Penjaga tunggal akses Copilotku.
- * Copilotku hanya boleh dipakai Owner atau VIP Premium, dan model wajib
+ * Penjaga tunggal akses UnoRouter.
+ * UnoRouter premium hanya boleh dipakai Owner atau VIP Premium, dan model wajib
  * berasal dari katalog yang ditampilkan lewat menu !aimode.
  * @param {string} model
  * @param {object} context
  * @returns {{ allowed: boolean, reason?: string }}
  */
-function ensureCopilotkuAccess(model, context = {}) {
+function ensureUnoRouterAccess(model, context = {}) {
     const senderId = context.senderId || null;
     const isOwner = context.isOwner === true || isOwnerId(senderId);
     if (isOwner) {
-        return copilotkuProvider.isCopilotkuCatalogModel(model)
-            ? { allowed: true }
-            : { allowed: false, reason: COPILOTKU_UNKNOWN_MODEL_REASON };
+        return { allowed: true };
     }
 
     const isPremium = context.isPremium === true || hasActivePremium(senderId, context.alternateId);
-    if (!isPremium) return { allowed: false, reason: COPILOTKU_DENIED_REASON };
-    if (!copilotkuProvider.isCopilotkuCatalogModel(model)) {
-        return { allowed: false, reason: COPILOTKU_UNKNOWN_MODEL_REASON };
-    }
-    if (!copilotkuProvider.isCopilotkuModelAllowed(model, { isPremium: true })) {
-        return { allowed: false, reason: COPILOTKU_DENIED_REASON };
-    }
+    if (!isPremium) return { allowed: false, reason: PREMIUM_DENIED_REASON };
+    if (!unorouterProvider.isPremiumModel({ id: model })) return { allowed: false, reason: UNOROUTER_UNKNOWN_MODEL_REASON };
     return { allowed: true };
 }
 
-function ensureCopilotkuProviderAccess(context = {}) {
+function ensureUnoRouterProviderAccess(context = {}) {
     const senderId = context.senderId || null;
     if (context.isOwner === true || isOwnerId(senderId)) return { allowed: true };
     if (context.isPremium === true || hasActivePremium(senderId, context.alternateId)) return { allowed: true };
-    return { allowed: false, reason: COPILOTKU_DENIED_REASON };
+    return { allowed: false, reason: PREMIUM_DENIED_REASON };
 }
 
-function assertCopilotkuAccess(model, context = {}) {
-    const verdict = ensureCopilotkuAccess(model, context);
-    if (!verdict.allowed) throw new Error(verdict.reason);
-}
-
-function ensureVpsMurahAccess(model, context = {}) {
-    const isOwner = context.isOwner === true || isOwnerId(context.senderId);
-    const isPremium = context.isPremium === true || hasActivePremium(context.senderId, context.alternateId);
-    if (isOwner && context.allowAllModels === true) return { allowed: true };
-    if (!isOwner && !isPremium) return { allowed: false, reason: COPILOTKU_DENIED_REASON };
-    if (!vpsMurahProvider.isVpsMurahModelAllowed(model)) return { allowed: false, reason: VPSMURAH_UNKNOWN_MODEL_REASON };
-    return { allowed: true };
-}
-
-function assertVpsMurahAccess(model, context = {}) {
-    const verdict = ensureVpsMurahAccess(model, context);
+function assertUnoRouterAccess(model, context = {}) {
+    const verdict = ensureUnoRouterAccess(model, context);
     if (!verdict.allowed) throw new Error(verdict.reason);
 }
 
@@ -145,32 +117,16 @@ function validateModelAccess(provider, model, context = {}) {
         isOwner: context.isOwner === true || isOwnerId(context.senderId),
         isPremium: context.isPremium === true || hasActivePremium(context.senderId, context.alternateId)
     };
-    if (provider === 'vpsmurah') {
-        const verdict = ensureVpsMurahAccess(model, accessContext);
-        if (!verdict.allowed) return { allowed: false, cost: null, reason: verdict.reason };
-        const cost = getModelCost(provider, model, accessContext);
-        return Number.isInteger(cost) && cost >= 0
-            ? { allowed: true, cost }
-            : { allowed: false, cost: null, reason: COPILOTKU_DENIED_REASON };
-    }
-    if (provider !== 'copilotku') return { allowed: true, cost: getModelCost(provider, model, accessContext) };
-    const metadata = context.metadata || null;
-    const verdict = ensureCopilotkuAccess(model, accessContext);
+    if (provider !== 'unorouter') return { allowed: true, cost: getModelCost(provider, model, accessContext) };
+    const verdict = ensureUnoRouterAccess(model, accessContext);
     if (!verdict.allowed) return { allowed: false, cost: null, reason: verdict.reason };
-    return { allowed: true, cost: getModelCost(provider, model, { ...accessContext, model: metadata }) };
+    return { allowed: true, cost: getModelCost(provider, model, accessContext) };
 }
 
 function resolveMode(mode, senderId) {
     const core = getCoreNumber(senderId);
     const isOwner = ID_OWNER.some(ownerId => ownerId === senderId || ownerId === core);
-    const copilotkuModel = state.userCopilotkuModel[senderId] ||
-        (core && state.userCopilotkuModel[core]) ||
-        (isOwner && state.ownerCopilotkuModel) ||
-        'GPT-5.6 Luna';
-    const vpsMurahModel = state.userVpsMurahModel[senderId] ||
-        (core && state.userVpsMurahModel[core]) ||
-        (isOwner && state.ownerVpsMurahModel) ||
-        'luna';
+    const unorouterModel = state.userUnoRouterModel[senderId] || (core && state.userUnoRouterModel[core]) || (isOwner && state.ownerUnoRouterModel) || process.env.UNOROUTER_DEFAULT_MODEL || 'gemini-3.5-flash';
     const modeMap = {
         'gemini':       { provider: 'gemini',      model: 'gemini-2.5-flash-lite' },
         'ollama':       { provider: 'ollama',      model: state.userOllamaModel[senderId] || (core && state.userOllamaModel[core]) || 'gemma3:4b' },
@@ -178,8 +134,7 @@ function resolveMode(mode, senderId) {
         'or':           { provider: 'openrouter',  model: state.userOpenRouterModel[senderId] || (core && state.userOpenRouterModel[core]) || 'deepseek/deepseek-r1:free' },
         'cloudflare':   { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
         'cf':           { provider: 'cloudflare',  model: state.userCloudflareModel[senderId] || (core && state.userCloudflareModel[core]) || '@cf/meta/llama-3-8b-instruct' },
-        'copilotku':    { provider: 'copilotku', model: copilotkuModel },
-        'vpsmurah':     { provider: 'vpsmurah', model: vpsMurahModel },
+        'unorouter':    { provider: 'unorouter', model: unorouterModel },
         'arisu':        { provider: 'arisu', model: state.userArisuModel[senderId] || (core && state.userArisuModel[core]) || state.ownerArisuModel || 'deepseek-v3' },
         'ds3':          { provider: 'arisu', model: 'deepseek-v3' },
         'ds4':          { provider: 'arisu', model: 'deepseek-v4' },
@@ -196,7 +151,7 @@ function resolveMode(mode, senderId) {
 /**
  * Generate teks AI via provider yang sesuai.
  * @param {object} options
- * @param {string} options.provider - 'gemini' | 'ollama' | 'openrouter' | 'cloudflare' | 'arisu' | 'copilotku' | 'vpsmurah'
+ * @param {string} options.provider - 'gemini' | 'ollama' | 'openrouter' | 'cloudflare' | 'arisu' | 'unorouter'
  * @param {string} [options.model] - Model spesifik
  * @param {string} options.prompt - Pesan user
  * @param {string} options.senderId - ID pengirim
@@ -222,12 +177,9 @@ async function generate(options) {
             result = await cloudflareProvider.generate(options); break;
         case 'arisu':
             result = await arisuProvider.generate(options); break;
-        case 'copilotku':
-            assertCopilotkuAccess(options.model || resolveMode('copilotku', options.senderId).model, options);
-            result = await copilotkuProvider.generate(options); break;
-        case 'vpsmurah':
-            assertVpsMurahAccess(options.model || resolveMode('vpsmurah', options.senderId).model, options);
-            result = await vpsMurahProvider.generate(options); break;
+        case 'unorouter':
+            assertUnoRouterAccess(options.model || resolveMode('unorouter', options.senderId).model, options);
+            result = await unorouterProvider.generate(options); break;
         default:
             throw new Error(`Provider tidak dikenali: ${provider}`);
     }
@@ -247,30 +199,15 @@ async function transcribe(options) {
         gemini: geminiProvider,
         openrouter: openrouterProvider,
         cloudflare: cloudflareProvider,
-        copilotku: copilotkuProvider,
-        vpsmurah: vpsMurahProvider
+        unorouter: unorouterProvider
     }[provider];
     if (!providerModule?.transcribe) {
         throw new Error(`Provider ${provider} belum mendukung transkripsi audio.`);
     }
-    if (provider === 'copilotku') {
-        assertCopilotkuAccess(options.model || resolveMode('copilotku', options.senderId).model, options);
-    }
-    if (provider === 'vpsmurah') {
-        assertVpsMurahAccess(options.model || resolveMode('vpsmurah', options.senderId).model, options);
-    }
+    if (provider === 'unorouter') assertUnoRouterAccess(options.model || resolveMode('unorouter', options.senderId).model, options);
     try {
         return await providerModule.transcribe(options);
     } catch (err) {
-        // Panggil Gemini secara langsung satu kali agar tidak kembali masuk ke router ini.
-        if (options.allowGeminiFallback !== false && (provider === 'copilotku' || provider === 'vpsmurah') && !options.geminiFallbackAttempted && geminiProvider?.transcribe) {
-            console.warn(`[AUDIO] ${provider} gagal memproses audio (${err.message}). Fallback ke Gemini...`);
-            return geminiProvider.transcribe({
-                audioBuffer: options.audioBuffer,
-                mimeType: options.mimeType,
-                geminiFallbackAttempted: true
-            });
-        }
         throw err;
     }
 }
@@ -298,7 +235,7 @@ function isMemoryGenerationCurrent(senderId, generation) {
 
 /**
  * Scan daftar model dari provider tertentu.
- * @param {string} provider - 'openrouter' | 'cloudflare' | 'copilotku' | 'vpsmurah'
+ * @param {string} provider - 'openrouter' | 'cloudflare' | 'unorouter'
  * @returns {Promise<Array<{id: string, name: string}>>}
  */
 async function fetchModels(provider) {
@@ -307,10 +244,8 @@ async function fetchModels(provider) {
             return openrouterProvider.fetchModels();
         case 'cloudflare':
             return cloudflareProvider.fetchModels();
-        case 'copilotku':
-            return copilotkuProvider.fetchModels();
-        case 'vpsmurah':
-            return vpsMurahProvider.fetchModels();
+        case 'unorouter':
+            return unorouterProvider.fetchModels();
         case 'arisu':
             return arisuProvider.fetchModels();
         default:
@@ -347,11 +282,6 @@ async function textToSpeech(provider, text, model, options = {}) {
             return cloudflareProvider.textToSpeech(text, model);
         case 'arisu':
             return arisuProvider.textToSpeech(text, model);
-        case 'copilotku': {
-            const verdict = ensureCopilotkuProviderAccess(options);
-            if (!verdict.allowed) throw new Error(verdict.reason);
-            return copilotkuProvider.textToSpeech(text, model, options);
-        }
         case 'fish':
             return fishProvider.textToSpeech(text, model, options);
         default:
@@ -384,8 +314,6 @@ async function fetchTTSModels(provider) {
             return cloudflareProvider.fetchTTSModels();
         case 'arisu':
             return arisuProvider.fetchTTSModels();
-        case 'copilotku':
-            return copilotkuProvider.fetchTTSVoices();
         case 'fish':
             return [{ id: process.env.SHIROKO_VOICE_ID || 'configured-voice', name: 'Fish Audio Voice', desc: 'Reference voice' }];
         default:
@@ -401,9 +329,8 @@ module.exports = {
     DEFAULT_AI_MODE,
     getModelCost,
     validateModelAccess,
-    ensureCopilotkuAccess,
-    ensureCopilotkuProviderAccess,
-    ensureVpsMurahAccess,
+    ensureUnoRouterAccess,
+    ensureUnoRouterProviderAccess,
     hasActivePremium,
     clearMemory,
     getMemoryGeneration,
@@ -421,8 +348,7 @@ module.exports = {
         openrouter: openrouterProvider,
         cloudflare: cloudflareProvider,
         arisu: arisuProvider,
-        copilotku: copilotkuProvider,
-        vpsmurah: vpsMurahProvider
+         unorouter: unorouterProvider
     },
 
     // Re-export memory manager

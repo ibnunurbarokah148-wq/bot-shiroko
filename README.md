@@ -27,11 +27,10 @@ Bot ini mendukung beberapa provider AI yang dapat dipilih melalui mode AI:
 - **Cloudflare Workers AI**: Mendukung beberapa account/token.
 - **Ollama (Lokal)**: Menjalankan model LLM dari komputer/server lokal.
 - **ArisuSoft**: Provider satelit dengan beberapa pilihan model.
-- **Copilotku**: Gateway multi-model dengan akses model berdasarkan status Premium.
-- **VPSMurah**: Endpoint OpenAI-compatible untuk model Premium tertentu (`deepseek-v32`, `deepseek-v3`, `luna`, `qwen3-max`).
+- **UnoRouter**: Gateway OpenAI-compatible untuk model Premium, pemilihan model live, dan audio input.
 - **Fallback payload otomatis**: Menangani perbedaan format provider dan membersihkan output thinking seperti `<think>...</think>`.
 - **Auto Thinking Log Stripper**: Menyaring tag pemikiran (`<think>...</think>`) secara otomatis agar jawaban AI bersih dan langsung ke poin.
-- **Unified Memory Reset (`!lupa`)**: Mereset riwayat memori percakapan di seluruh 5 provider AI dengan 1 perintah.
+- **Unified Memory Reset (`!lupa`)**: Mereset riwayat memori percakapan di seluruh provider AI dengan 1 perintah.
 
 ### 💖 2. Interactive Waifu Room Discord (`!mybini`)
 - Pembuatan kamar rahasia privat per-user dengan waifu impian (*Shiroko, Yae Miko, Furina, Columbina, Sandrone, Miwa, Kafka, Hu Tao, Cantarella, Jane Doe*).
@@ -191,7 +190,7 @@ cp .env.example .env
 
 Kelompok konfigurasi yang tersedia:
 
-- Provider AI: Gemini, OpenRouter, Cloudflare, ArisuSoft, Hugging Face, Ollama, Copilotku, dan VPSMurah.
+- Provider AI: Gemini, OpenRouter, Cloudflare, ArisuSoft, Hugging Face, Ollama, dan UnoRouter.
 - Platform: `DISCORD_TOKEN`, `WA_PHONE_NUMBER`, `ID_OWNER`, dan `LOG_LEVEL`.
 - Image rendering: PixAI, Pixiv, ConvertAPI, ComfyUI/Vast.ai, dan CivitAI.
 - QRIS: `STATIC_QRIS` untuk fitur top-up.

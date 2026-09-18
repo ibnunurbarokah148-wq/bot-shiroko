@@ -16,7 +16,7 @@ const state = require('./config/state');
 const { registerMessageHandler } = require('./handlers/message');
 const { setSocket, getSocket } = require('./utils/socket');
 const jadibotService = require('./services/jadibot.service');
-const { initDatabase, migrateFromJSON } = require('./config/database');
+const { initDatabase, migrateFromJSON, flushPendingSave } = require('./config/database');
 const { startAutoCleanup } = require('./utils/cleanup');
 const { initPrayerScheduler } = require('./services/prayer.service');
 
@@ -48,6 +48,9 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 process.on('uncaughtException', (err) => {
     console.error('🚨 Uncaught Exception:', err);
+    // Exception tak tertangani dapat meninggalkan socket/database dalam state
+    // tidak konsisten. Supervisor seperti PM2 akan menyalakan ulang process.
+    gracefulShutdown('uncaughtException').catch(() => process.exit(1));
 });
 
 // ==========================================
@@ -56,53 +59,53 @@ process.on('uncaughtException', (err) => {
 async function startBot() {
     if (startInProgress || activeSocket) return;
     startInProgress = true;
-    const { state: authState, saveCreds } = await useMultiFileAuthState('./auth_session');
-    
-    // Fetch latest WA Web version untuk mencegah error 405 (Method Not Allowed).
-    // Jangan biarkan request versi menahan startup WhatsApp tanpa batas.
-    const fallbackVersion = [2, 3000, 1043857760];
-    let version = fallbackVersion;
-    let isLatest = false;
     try {
-        const versionResult = await Promise.race([
-            fetchLatestBaileysVersion(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout 10 detik')), 10000))
-        ]);
-        version = versionResult.version;
-        isLatest = versionResult.isLatest;
-    } catch (error) {
-        console.warn(`[WA] Gagal mengambil versi terbaru (${error.message}), menggunakan fallback v${fallbackVersion.join('.')}.`);
-    }
-    console.log(`[WA] Menggunakan WA v${version.join('.')}, isLatest: ${isLatest}`);
+        const { state: authState, saveCreds } = await useMultiFileAuthState('./auth_session');
 
-    const sock = makeWASocket({
-        version,
-        auth: {
-            creds: authState.creds,
-            keys: makeCacheableSignalKeyStore(authState.keys, pino({ level: 'silent' }))
-        },
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' }),
-        browser: ['Ubuntu', 'Chrome', '20.0.04']
-    });
-    startInProgress = false;
-    activeSocket = sock;
-    whatsappConnectionStatus = 'CONNECTING';
-    whatsappHeartbeatAt = Date.now();
-    recordActivity({ platform: 'whatsapp', type: 'connection', message: 'WhatsApp Bot mencoba terhubung.' });
-    emitServiceStatus();
+        // Fetch latest WA Web version untuk mencegah error 405 (Method Not Allowed).
+        // Jangan biarkan request versi menahan startup WhatsApp tanpa batas.
+        const fallbackVersion = [2, 3000, 1043857760];
+        let version = fallbackVersion;
+        let isLatest = false;
+        try {
+            const versionResult = await Promise.race([
+                fetchLatestBaileysVersion(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout 10 detik')), 10000))
+            ]);
+            version = versionResult.version;
+            isLatest = versionResult.isLatest;
+        } catch (error) {
+            console.warn(`[WA] Gagal mengambil versi terbaru (${error.message}), menggunakan fallback v${fallbackVersion.join('.')}.`);
+        }
+        console.log(`[WA] Menggunakan WA v${version.join('.')}, isLatest: ${isLatest}`);
 
-    // Simpan ke module untuk akses dari services (ComfyUI, cron, express, dll)
-    setSocket(sock);
+        const sock = makeWASocket({
+            version,
+            auth: {
+                creds: authState.creds,
+                keys: makeCacheableSignalKeyStore(authState.keys, pino({ level: 'silent' }))
+            },
+            printQRInTerminal: false,
+            logger: pino({ level: 'silent' }),
+            browser: ['Ubuntu', 'Chrome', '20.0.04']
+        });
+        activeSocket = sock;
+        whatsappConnectionStatus = 'CONNECTING';
+        whatsappHeartbeatAt = Date.now();
+        recordActivity({ platform: 'whatsapp', type: 'connection', message: 'WhatsApp Bot mencoba terhubung.' });
+        emitServiceStatus();
 
-    // Simpan kredensial otomatis
-    sock.ev.on('creds.update', saveCreds);
+        // Simpan ke module untuk akses dari services (ComfyUI, cron, express, dll)
+        setSocket(sock);
 
-    // ==========================================
-    // PAIRING CODE (Tanpa QR) — hanya saat belum terdaftar
-    // ==========================================
-    if (!sock.authState.creds.registered) {
-        setTimeout(async () => {
+        // Simpan kredensial otomatis
+        sock.ev.on('creds.update', saveCreds);
+
+        // ==========================================
+        // PAIRING CODE (Tanpa QR) — hanya saat belum terdaftar
+        // ==========================================
+        if (!sock.authState.creds.registered) {
+            setTimeout(async () => {
             let nomorTelepon = process.env.WA_PHONE_NUMBER;
             if (!nomorTelepon) {
                 console.error('\n🚨 WA_PHONE_NUMBER tidak ditemukan di .env! Bot tidak bisa login tanpa QR. Tambahkan WA_PHONE_NUMBER di .env lalu jalankan ulang.');
@@ -167,6 +170,9 @@ async function startBot() {
     // REGISTER MESSAGE HANDLER
     // ==========================================
     registerMessageHandler(sock);
+    } finally {
+        startInProgress = false;
+    }
 }
 
 // ==========================================
@@ -179,7 +185,7 @@ cron.schedule('0 0 * * *', () => {
         const premiumValue = dbPremium[id];
         const isPremium = premiumValue && (premiumValue === true || premiumValue > Date.now());
         if (isPremium) {
-            dbLimit[id] = 300;
+            if (amount < 300) dbLimit[id] = 300;
         } else if (amount < JATAH_HARIAN) {
             dbLimit[id] = JATAH_HARIAN;
         }
@@ -199,7 +205,26 @@ initPrayerScheduler();
 // Dijalankan SEKALI di luar startBot()
 // ==========================================
 const app = express();
-app.use(express.json());
+// Jangan biarkan satu request besar menghabiskan memory process gabungan.
+app.use(express.json({ limit: process.env.API_JSON_LIMIT || '256kb' }));
+
+const crypto = require('crypto');
+function isValidApiKey(providedKey) {
+    const secret = process.env.WEB_SECRET_KEY;
+    if (!secret || !providedKey) return false;
+    const secretBuf = Buffer.from(String(secret));
+    const providedBuf = Buffer.from(String(providedKey));
+    if (secretBuf.length !== providedBuf.length) return false;
+    return crypto.timingSafeEqual(secretBuf, providedBuf);
+}
+
+function requireApiKey(req, res) {
+    if (!isValidApiKey(req.headers['x-api-key'])) {
+        res.status(401).json({ status: 'error', message: 'Unauthorized.' });
+        return false;
+    }
+    return true;
+}
 
 app.get('/', (req, res) => {
     res.send('🐺 Bot Shiroko aktif.');
@@ -208,7 +233,7 @@ app.get('/', (req, res) => {
 app.post('/laporan-masuk', async (req, res) => {
     // 🛡️ Keamanan: Hanya terima request jika API Key cocok
     const apiKey = req.headers['x-api-key'];
-    if (apiKey !== process.env.WEB_SECRET_KEY) {
+    if (!isValidApiKey(apiKey)) {
         return res.status(401).json({ status: 'error', message: 'Unauthorized. Invalid API Key.' });
     }
 
@@ -250,6 +275,8 @@ setInterval(async () => {
 
 // Endpoint API Dashboard Web Shiroko
 app.get('/api/dashboard', (req, res) => {
+    // Dashboard berisi metadata internal; CORS bukan pengganti autentikasi.
+    if (!requireApiKey(req, res)) return;
     const requestStartedAt = Date.now();
     const dashboardOrigin = (process.env.WEB_SHIROKO_URL || 'https://shiroko-project.com').split(',')[0].trim();
     res.setHeader('Access-Control-Allow-Origin', dashboardOrigin);
@@ -349,7 +376,7 @@ app.get('/api/dashboard', (req, res) => {
 // Endpoint untuk Control Panel (Dipanggil oleh Web Dashboard)
 app.post('/api/control', (req, res) => {
     const apiKey = req.headers['x-api-key'];
-    if (apiKey !== process.env.WEB_SECRET_KEY) {
+    if (!isValidApiKey(apiKey)) {
         return res.status(401).json({ status: 'error', message: 'Unauthorized. Invalid API Key.' });
     }
 
@@ -393,7 +420,12 @@ function applyPixaiCors(req, res) {
 }
 
 function clientKeyOf(req) {
-    return String(req.headers['x-forwarded-for'] || req.ip || 'unknown').split(',')[0].trim();
+    // X-Forwarded-For hanya dipercaya bila aplikasi memang dikonfigurasi di
+    // belakang proxy tepercaya. Default-nya gunakan alamat socket langsung.
+    if (process.env.TRUST_PROXY === 'true') {
+        return String(req.headers['x-forwarded-for'] || req.ip || 'unknown').split(',')[0].trim();
+    }
+    return String(req.socket?.remoteAddress || req.ip || 'unknown');
 }
 
 app.options('/api/save-pixai-token', (req, res) => {
@@ -524,6 +556,20 @@ server.listen(3000, () => {
     console.log('🌐 Express & Socket.IO server berjalan di port 3000');
 });
 
+let shuttingDown = false;
+async function gracefulShutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[SHUTDOWN] Menerima ${signal}, menyimpan database dan menutup koneksi...`);
+    try { flushPendingSave(); } catch (error) { console.error('[SHUTDOWN] Gagal menyimpan database:', error.message); }
+    try { if (activeSocket) activeSocket.end(undefined); } catch (_) { }
+    try { if (global.discordClient?.destroy) global.discordClient.destroy(); } catch (_) { }
+    await new Promise(resolve => server.close(() => resolve()));
+    process.exit(0);
+}
+process.once('SIGINT', () => { gracefulShutdown('SIGINT'); });
+process.once('SIGTERM', () => { gracefulShutdown('SIGTERM'); });
+
 // ==========================================
 // MULAI BOT: INIT DATABASE → WHATSAPP → JADIBOT
 // ==========================================
@@ -544,7 +590,11 @@ initDatabase().then(async () => {
     await startBot();
 }).then(() => {
     if (jadibotService.resumeAllJadibots) jadibotService.resumeAllJadibots();
-}).catch(console.error);
+}).catch((error) => {
+    console.error('[STARTUP] Gagal memulai WhatsApp/database:', error);
+    // Jangan biarkan process terlihat sehat ketika bootstrap gagal.
+    setTimeout(() => process.exit(1), 100);
+});
 
 // ==========================================
 // MULAI BOT DISCORD & MINECRAFT (SHARED MEMORY)

@@ -12,9 +12,16 @@ function toWhatsAppJid(identifier) {
     return value.includes('@') ? value : `${value}@s.whatsapp.net`;
 }
 
+function normalizeWhatsAppNumber(value) {
+    let number = String(value || '').replace(/\D/g, '');
+    if (number.startsWith('0')) number = `62${number.slice(1)}`;
+    else if (number.startsWith('8')) number = `62${number}`;
+    return /^62\d{8,13}$/.test(number) ? number : '';
+}
+
 async function handle(ctx) {
     const { sock, msg, from, senderId, isOwner, textClean, textLower, msgType,
-            isQuoted, quotedMsg, quotedType, reply, downloadMediaBaileys } = ctx;
+            isQuoted, quotedMsg, quotedType, quotedStanzaId, reply, downloadMediaBaileys } = ctx;
 
     // ==========================================
     // DAFTAR PAKET TOP-UP
@@ -106,14 +113,36 @@ async function handle(ctx) {
 
         const teksLaporan = quotedMsg?.conversation || quotedMsg?.extendedTextMessage?.text || quotedMsg?.imageMessage?.caption || '';
 
+        // Anti-replay: cegah approval/penolakan ganda pada laporan yang sama.
+        const approvalKey = quotedStanzaId || teksLaporan;
+        if (approvalKey) {
+            if (state.processedApprovals.has(approvalKey)) {
+                await reply('Nn... Laporan ini sudah diproses sebelumnya. Tidak bisa diulang.');
+                return true;
+            }
+            state.processedApprovals.add(approvalKey);
+        }
+
         if (teksLaporan.includes('LAPORAN TRANSAKSI LOGISTIK')) {
             const matchId = teksLaporan.match(/\*ID Pembeli:\*\s*([^\n]+)/);
             if (!matchId) { await reply('Nn... Format laporan tidak dikenali.'); return true; }
-            const targetNomor = matchId[1].trim();
+            const targetNomor = normalizeWhatsAppNumber(matchId[1].trim());
+
+            // Jangan pernah memakai identifier bebas dari pesan sebagai tujuan
+            // pengiriman atau saldo. Laporan harus berisi nomor WA yang valid.
+            if (!/^\d{8,15}$/.test(targetNomor)) {
+                await reply('Nn... ID pembeli tidak valid. Transaksi dibatalkan.');
+                return true;
+            }
 
             if (isAcc) {
                 const matchToken = teksLaporan.match(/\*Jumlah Token:\*\s*(\d+)/);
+                if (!matchToken) { await reply('Nn... Format jumlah token tidak dikenali.'); return true; }
                 const jumlahToken = parseInt(matchToken[1], 10);
+                if (!Number.isSafeInteger(jumlahToken) || jumlahToken <= 0 || jumlahToken > 100000) {
+                    await reply('Nn... Jumlah token tidak valid atau melewati batas approval.');
+                    return true;
+                }
 
                 if (dbLimit[targetNomor] === undefined) dbLimit[targetNomor] = JATAH_HARIAN;
                 dbLimit[targetNomor] += jumlahToken;
@@ -132,7 +161,8 @@ async function handle(ctx) {
 
             if (!matchId || !matchRole) { await reply('Nn... Format laporan registrasi tidak dikenali.'); return true; }
 
-            const targetNomor = matchId[1].trim();
+            const targetNomor = normalizeWhatsAppNumber(matchId[1].trim());
+            if (!targetNomor) { await reply('Nn... ID pendaftar tidak valid.'); return true; }
             const targetRole = matchRole[1].trim().toLowerCase();
             const targetNama = matchNama[1] ? matchNama[1].trim() : 'User';
 
@@ -148,7 +178,8 @@ async function handle(ctx) {
         } else if (teksLaporan.includes('LAPORAN TRANSAKSI JADIBOT')) {
             const matchId = teksLaporan.match(/\*ID Pembeli:\*\s*([^\n]+)/);
             if (!matchId) { await reply('Nn... Format laporan jadibot tidak dikenali.'); return true; }
-            const targetNomor = matchId[1].trim();
+            const targetNomor = normalizeWhatsAppNumber(matchId[1].trim());
+            if (!targetNomor) { await reply('Nn... ID pembeli tidak valid.'); return true; }
             const targetKey = getCoreNumber(targetNomor);
 
             if (isAcc) {
@@ -170,7 +201,8 @@ async function handle(ctx) {
         } else if (teksLaporan.includes('LAPORAN TRANSAKSI PREMIUM')) {
             const matchId = teksLaporan.match(/\*ID Pembeli:\*\s*([^\n]+)/);
             if (!matchId) { await reply('Nn... Format laporan premium tidak dikenali.'); return true; }
-            const targetNomor = matchId[1].trim();
+            const targetNomor = normalizeWhatsAppNumber(matchId[1].trim());
+            if (!targetNomor) { await reply('Nn... ID pembeli tidak valid.'); return true; }
 
             if (isAcc) {
                 const { dbPremium, simpanPremium, dbLimit, simpanDB } = require('../config/db');
@@ -181,10 +213,13 @@ async function handle(ctx) {
                     dbPremium[targetNomor] += THIRTY_DAYS;
                 }
                 simpanPremium();
-                
-                // Beri limit Premium pertama kali
-                dbLimit[targetNomor] = 300;
-                simpanDB();
+
+                // Naikkan limit ke 300 hanya jika saldo saat ini lebih rendah (jangan hapus saldo top-up).
+                if (dbLimit[targetNomor] === undefined || dbLimit[targetNomor] < 300) {
+                    dbLimit[targetNomor] = 300;
+                    simpanDB();
+                }
+
                 
                 await reply(`✅ *TRANSAKSI BERHASIL*\nNn... Pembayaran Premium disetujui (Aktif 30 Hari).\n*Target:* ${targetNomor}`);
                 try { await sock.sendMessage(toWhatsAppJid(targetNomor), { text: `🎉 *PEMBAYARAN DITERIMA*\n\nNn... Statusmu sekarang menjadi **VIP Premium** selama 30 hari ke depan! Token harianmu telah ditingkatkan ke 300/hari, dengan akses NSFW serta ComfyUI saat server GPU online.\nKetik *!premium* untuk info lebih lanjut.` }); } catch (err) { }

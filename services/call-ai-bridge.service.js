@@ -48,10 +48,10 @@ function createCallAIBridge() {
 
             callTurnsInFlight.add(peer);
             const startedAt = Date.now();
-            const sttProvider = process.env.CALL_STT_PROVIDER || 'copilotku';
-            const sttModel = process.env.CALL_STT_MODEL || 'Gemini 3.5 Flash';
-            const aiProvider = process.env.CALL_AI_PROVIDER || 'copilotku';
-            const model = process.env.CALL_AI_MODEL || 'Gemini 3.5 Flash';
+            const sttProvider = process.env.CALL_STT_PROVIDER || 'unorouter';
+            const sttModel = process.env.CALL_STT_MODEL || 'gemini-3.5-flash';
+            const aiProvider = process.env.CALL_AI_PROVIDER || 'unorouter';
+            const model = process.env.CALL_AI_MODEL || sttModel;
             const transcript = await AIProvider.transcribe({
                 provider: sttProvider,
                 model: sttModel,
@@ -78,7 +78,7 @@ function createCallAIBridge() {
             const spokenText = String(answer || '').replace(/[*_`#>]/g, '').trim().slice(0, MAX_REPLY_CHARS);
             if (!spokenText) throw new Error('Jawaban AI kosong.');
 
-            const ttsProvider = process.env.CALL_TTS_PROVIDER || (process.env.FISH_API_KEY && process.env.SHIROKO_VOICE_ID ? 'fish' : 'copilotku');
+            const ttsProvider = process.env.CALL_TTS_PROVIDER || 'fish';
             let tts;
             try {
                 tts = await AIProvider.textToSpeech(
@@ -90,9 +90,7 @@ function createCallAIBridge() {
                         : { responseFormat: 'mp3' }
                 );
             } catch (error) {
-                if (ttsProvider !== 'fish') throw error;
-                console.warn(`[CALL AI] Fish Audio gagal, fallback ke Copilotku: ${error.message}`);
-                tts = await AIProvider.textToSpeech('copilotku', spokenText, process.env.COPILOTKU_TTS_VOICE || 'mexican-female', { responseFormat: 'mp3' });
+                throw error;
             }
             console.log(`[CALL AI] TTS selesai dalam ${Date.now() - startedAt}ms provider=${ttsProvider}`);
             res.json({

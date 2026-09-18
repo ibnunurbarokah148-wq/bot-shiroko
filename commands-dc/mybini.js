@@ -3,15 +3,14 @@ const { getGeminiComponents } = require('../services/ai/providers/gemini');
 const AIProvider = require('../services/ai/AIProvider');
 const { fetchModels: fetchOpenRouterModels } = require('../services/ai/providers/openrouter');
 const { fetchModels: fetchCloudflareModels } = require('../services/ai/providers/cloudflare');
-const { fetchModels: fetchCopilotkuModels } = require('../services/ai/providers/copilotku');
-const { fetchModels: fetchShirokoAiModels } = require('../services/ai/providers/vpsmurah');
+const { fetchModels: fetchUnoRouterModels, isTextGenerationModel } = require('../services/ai/providers/unorouter');
 const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
 const axios = require('axios');
 
 async function chooseModelPaginated(promptMsg, models, prefix, label, userId) {
     let page = 0;
     const pageSize = 25;
-    const totalPages = Math.max(1, Math.ceil(models.length / pageSize));
+    let totalPages = Math.max(1, Math.ceil(models.length / pageSize));
 
     while (true) {
         const pageModels = models.slice(page * pageSize, (page + 1) * pageSize);
@@ -52,10 +51,11 @@ async function chooseModelPaginated(promptMsg, models, prefix, label, userId) {
             const query = submitted.fields.getTextInputValue(`${prefix}_query`).toLowerCase().trim();
             const matches = models.filter(model => `${model.name || ''} ${model.id || ''}`.toLowerCase().includes(query));
             await submitted.reply({ content: matches.length ? `Ditemukan **${matches.length}** model. Daftar pencarian diperbarui.` : 'Model tidak ditemukan.', ephemeral: true });
-            if (!matches.length) continue;
-            models = matches;
-            page = 0;
-            continue;
+             if (!matches.length) continue;
+             models = matches;
+             totalPages = Math.max(1, Math.ceil(models.length / pageSize));
+             page = 0;
+             continue;
         }
         const value = interaction.values[0];
         await interaction.deferUpdate().catch(() => {});
@@ -90,8 +90,7 @@ module.exports = {
 
             // Tahap 2: Pilih Provider / Model AI
             const optionsModel = [
-                new StringSelectMenuOptionBuilder().setLabel('Shiroko Ai 🚀').setValue('shirokoai'),
-                new StringSelectMenuOptionBuilder().setLabel('Copilotku Multi-Model Gateway 🚀').setValue('copilotku'),
+                new StringSelectMenuOptionBuilder().setLabel('UnoRouter Premium 🚀').setValue('unorouter'),
                 new StringSelectMenuOptionBuilder().setLabel('Gemini (Cloud)').setValue('gemini'),
                 new StringSelectMenuOptionBuilder().setLabel('OpenRouter AI (Cloud)').setValue('openrouter'),
                 new StringSelectMenuOptionBuilder().setLabel('Cloudflare Workers AI').setValue('cloudflare'),
@@ -116,8 +115,7 @@ module.exports = {
             let ollamaModelName = '';
             let openrouterModelName = 'deepseek/deepseek-r1:free';
             let cloudflareModelName = '@cf/meta/llama-3-8b-instruct';
-            let copilotkuModelName = 'GPT-5.6 Luna';
-            let shirokoAiModelName = 'luna';
+            let unorouterModelName = '';
 
             // Tahap 2.5: Pilih Spesifik Model (Ollama / OpenRouter / Cloudflare)
             if (chosenModel === 'ollama') {
@@ -155,29 +153,16 @@ module.exports = {
                 } catch (e) {
                     return promptMsg.edit({ content: 'Nn... Daftar model belum bisa dimuat. Silakan coba lagi nanti.', components: [] });
                 }
-            } else if (chosenModel === 'copilotku') {
-                await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model Copilotku Gateway...', components: [] }).catch(()=>{});
+            } else if (chosenModel === 'unorouter') {
+                await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model UnoRouter...', components: [] }).catch(()=>{});
                 try {
-                    const models = await fetchCopilotkuModels();
+                    const models = (await fetchUnoRouterModels({ all: true })).filter(isTextGenerationModel);
                     if (!models || models.length === 0) {
-                        return promptMsg.edit({ content: 'Nn... Tidak ada model Copilotku yang tersedia. Pembuatan ruangan dibatalkan.' });
+                        return promptMsg.edit({ content: 'Nn... Tidak ada model teks UnoRouter yang tersedia. Pembuatan ruangan dibatalkan.' });
                     }
-                    const result = await chooseModelPaginated(promptMsg, models, 'copilotku', 'Pilih model Copilotku (gratis, non-limit)', message.author.id);
-                    copilotkuModelName = result;
-                    await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan Copilotku Gateway (**${copilotkuModelName}**)...`, components: [] }).catch(()=>{});
-                } catch (e) {
-                    return promptMsg.edit({ content: 'Nn... Daftar model belum bisa dimuat. Silakan coba lagi nanti.', components: [] });
-                }
-            } else if (chosenModel === 'shirokoai') {
-                await interactionModel.update({ content: 'Nn... Sedang mengambil daftar model Shiroko Ai...', components: [] }).catch(()=>{});
-                try {
-                    const models = await fetchShirokoAiModels({ all: true });
-                    if (!models || models.length === 0) {
-                        return promptMsg.edit({ content: 'Nn... Tidak ada model Shiroko Ai yang tersedia. Pembuatan ruangan dibatalkan.' });
-                    }
-                    const result = await chooseModelPaginated(promptMsg, models, 'shirokoai', 'Pilih model Shiroko Ai (gratis, non-limit)', message.author.id);
-                    shirokoAiModelName = result;
-                    await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan Shiroko Ai (**${shirokoAiModelName}**)...`, components: [] }).catch(()=>{});
+                    const result = await chooseModelPaginated(promptMsg, models, 'unorouter', 'Pilih model UnoRouter (text generation)', message.author.id);
+                    unorouterModelName = result;
+                    await promptMsg.edit({ content: `Nn... Menyiapkan ruangan rahasia untukmu dan ${characterName} dengan UnoRouter (**${unorouterModelName}**)...`, components: [] }).catch(()=>{});
                 } catch (e) {
                     return promptMsg.edit({ content: 'Nn... Daftar model belum bisa dimuat. Silakan coba lagi nanti.', components: [] });
                 }
@@ -219,8 +204,7 @@ module.exports = {
 
                 let noteModel = '';
                 if (chosenModel === 'gemini') noteModel = 'Jalur Cloud Gemini Flash';
-                else if (chosenModel === 'copilotku') noteModel = `Jalur Copilotku Gateway (${copilotkuModelName})`;
-                else if (chosenModel === 'shirokoai') noteModel = `Jalur Shiroko Ai (${shirokoAiModelName})`;
+                else if (chosenModel === 'unorouter') noteModel = `Jalur UnoRouter (${unorouterModelName})`;
                 else if (chosenModel === 'openrouter') noteModel = `Jalur OpenRouter (${openrouterModelName})`;
                 else if (chosenModel === 'cloudflare') noteModel = `Jalur Cloudflare AI (${cloudflareModelName})`;
                 else if (chosenModel === 'ollama') noteModel = `Jalur Lokal Ollama (${ollamaModelName})`;
@@ -257,23 +241,13 @@ module.exports = {
                             chatHistory.push({ role: 'user', parts: [{ text: m.content }] });
                             chatHistory.push({ role: 'model', parts: [{ text: balasanAI }] });
 
-                        } else if (chosenModel === 'copilotku') {
+                        } else if (chosenModel === 'unorouter') {
                             balasanAI = await AIProvider.generate({
-                                provider: 'copilotku',
-                                model: copilotkuModelName,
+                                provider: 'unorouter',
+                                model: unorouterModelName,
                                 prompt: m.content,
                                 senderId: message.author.id,
                                 isOwner: true,
-                                systemPrompt: systemInstruction
-                            });
-                        } else if (chosenModel === 'shirokoai') {
-                            balasanAI = await AIProvider.generate({
-                                provider: 'vpsmurah',
-                                model: shirokoAiModelName,
-                                prompt: m.content,
-                                senderId: message.author.id,
-                                isOwner: true,
-                                allowAllModels: true,
                                 systemPrompt: systemInstruction
                             });
                         } else if (chosenModel === 'openrouter') {

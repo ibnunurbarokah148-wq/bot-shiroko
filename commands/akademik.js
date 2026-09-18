@@ -22,14 +22,14 @@ async function handle(ctx) {
 
     /**
      * Hitung biaya limit sekaligus pastikan akses provider valid.
-     * Copilotku hanya boleh dipakai Owner atau VIP Premium.
+     * UnoRouter premium hanya boleh dipakai Owner atau VIP Premium.
      */
     function resolveAkademikAccess() {
         const userMode = AIProvider.getUserMode(senderId);
         const { provider, model } = AIProvider.resolveMode(userMode, senderId);
         const access = AIProvider.validateModelAccess(provider, model, { senderId, alternateId: premiumIdentity, isOwner });
         if (!access.allowed) return { allowed: false, reason: access.reason };
-        const cost = provider === 'copilotku' || provider === 'vpsmurah' ? access.cost : getAiCost(userMode);
+        const cost = provider === 'unorouter' ? access.cost : getAiCost(userMode);
         if (!Number.isInteger(cost) || cost < 0) {
             return { allowed: false, reason: 'Biaya model ini tidak dapat ditentukan. Pilih ulang model lewat *!aimode*.' };
         }

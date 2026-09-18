@@ -17,13 +17,6 @@ const { extractDocumentText, splitDocumentText } = require('../services/ai/media
 const moodState = require('../services/ai/mood.state');
 const waifuService = require('../services/waifu.service');
 const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
-const {
-    isCopilotkuCatalogModel,
-    isCopilotkuModelFree,
-    isCopilotkuModelAllowed,
-    getCopilotkuModelCost,
-    formatCopilotkuPricing
-} = require('../services/ai/providers/copilotku');
 const modelCatalog = require('../services/ai/model.catalog');
 
 const PESAN_GANGGUAN_AI = 'Nn... Maaf, layanan AI sedang mengalami gangguan. Silakan coba lagi beberapa saat lagi.';
@@ -31,25 +24,6 @@ const PESAN_GAGAL_MODEL = 'Nn... Daftar model belum bisa dimuat sekarang. Silaka
 
 function hasActivePremium(senderId, alternateId = null) {
     return AIProvider.hasActivePremium(senderId, alternateId);
-}
-
-function isCopilotkuModelUsable(model, { isOwner, isPremium }) {
-    if (!isCopilotkuCatalogModel(model.id)) return false;
-    if (isOwner) return true;
-    if (!isPremium) return false;
-    return isCopilotkuModelAllowed(model.id, { isPremium: true });
-}
-
-function formatCopilotkuModelLine(model, { isOwner, isPremium }) {
-    const limitCost = getCopilotkuModelCost(model.id, { isOwner, isPremium, model });
-    if (isCopilotkuModelFree(model)) {
-        return `*${model.name}*\n   └ FREE • 1 limit/request`;
-    }
-    if (isOwner) {
-        const tier = (model.accessTier || model.billingType || 'paid').toUpperCase();
-        return `*${model.name}*\n   └ ${tier}/WALLET • ${formatCopilotkuPricing(model.pricing)} • limit bot unlimited`;
-    }
-    return `*${model.name}*\n   └ PREMIUM/WALLET • ${limitCost} limit/request`;
 }
 
 async function handle(ctx) {
@@ -349,45 +323,21 @@ async function handle(ctx) {
 
                 try {
                     await reply('Nn... Sedang menyiapkan otak Premium...');
-                    const premiumProvider = family.premiumProvider || 'copilotku';
-                    let chosenModel;
-                    let biaya;
-
-                    if (premiumProvider === 'vpsmurah') {
-                        const models = await AIProvider.fetchModels('vpsmurah');
-                        chosenModel = models.find(model => model.id === family.premiumModel);
-                        if (!chosenModel) throw new Error(`Model ${family.premiumModel} tidak tersedia pada endpoint VPSMurah.`);
-                        const access = AIProvider.validateModelAccess('vpsmurah', chosenModel.id, { isOwner, isPremium });
-                        if (!access.allowed) throw new Error(access.reason);
-                        state.userVpsMurahModel[senderId] = chosenModel.id;
-                        if (core) state.userVpsMurahModel[core] = chosenModel.id;
-                        if (isOwner) {
-                            state.ownerVpsMurahModel = chosenModel.id;
-                            db.setSetting('ownerVpsMurahModel', chosenModel.id);
-                        }
-                        db.setSetting('userVpsMurahModel', state.userVpsMurahModel);
-                        simpanMode('vpsmurah');
-                        biaya = access.cost;
-                    } else {
-                        const models = await AIProvider.fetchModels('copilotku');
-                        chosenModel = modelCatalog.resolveCopilotkuModel(family, models, model => isCopilotkuModelUsable(model, { isOwner, isPremium }));
-
-                        if (!chosenModel) {
-                            delete state.sesiAIMode[senderId];
-                            await reply('Nn... Versi Premium untuk model ini sedang tidak tersedia. Silakan pilih tingkatan *Standard*.');
-                            return true;
-                        }
-
-                        state.userCopilotkuModel[senderId] = chosenModel.id;
-                        if (core) state.userCopilotkuModel[core] = chosenModel.id;
-                        if (isOwner) {
-                            state.ownerCopilotkuModel = chosenModel.id;
-                            db.setSetting('ownerCopilotkuModel', chosenModel.id);
-                        }
-                        db.setSetting('userCopilotkuModel', state.userCopilotkuModel);
-                        simpanMode('copilotku');
-                        biaya = getCopilotkuModelCost(chosenModel.id, { isOwner, isPremium, model: chosenModel });
+                    const premiumProvider = family.premiumProvider;
+                    const models = await AIProvider.fetchModels('unorouter');
+                    let chosenModel = models.find(model => model.id === family.premiumModel && model.billingType === 'premium');
+                    if (!chosenModel) throw new Error(`Model premium UnoRouter ${family.premiumModel} tidak tersedia.`);
+                    const access = AIProvider.validateModelAccess('unorouter', chosenModel.id, { isOwner, isPremium });
+                    if (!access.allowed) throw new Error(access.reason);
+                    state.userUnoRouterModel[senderId] = chosenModel.id;
+                    if (core) state.userUnoRouterModel[core] = chosenModel.id;
+                    if (isOwner) {
+                        state.ownerUnoRouterModel = chosenModel.id;
+                        db.setSetting('ownerUnoRouterModel', chosenModel.id);
                     }
+                    db.setSetting('userUnoRouterModel', state.userUnoRouterModel);
+                    simpanMode(premiumProvider);
+                    const biaya = access.cost;
                     const biayaTeks = isOwner ? 'unlimited (Owner)' : `${biaya} limit/request`;
                     delete state.sesiAIMode[senderId];
                     await replyNow(`✅ *MODE PREMIUM AKTIF*\n\nNn... Otak Shiroko sekarang memakai *${family.label}* (Premium).\nBiaya: *${biayaTeks}*. ✨`);
@@ -709,7 +659,7 @@ async function handle(ctx) {
             isPremium: hasActivePremium(senderId, premiumIdentity)
         });
         if (!pintarAccess.allowed) { await reply(`Nn... ${pintarAccess.reason}`); return true; }
-        const cost = pintarMode.provider === 'copilotku' || pintarMode.provider === 'vpsmurah' ? pintarAccess.cost : 3;
+        const cost = pintarMode.provider === 'unorouter' ? pintarAccess.cost : 3;
         if (!Number.isInteger(cost) || cost < 0) {
             await reply('Nn... Biaya model ini tidak dapat ditentukan. Pilih ulang model lewat *!aimode*.');
             return true;
@@ -875,7 +825,7 @@ async function handle(ctx) {
             ctx.moodProcessed = true;
         }
 
-        // Companion legacy hanya untuk Arisu. Copilotku memakai native tools
+        // Companion legacy hanya untuk Arisu. UnoRouter memakai native tools
         // setelah biaya dan capability model divalidasi di bawah.
         const companionHandled = await companionService.handleCompanionFlow({
             ...ctx,
@@ -895,18 +845,15 @@ async function handle(ctx) {
         const userMode = AIProvider.getUserMode(senderId);
         const { provider: costProvider, model: costModel } = AIProvider.resolveMode(userMode, senderId);
         const isPremium = hasActivePremium(senderId, premiumIdentity);
-        let copilotkuMetadata = null;
-        if (costProvider === 'copilotku') {
-            try {
-                copilotkuMetadata = (await AIProvider.fetchModels('copilotku')).find(item => item.id === costModel) || null;
-            } catch (err) {
-                console.warn(`[COPILOTKU] Gagal memvalidasi katalog model: ${err.message}`);
-            }
+        let unorouterMetadata = null;
+        if (costProvider === 'unorouter') {
+            try { unorouterMetadata = (await AIProvider.fetchModels('unorouter')).find(item => item.id === costModel) || null; }
+            catch (err) { console.warn(`[UNOROUTER] Gagal memvalidasi katalog model: ${err.message}`); }
         }
         const access = AIProvider.validateModelAccess(costProvider, costModel, {
             isOwner,
             isPremium,
-            metadata: copilotkuMetadata
+            metadata: unorouterMetadata
         });
         if (!access.allowed) {
             await reply(`Nn... ${access.reason}`);
@@ -919,21 +866,17 @@ async function handle(ctx) {
         }
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
-        if (costProvider === 'copilotku') {
+        if (costProvider === 'unorouter') {
             const companionIntent = companionService.detectHeuristicIntent(textLower, !!chatImageBuffer);
             const visualIntent = companionIntent && !['NORMAL_CHAT', 'OUTFIT_DISCUSSION', 'VISION_ANALYSIS'].includes(companionIntent.intent);
 
             if (visualIntent) {
-                if (!copilotkuMetadata?.capabilities?.tools) {
-                    kembalikanLimit(senderId, cost);
-                    await reply('Nn... Model Copilotku ini belum mendukung native tool calling untuk aksi visual. Pilih model lain yang memiliki capability tools.');
-                    return true;
-                }
+                if (!unorouterMetadata?.capabilities?.tools) { kembalikanLimit(senderId, cost); await reply('Nn... Model UnoRouter ini belum mendukung native tool calling untuk aksi visual. Pilih model lain.'); return true; }
                 const activePrompt = triggerType === 'shiroko'
                     ? getShirokoSystemPrompt(isOwner)
                     : (state.userSystemPrompt?.[senderId] || (core && state.userSystemPrompt?.[core])) || getShirokoSystemPrompt(isOwner);
                 try {
-                    return await companionService.handleCopilotkuCompanionFlow({
+                    return await companionService.handleUnoRouterCompanionFlow({
                         ...ctx,
                         userMode,
                         provider: costProvider,
@@ -947,7 +890,7 @@ async function handle(ctx) {
                     });
                 } catch (error) {
                     kembalikanLimit(senderId, cost);
-                    console.error('🚨 Copilotku Native Tool Error:', error);
+                    console.error('🚨 UnoRouter Native Tool Error:', error);
                     await reply(PESAN_GANGGUAN_AI);
                     return true;
                 }
@@ -963,7 +906,7 @@ async function handle(ctx) {
 
             // Media processing must remain on the selected provider; Arisu has no media adapter.
             if (provider === 'arisu' && (chatAudioBuffer || extractedFileText.startsWith('[ISI ARSIP ZIP:'))) {
-                throw new Error('Mode ArisuSoft belum mendukung pemrosesan audio atau ZIP. Silakan pilih Gemini, OpenRouter, Cloudflare, Copilotku, atau VPSMurah.');
+                throw new Error('Mode ArisuSoft belum mendukung pemrosesan audio atau ZIP. Silakan pilih UnoRouter, Gemini, OpenRouter, atau Cloudflare.');
             }
 
             // Dokumen panjang diproses bertahap agar seluruh isi tetap terbaca tanpa

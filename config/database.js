@@ -163,16 +163,14 @@ async function initDatabase() {
                 else if (row.id === 'ownerOpenRouterModel') state.ownerOpenRouterModel = parsed;
                 else if (row.id === 'ownerCloudflareModel') state.ownerCloudflareModel = parsed;
                  else if (row.id === 'ownerOllamaModel') state.ownerOllamaModel = parsed;
-                 else if (row.id === 'ownerCopilotkuModel') state.ownerCopilotkuModel = parsed;
-                 else if (row.id === 'ownerVpsMurahModel') state.ownerVpsMurahModel = parsed;
+                 else if (row.id === 'ownerUnoRouterModel') state.ownerUnoRouterModel = parsed;
                  else if (row.id === 'ownerArisuModel') state.ownerArisuModel = parsed;
                  else if (row.id === 'ownerMood' && parsed && typeof parsed === 'object') state.ownerMood = parsed;
                 else if (row.id === 'userAIMode' && typeof parsed === 'object') state.userAIMode = { ...state.userAIMode, ...parsed };
                 else if (row.id === 'userOpenRouterModel' && typeof parsed === 'object') state.userOpenRouterModel = { ...state.userOpenRouterModel, ...parsed };
                 else if (row.id === 'userCloudflareModel' && typeof parsed === 'object') state.userCloudflareModel = { ...state.userCloudflareModel, ...parsed };
                 else if (row.id === 'userOllamaModel' && typeof parsed === 'object') state.userOllamaModel = { ...state.userOllamaModel, ...parsed };
-                  else if (row.id === 'userCopilotkuModel' && typeof parsed === 'object') state.userCopilotkuModel = { ...state.userCopilotkuModel, ...parsed };
-                  else if (row.id === 'userVpsMurahModel' && typeof parsed === 'object') state.userVpsMurahModel = { ...state.userVpsMurahModel, ...parsed };
+                   else if (row.id === 'userUnoRouterModel' && typeof parsed === 'object') state.userUnoRouterModel = { ...state.userUnoRouterModel, ...parsed };
                   else if (row.id === 'userArisuModel' && typeof parsed === 'object') state.userArisuModel = { ...state.userArisuModel, ...parsed };
                  else if (row.id === 'userWaifuState' && typeof parsed === 'object') state.waifuState = { ...state.waifuState, ...parsed };
               } catch (err) {
@@ -180,8 +178,7 @@ async function initDatabase() {
                  else if (row.id === 'ownerOpenRouterModel') state.ownerOpenRouterModel = row.value;
                  else if (row.id === 'ownerCloudflareModel') state.ownerCloudflareModel = row.value;
                  else if (row.id === 'ownerOllamaModel') state.ownerOllamaModel = row.value;
-                 else if (row.id === 'ownerCopilotkuModel') state.ownerCopilotkuModel = row.value;
-                 else if (row.id === 'ownerVpsMurahModel') state.ownerVpsMurahModel = row.value;
+                  else if (row.id === 'ownerUnoRouterModel') state.ownerUnoRouterModel = row.value;
                  else if (row.id === 'ownerArisuModel') state.ownerArisuModel = row.value;
              }
         }
@@ -222,6 +219,14 @@ function saveToDisk() {
     } catch (e) {
         console.error('[DATABASE] Gagal menyimpan ke disk:', e.message);
     }
+}
+
+function flushPendingSave() {
+    if (_saveTimer) {
+        clearTimeout(_saveTimer);
+        _saveTimer = null;
+    }
+    saveToDisk();
 }
 
 /**
@@ -402,6 +407,7 @@ function setSetting(key, value) {
 module.exports = {
     initDatabase,
     saveToDisk,
+    flushPendingSave,
     getOne,
     getAll,
     upsert,

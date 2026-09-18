@@ -1,62 +1,13 @@
-// ==========================================
-// KATALOG MODEL AI — Mapping nama model ke tingkatan provider
-// Standard  -> ArisuSoft (semua user)
-// Premium   -> VPSMurah atau Copilotku Gateway (khusus VIP Premium / Owner)
-// Open Source -> OpenRouter & Cloudflare (semua user)
-// ==========================================
-
+// Katalog keluarga model: Standard memakai ArisuSoft, Premium memakai UnoRouter.
 const MODEL_FAMILIES = [
-    {
-        key: 'ds3',
-        label: 'Deepseek V3.2',
-        standardMode: 'ds3',
-        premiumProvider: 'vpsmurah',
-        premiumModel: 'deepseek-v32'
-    },
-    {
-        key: 'ds4',
-        label: 'Deepseek V4 Pro',
-        standardMode: 'ds4',
-        premiumProvider: 'vpsmurah',
-        premiumModel: 'deepseek-v3'
-    },
-    {
-        key: 'gemini',
-        label: 'Gemini',
-        standardMode: 'arisu-gemini',
-        copilotkuPatterns: [/gemini.*flash/i, /gemini/i, /google/i]
-    },
-    {
-        key: 'glm',
-        label: 'GLM',
-        standardMode: 'glm',
-        copilotkuPatterns: [/glm/i, /z-ai/i]
-    },
-    {
-        key: 'qwen',
-        label: 'Qwen',
-        standardMode: 'qwen',
-        premiumProvider: 'vpsmurah',
-        premiumModel: 'qwen3-max'
-    },
-    {
-        key: 'gpt',
-        label: 'GPT',
-        standardMode: 'gpt',
-        premiumProvider: 'vpsmurah',
-        premiumModel: 'luna'
-    },
-    {
-        key: 'grok',
-        label: 'Grok',
-        standardMode: 'grok',
-        copilotkuPatterns: [/grok/i, /x-ai/i]
-    },
-    {
-        key: 'opensource',
-        label: 'Open Source',
-        openSource: true
-    }
+    { key: 'ds3', label: 'Deepseek V3.2', standardMode: 'ds3', premiumProvider: 'unorouter', premiumModel: 'deepseek-v3.2' },
+    { key: 'ds4', label: 'Deepseek V4 Pro', standardMode: 'ds4', premiumProvider: 'unorouter', premiumModel: 'deepseek-v4-pro' },
+    { key: 'gemini', label: 'Gemini', standardMode: 'arisu-gemini', premiumProvider: 'unorouter', premiumModel: 'gemini-3.5-flash' },
+    { key: 'glm', label: 'GLM', standardMode: 'glm', premiumProvider: 'unorouter', premiumModel: 'glm-5.3' },
+    { key: 'qwen', label: 'Qwen', standardMode: 'qwen', premiumProvider: 'unorouter', premiumModel: 'qwen3.8-max' },
+    { key: 'gpt', label: 'GPT', standardMode: 'gpt', premiumProvider: 'unorouter', premiumModel: 'gpt-5.6-luna' },
+    { key: 'grok', label: 'Grok', standardMode: 'grok', premiumProvider: 'unorouter', premiumModel: 'grok-4.6' },
+    { key: 'opensource', label: 'Open Source', openSource: true }
 ];
 
 const OPEN_SOURCE_PROVIDERS = [
@@ -64,48 +15,8 @@ const OPEN_SOURCE_PROVIDERS = [
     { key: 'cloudflare', label: 'Cloudflare AI', mode: 'cloudflare' }
 ];
 
-function getFamilies() {
-    return MODEL_FAMILIES.map(family => ({ ...family }));
-}
+function getFamilies() { return MODEL_FAMILIES.map(family => ({ ...family })); }
+function getFamilyByIndex(index) { return MODEL_FAMILIES[index] || null; }
+function getFamilyByKey(key) { return MODEL_FAMILIES.find(family => family.key === key) || null; }
 
-function getFamilyByIndex(index) {
-    return MODEL_FAMILIES[index] || null;
-}
-
-function getFamilyByKey(key) {
-    return MODEL_FAMILIES.find(family => family.key === key) || null;
-}
-
-/**
- * Pilih model Copilotku terbaik untuk sebuah keluarga model.
- * Hanya model yang benar-benar boleh dipakai (allowlist premium atau free)
- * yang dipertimbangkan agar biaya limit selalu dapat dihitung.
- *
- * @param {object} family - Entry dari MODEL_FAMILIES
- * @param {Array} models - Daftar model live dari Copilotku
- * @param {(model: object) => boolean} isUsable - Predikat kelayakan model
- * @returns {object|null}
- */
-function resolveCopilotkuModel(family, models, isUsable) {
-    if (!family?.copilotkuPatterns || !Array.isArray(models)) return null;
-    const usable = models.filter(model => isUsable(model));
-    if (usable.length === 0) return null;
-
-    for (const pattern of family.copilotkuPatterns) {
-        const matched = usable.filter(model => pattern.test(`${model.id} ${model.name}`));
-        if (matched.length === 0) continue;
-        // Utamakan model berbayar (kualitas premium) sebelum model gratis.
-        const paid = matched.filter(model => model.billingType !== 'free' && model.accessTier !== 'free');
-        return (paid[0] || matched[0]);
-    }
-    return null;
-}
-
-module.exports = {
-    MODEL_FAMILIES,
-    OPEN_SOURCE_PROVIDERS,
-    getFamilies,
-    getFamilyByIndex,
-    getFamilyByKey,
-    resolveCopilotkuModel
-};
+module.exports = { MODEL_FAMILIES, OPEN_SOURCE_PROVIDERS, getFamilies, getFamilyByIndex, getFamilyByKey };

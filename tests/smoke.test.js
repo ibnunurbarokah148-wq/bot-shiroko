@@ -29,9 +29,11 @@ for (const file of files) {
 
 const { WAIFU_CHARACTERS } = require('../config/waifu.characters');
 const mediaQueue = require('../services/media-queue.service');
-assert.strictEqual(WAIFU_CHARACTERS.length, 11, 'Roster waifu harus berisi 11 karakter.');
-assert.strictEqual(new Set(WAIFU_CHARACTERS.map(character => character.id)).size, 11, 'ID karakter waifu harus unik.');
+assert.strictEqual(WAIFU_CHARACTERS.length, 13, 'Roster waifu harus berisi 13 karakter.');
+assert.strictEqual(new Set(WAIFU_CHARACTERS.map(character => character.id)).size, 13, 'ID karakter waifu harus unik.');
 assert(WAIFU_CHARACTERS.some(character => character.id === 'mahiru_shiina'), 'Mahiru Shiina harus tersedia di roster waifu.');
+assert(WAIFU_CHARACTERS.some(character => character.id === 'hayase_yuuka'), 'Hayase Yuuka harus tersedia di roster waifu.');
+assert(WAIFU_CHARACTERS.some(character => character.id === 'zhuxin'), 'Zhuxin harus tersedia di roster waifu.');
 for (const character of WAIFU_CHARACTERS) {
     assert(/istri|suami|pasangan/i.test(character.prompt), `Persona ${character.id} belum memiliki konteks pasangan.`);
     assert(/sayang|suamiku/i.test(character.prompt), `Persona ${character.id} belum memiliki sapaan pasangan.`);
@@ -63,13 +65,16 @@ assert.throws(
 
 const modelCatalog = require('../services/ai/model.catalog');
 const premiumModelMap = Object.fromEntries(modelCatalog.getFamilies()
-    .filter(family => family.premiumProvider === 'vpsmurah')
+    .filter(family => family.premiumProvider === 'unorouter')
     .map(family => [family.key, family.premiumModel]));
 assert.deepStrictEqual(premiumModelMap, {
-    ds3: 'deepseek-v32',
-    ds4: 'deepseek-v3',
-    qwen: 'qwen3-max',
-    gpt: 'luna'
-}, 'Mapping model Premium VPSMurah harus sesuai menu !aimode.');
+    ds3: 'deepseek-v3.2',
+    ds4: 'deepseek-v4-pro',
+    gemini: 'gemini-3.5-flash',
+    glm: 'glm-5.3',
+    qwen: 'qwen3.8-max',
+    gpt: 'gpt-5.6-luna',
+    grok: 'grok-4.6'
+}, 'Mapping model Premium UnoRouter harus sesuai menu !aimode.');
 
-console.log(`Smoke test lulus: ${files.length} file JavaScript valid, roster 11 waifu, parser Companion, dan mapping Premium valid.`);
+console.log(`Smoke test lulus: ${files.length} file JavaScript valid, roster ${WAIFU_CHARACTERS.length} waifu, parser Companion, dan mapping Premium valid.`);

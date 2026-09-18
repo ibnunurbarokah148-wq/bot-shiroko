@@ -17,8 +17,7 @@ module.exports = {
     userOllamaModel: {},
     userArisuModel: {},
     ownerArisuModel: null,
-    ownerCopilotkuModel: null,
-    ownerVpsMurahModel: null,
+    ownerUnoRouterModel: null,
     ownerMood: null,
 
     // Status ComfyUI
@@ -50,12 +49,13 @@ module.exports = {
     sesiTTS: {},
     albumStikerProcessing: {},
 
+    // Anti-replay untuk approval !acc/!tolak (invoice/laporan yang sudah diproses)
+    processedApprovals: new Set(),
+
     // Model AI Pilihan User
     userOpenRouterModel: {},
     userCloudflareModel: {},
-    userCopilotkuModel: {},
-    userVpsMurahModel: {},
-    userCopilotkuCost: {},
+    userUnoRouterModel: {},
 
     // Cooldown anti-spam
     cooldownGacha: new Set(),

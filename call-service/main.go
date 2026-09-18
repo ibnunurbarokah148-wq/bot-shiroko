@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -574,6 +575,11 @@ func (s *server) downloadMusic(ctx context.Context, rawURL string) (musicItem, e
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		return musicItem{}, errors.New("URL musik harus berupa http/https yang valid")
 	}
+	// Musik tetap boleh berasal dari URL publik mana pun, tetapi service tidak
+	// boleh dipakai sebagai proxy menuju localhost/private network/metadata API.
+	if err := rejectPrivateURL(ctx, parsed); err != nil {
+		return musicItem{}, err
+	}
 	if isYouTubeHost(parsed.Hostname()) {
 		return s.downloadYouTube(ctx, parsed.String())
 	}
@@ -582,7 +588,19 @@ func (s *server) downloadMusic(ctx context.Context, rawURL string) (musicItem, e
 		return musicItem{}, err
 	}
 	request.Header.Set("User-Agent", "ShirokoCall/1.0")
-	response, err := (&http.Client{Timeout: 60 * time.Second}).Do(request)
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+			if err := rejectPrivateURL(req.Context(), req.URL); err != nil {
+				return err
+			}
+			if len(req.URL.String()) > 2048 {
+				return errors.New("redirect URL terlalu panjang")
+			}
+			return nil
+		},
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return musicItem{}, fmt.Errorf("download musik gagal: %w", err)
 	}
@@ -623,6 +641,27 @@ func (s *server) downloadMusic(ctx context.Context, rawURL string) (musicItem, e
 		return musicItem{}, fmt.Errorf("decode musik gagal: %w", err)
 	}
 	return musicItem{source: &removeOnCloseSource{AudioSource: source, path: path}, path: path, format: strings.TrimPrefix(ext, "."), url: parsed.String()}, nil
+}
+
+func rejectPrivateURL(ctx context.Context, parsed *url.URL) error {
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return errors.New("host URL tidak valid")
+	}
+	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") ||
+		strings.EqualFold(host, "metadata.google.internal") || strings.EqualFold(host, "metadata") {
+		return errors.New("URL menuju host internal tidak diizinkan")
+	}
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil || len(ips) == 0 {
+		return errors.New("host URL tidak dapat di-resolve")
+	}
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+			return errors.New("URL menuju jaringan internal tidak diizinkan")
+		}
+	}
+	return nil
 }
 
 func isYouTubeHost(host string) bool {
