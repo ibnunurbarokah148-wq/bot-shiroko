@@ -106,9 +106,11 @@ async function handle(ctx) {
         const teksSoal = textClean.substring(13).trim();
         if (!teksSoal) { await reply('Nn... Masukkan teks skenario kasusnya.'); return true; }
 
-        dbRole[senderId].bank_soal.push(teksSoal);
+        const roleGuru = dbRole[senderId];
+        roleGuru.bank_soal.push(teksSoal);
+        dbRole[senderId] = roleGuru;
         simpanRole();
-        await reply(`✅ *SOAL DITAMBAHKAN*\n\nTotal soal Sensei sekarang: *${dbRole[senderId].bank_soal.length} soal*.`);
+        await reply(`✅ *SOAL DITAMBAHKAN*\n\nTotal soal Sensei sekarang: *${roleGuru.bank_soal.length} soal*.`);
         return true;
     }
 
@@ -130,9 +132,11 @@ async function handle(ctx) {
         if (!dbRole[senderId] || dbRole[senderId].role !== 'guru') { await reply('Nn... Akses ditolak.'); return true; }
         const index = parseInt(textClean.split(' ')[1]) - 1;
         if (isNaN(index) || index < 0 || index >= dbRole[senderId].bank_soal.length) { await reply('Nn... Nomor tidak ditemukan.'); return true; }
-        dbRole[senderId].bank_soal.splice(index, 1);
+        const roleGuruHapus = dbRole[senderId];
+        roleGuruHapus.bank_soal.splice(index, 1);
+        dbRole[senderId] = roleGuruHapus;
         simpanRole();
-        await reply(`🗑️ *SOAL DIHAPUS*\n\nSisa soal: *${dbRole[senderId].bank_soal.length}*.`);
+        await reply(`🗑️ *SOAL DIHAPUS*\n\nSisa soal: *${roleGuruHapus.bank_soal.length}*.`);
         return true;
     }
 

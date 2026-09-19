@@ -10,10 +10,11 @@ async function handle(ctx) {
     if (textLower.startsWith('!simpan_tugas ')) {
         const isiTugas = textClean.substring(14).trim();
         if (!isiTugas) { await reply('Nn... Format salah.'); return true; }
-        if (!dbTugas[senderId]) dbTugas[senderId] = [];
-        dbTugas[senderId].push(isiTugas);
+        const listTugasBaru = dbTugas[senderId] || [];
+        listTugasBaru.push(isiTugas);
+        dbTugas[senderId] = listTugasBaru;
         simpanTugas();
-        await reply(`✅ *TUGAS DISIMPAN*\n\nTotal tugas tersimpan: *${dbTugas[senderId].length}*.`);
+        await reply(`✅ *TUGAS DISIMPAN*\n\nTotal tugas tersimpan: *${listTugasBaru.length}*.`);
         return true;
     }
 

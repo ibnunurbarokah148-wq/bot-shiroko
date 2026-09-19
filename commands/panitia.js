@@ -15,7 +15,9 @@ async function handle(ctx) {
         const namaAnggota = args.slice(1).join(' ');
 
         if (!dbPanitia[divisi]) { await reply('Nn... Divisi tidak ditemukan.'); return true; }
-        dbPanitia[divisi].anggota.push(namaAnggota);
+        const dataDivisiTambah = dbPanitia[divisi];
+        dataDivisiTambah.anggota.push(namaAnggota);
+        dbPanitia[divisi] = dataDivisiTambah;
         simpanPanitia();
         await reply(`✅ *PANITIA DIURUTKAN*\n\nNn... *${namaAnggota}* resmi dimasukkan ke **Divisi ${divisi.toUpperCase()}**.`);
         return true;
@@ -28,10 +30,12 @@ async function handle(ctx) {
         const namaAnggota = args.slice(1).join(' ');
 
         if (!dbPanitia[divisi]) { await reply('Nn... Divisi tidak terdaftar.'); return true; }
-        const indexAnggota = dbPanitia[divisi].anggota.findIndex(nama => nama.toLowerCase() === namaAnggota.toLowerCase());
+        const dataDivisiCabut = dbPanitia[divisi];
+        const indexAnggota = dataDivisiCabut.anggota.findIndex(nama => nama.toLowerCase() === namaAnggota.toLowerCase());
 
         if (indexAnggota === -1) { await reply(`Nn... Tidak ada anggota bernama *${namaAnggota}*.`); return true; }
-        dbPanitia[divisi].anggota.splice(indexAnggota, 1);
+        dataDivisiCabut.anggota.splice(indexAnggota, 1);
+        dbPanitia[divisi] = dataDivisiCabut;
         simpanPanitia();
         await reply(`🗑️ *FORMASI DIPERBARUI*\n\nNn... *${namaAnggota}* telah dicabut dari **Divisi ${divisi.toUpperCase()}**.`);
         return true;
@@ -45,7 +49,9 @@ async function handle(ctx) {
 
         const divisi = bagian[0].trim().toLowerCase();
         if (!dbPanitia[divisi]) { await reply('Nn... Divisi tidak valid.'); return true; }
-        dbPanitia[divisi].timeline.push({ tugas: bagian[1].trim(), deadline: bagian[2].trim(), status: "❌ Belum" });
+        const dataDivisiTugas = dbPanitia[divisi];
+        dataDivisiTugas.timeline.push({ tugas: bagian[1].trim(), deadline: bagian[2].trim(), status: "❌ Belum" });
+        dbPanitia[divisi] = dataDivisiTugas;
         simpanPanitia();
         await reply(`📅 *TIMELINE BARU DITAMBAHKAN*`);
         return true;
@@ -58,7 +64,9 @@ async function handle(ctx) {
         const idx = parseInt(args[2]) - 1;
 
         if (!dbPanitia[divisi] || isNaN(idx) || !dbPanitia[divisi].timeline[idx]) { await reply('Nn... Data tidak ditemukan.'); return true; }
-        dbPanitia[divisi].timeline[idx].status = "✅ Selesai";
+        const dataDivisiSelesai = dbPanitia[divisi];
+        dataDivisiSelesai.timeline[idx].status = "✅ Selesai";
+        dbPanitia[divisi] = dataDivisiSelesai;
         simpanPanitia();
         await reply(`🎉 *PROGRESS UPDATE*\n\nTugas Ke-${idx + 1} dinyatakan *SELESAI*.`);
         return true;

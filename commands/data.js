@@ -173,7 +173,7 @@ async function handle(ctx) {
                 }
 
                 await reply(`Nn... Memuat data *${queryTersimpan.replace(/_/g, ' ')}*...`);
-                const response = await axios.get(`https://danbooru.donmai.us/posts.json?tags=${queryTersimpan}+${isNsfw ? 'rating:e' : 'rating:g'}&limit=40`, { httpsAgent: new https.Agent({ rejectUnauthorized: false }) });
+                const response = await axios.get(`https://danbooru.donmai.us/posts.json?tags=${queryTersimpan}+${isNsfw ? 'rating:e' : 'rating:g'}&limit=40`);
                 const results = response.data.filter(post => post.file_url || post.large_file_url);
                 delete state.sesiWaifu[senderId];
 
