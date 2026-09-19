@@ -9,6 +9,7 @@ const cloudflareProvider = require('./providers/cloudflare');
 const arisuProvider = require('./providers/arisu');
 const unorouterProvider = require('./providers/unorouter');
 const fishProvider = require('./providers/fish');
+const { splitAudioForTranscription } = require('./media.service');
 const memory = require('./memory');
 const state = require('../../config/state');
 
@@ -206,6 +207,25 @@ async function transcribe(options) {
     }
     if (provider === 'unorouter') assertUnoRouterAccess(options.model || resolveMode('unorouter', options.senderId).model, options);
     try {
+        // Audio panjang diproses per bagian. Provider menerima satu chunk per
+        // request sehingga ukuran payload dan batas konteks model tetap aman.
+        if (!options._skipAudioChunking && options.audioBuffer?.length) {
+            const chunks = await splitAudioForTranscription(options.audioBuffer, options.mimeType || 'audio/ogg');
+            if (chunks.length > 1) {
+                const transcripts = [];
+                for (let index = 0; index < chunks.length; index++) {
+                    const result = await providerModule.transcribe({
+                        ...options,
+                        _skipAudioChunking: true,
+                        audioBuffer: chunks[index].buffer,
+                        mimeType: chunks[index].mime
+                    });
+                    transcripts.push(`[Bagian ${index + 1}/${chunks.length}]\n${result}`);
+                }
+                return transcripts.join('\n\n');
+            }
+            options = { ...options, _skipAudioChunking: true, audioBuffer: chunks[0].buffer, mimeType: chunks[0].mime };
+        }
         return await providerModule.transcribe(options);
     } catch (err) {
         throw err;

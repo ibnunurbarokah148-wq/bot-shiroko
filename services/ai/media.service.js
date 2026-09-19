@@ -4,7 +4,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, execFile } = require('child_process');
 const AdmZip = require('adm-zip');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
@@ -15,6 +15,9 @@ const MAX_EXTRACTED_BYTES = 75 * 1024 * 1024;
 const MAX_FILES = 250;
 const MAX_CONTEXT_CHARS = 50000;
 const DOCUMENT_CHUNK_CHARS = 12000;
+const AUDIO_CHUNK_SECONDS = Number(process.env.AUDIO_CHUNK_SECONDS || 300);
+const AUDIO_MAX_CHUNKS = Number(process.env.AUDIO_MAX_CHUNKS || 24);
+const AUDIO_CONVERT_TIMEOUT = Number(process.env.AUDIO_CONVERT_TIMEOUT || 180000);
 const TEXT_EXTENSIONS = new Set([
     '.txt', '.md', '.csv', '.json', '.xml', '.yaml', '.yml', '.log', '.ini',
     '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.c', '.h', '.cpp', '.hpp',
@@ -101,7 +104,7 @@ function convertAudioForApi(buffer, mime) {
         execFileSync(ffmpegPath, [
             '-y', '-i', inputPath,
             '-ac', '1', '-ar', '16000', '-f', 'wav', outputPath
-        ], { timeout: 60000 });
+        ], { timeout: AUDIO_CONVERT_TIMEOUT });
         const converted = fs.readFileSync(outputPath);
         if (!converted.length) throw new Error('Hasil konversi audio kosong.');
         return { buffer: converted, format: 'wav', converted: true };
@@ -132,6 +135,43 @@ function prepareAudioForChatApi(buffer, mime = 'audio/ogg') {
         throw new Error('Data audio kosong atau tidak valid.');
     }
     return convertAudioForApi(buffer, mime);
+}
+
+/**
+ * Pecah audio menjadi WAV mono 16 kHz agar file panjang tidak dikirim sebagai
+ * satu payload base64 raksasa ke provider. Tiap chunk aman diproses terpisah.
+ */
+async function splitAudioForTranscription(buffer, mime = 'audio/ogg', chunkSeconds = AUDIO_CHUNK_SECONDS) {
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new Error('Data audio kosong atau tidak valid.');
+    if (!Number.isFinite(chunkSeconds) || chunkSeconds <= 0) throw new Error('Durasi chunk audio tidak valid.');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shiroko-audio-chunks-'));
+    const inputPath = path.join(dir, `input.${audioFormat(mime)}`);
+    const outputPattern = path.join(dir, 'chunk-%03d.wav');
+    try {
+        fs.writeFileSync(inputPath, buffer);
+        await new Promise((resolve, reject) => {
+            execFile(ffmpegPath, [
+                '-y', '-i', inputPath,
+                '-f', 'segment', '-segment_time', String(Math.floor(chunkSeconds)),
+                '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', outputPattern
+            ], { timeout: AUDIO_CONVERT_TIMEOUT }, (error, _stdout, stderr) => {
+                if (error) return reject(new Error(`ffmpeg audio chunking: ${String(stderr || error.message).slice(-500)}`));
+                resolve();
+            });
+        });
+        const files = fs.readdirSync(dir)
+            .filter(file => /^chunk-\d+\.wav$/i.test(file))
+            .sort()
+            .slice(0, AUDIO_MAX_CHUNKS);
+        if (!files.length) throw new Error('FFmpeg tidak menghasilkan chunk audio.');
+        if (files.length >= AUDIO_MAX_CHUNKS && fs.readdirSync(dir).filter(file => /^chunk-\d+\.wav$/i.test(file)).length > AUDIO_MAX_CHUNKS) {
+            throw new Error(`Audio terlalu panjang; maksimal ${AUDIO_MAX_CHUNKS} bagian.`);
+        }
+        return files.map(file => ({ buffer: fs.readFileSync(path.join(dir, file)), mime: 'audio/wav' }));
+    } finally {
+        cleanupTemp(dir);
+    }
 }
 
 function isDocx(buffer, fileName = '', mimeType = '') {
@@ -235,6 +275,7 @@ module.exports = {
     convertAudioToWav,
     convertAudioForApi,
     prepareAudioForChatApi,
+    splitAudioForTranscription,
     validateTranscript,
     logAudioAttempt
 };

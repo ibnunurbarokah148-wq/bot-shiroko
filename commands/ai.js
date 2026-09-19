@@ -960,7 +960,12 @@ async function handle(ctx) {
             const { incrementStat } = require('../config/database');
             incrementStat('aiRequests');
             
-            let finalSystemPrompt = triggerType === 'shiroko' ? getShirokoSystemPrompt(isOwner) : (state.userSystemPrompt ? (state.userSystemPrompt[senderId] || (core && state.userSystemPrompt[core])) : null);
+            // !shiroko adalah trigger chat, bukan reset persona. Jika user sudah
+            // memilih istri lewat !mybini, persona karakter aktif harus tetap
+            // dipakai; Shiroko hanya menjadi fallback bila belum memilih.
+            let finalSystemPrompt = state.userSystemPrompt
+                ? (state.userSystemPrompt[senderId] || (core && state.userSystemPrompt[core]))
+                : null;
             if (!finalSystemPrompt && state.userRole && (state.userRole[senderId] || (core && state.userRole[core]))) {
                 const userRoleName = state.userRole[senderId] || state.userRole[core];
                 const baseType = (provider === 'cloudflare') ? 'short' : ((provider === 'arisu') ? 'arisu' : 'system');

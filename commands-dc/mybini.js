@@ -65,6 +65,10 @@ async function chooseModelPaginated(promptMsg, models, prefix, label, userId) {
 
 module.exports = {
     handle: async (message, { client }) => {
+        if (!message.guild) {
+            await message.reply('Nn... Fitur !mybini hanya tersedia di server/grup Discord, bukan melalui DM langsung.');
+            return;
+        }
         const optionsWaifu = WAIFU_CHARACTERS.map(character => new StringSelectMenuOptionBuilder()
             .setLabel(`${character.name} (${character.franchise})`)
             .setValue(`bini_${character.id}`));
