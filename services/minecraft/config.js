@@ -55,7 +55,7 @@ function isOwner(username) {
     const cleanUser = username.toLowerCase().replace(/[\[\]~<>\*\_]/g, '').trim();
     return CONFIG.owners.some(owner => {
         const cleanOwner = owner.toLowerCase().replace(/[\[\]~<>\*\_]/g, '').trim();
-        return cleanUser === cleanOwner || cleanUser.includes(cleanOwner) || username.toLowerCase().includes(owner.toLowerCase());
+        return cleanUser === cleanOwner;
     });
 }
 
