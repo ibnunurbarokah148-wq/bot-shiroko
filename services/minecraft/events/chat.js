@@ -10,6 +10,10 @@ const globalState = require('../../../config/state');
 
 async function handleChat(bot, username, message, mcData) {
     if (!username || username === bot.username || !isOwner(username)) return;
+    if (bot.authenticated === false) {
+        bot.chat('Nn. Aku sedang login ke server dulu, Sensei.');
+        return;
+    }
     const pk = message.toLowerCase();
 
     // 1. MODE MANDIRI (AUTO AFK)

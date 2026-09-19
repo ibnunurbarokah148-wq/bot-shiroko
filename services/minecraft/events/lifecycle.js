@@ -39,6 +39,18 @@ function setupLifecycleEvents(bot, createBotFn) {
     bot.on('message', (jsonMsg) => {
         const text = jsonMsg.toString().toLowerCase();
         const password = process.env.MC_AUTHME_PASSWORD;
+
+        if (
+            text.includes('successfully logged in') ||
+            text.includes('login successful') ||
+            text.includes('logged in successfully') ||
+            text.includes('you are now logged in') ||
+            text.includes('berhasil login') ||
+            text.includes('sudah login')
+        ) {
+            bot.authenticated = true;
+            console.log('[MC] AuthMe login berhasil; movement diaktifkan.');
+        }
         
         if (password) {
             if (text.includes('/reg ') || text.includes('/register') || text.includes('register')) {
@@ -90,13 +102,13 @@ function setupLifecycleEvents(bot, createBotFn) {
 
         movements.canDig = false; // Hindari bot menggali blok saat sekadar berjalan / mengikuti Sensei
         movements.canOpenDoors = true; // Otomatis membuka pintu & gerbang kayu saat melewati labirin/ruangan
-        movements.allowParkour = true; // Aktifkan kalkulasi lompat celah 1-2 blok & parkour dinamis
-        movements.allowSprinting = true; // Aktifkan sprint untuk lompatan parkour yang bertenaga
+        movements.allowParkour = false; // Hindari jalur lompat yang sering di-setback plugin server
+        movements.allowSprinting = false; // Gerakan konservatif lebih stabil di server ber-plugin
         movements.allow1by1towers = false;
         movements.allowEntityDetection = true;
         movements.allowFreeMotion = false;
-        movements.maxDropDown = 5; // Toleransi turun ketinggian hingga 5 blok tanpa ragu
-        movements.jumpCost = 0.5; // Jump cost ringan agar bot lincah melompat undakan
+        movements.maxDropDown = 1;
+        movements.jumpCost = 5;
         movements.digCost = 20;
         movements.placeCost = 10;
         movements.infiniteLiquidDropdownDistance = true;
@@ -104,14 +116,18 @@ function setupLifecycleEvents(bot, createBotFn) {
 
         // --- KONFIGURASI SMART A* PATHFINDER (MAZE SOLVER & DEEP NAVIGATION) ---
         bot.pathfinder.setMovements(movements);
-        bot.pathfinder.thinkTimeout = 10000; // 10 detik kedalaman berpikir A* untuk memecahkan labirin rumit
-        bot.pathfinder.tickTimeout = 45; // Waktu alokasi komputasi per-tick maksimal (responsif & cepat)
-        bot.pathfinder.searchRadius = -1; // Tanpa batas radius pencarian rute
-        bot.pathfinder.enablePathShortcut = true; // Path smoothing pintar: potong sudut & jalan lurus di koridor terbuka
+        bot.pathfinder.thinkTimeout = 3000;
+        bot.pathfinder.tickTimeout = 20;
+        bot.pathfinder.searchRadius = 64;
+        bot.pathfinder.enablePathShortcut = false;
         bot.pathfinder.LOSWhenPlacingBlocks = true;
 
         state.defaultMovements = movements;
         bot.waktuSpawn = Date.now();
+
+        if (!bot.authenticated) {
+            console.log('[MC] Menunggu autentikasi AuthMe sebelum mengaktifkan movement.');
+        }
 
         console.log(`[MC] Bot berhasil spawn di koordinat: ${bot.entity.position}`);
         console.log(`[INFO] Shiroko online di ${CONFIG.host}:${CONFIG.port}`);
@@ -142,7 +158,7 @@ function setupLifecycleEvents(bot, createBotFn) {
         let stuckCount = 0;
 
         state.unstuckInterval = setInterval(() => {
-            if (!bot.entity || !bot.pathfinder) return;
+            if (!bot.authenticated || !bot.entity || !bot.pathfinder) return;
 
             if (bot.pathfinder.isMoving() && bot.pathfinder.goal) {
                 const currentPos = bot.entity.position;
@@ -189,7 +205,7 @@ function setupLifecycleEvents(bot, createBotFn) {
         // --- RADAR AUTO-ATTACK ---
         if (state.radarInterval) clearInterval(state.radarInterval); 
         state.radarInterval = setInterval(() => {
-            if (state.targetSerangan) return; 
+            if (!bot.authenticated || state.targetSerangan) return;
             const musuhMendekat = bot.nearestEntity(e =>
                 e.name && hostileMobs.includes(e.name.toLowerCase()) && e.position.distanceTo(bot.entity.position) < 8 
             );
@@ -199,7 +215,7 @@ function setupLifecycleEvents(bot, createBotFn) {
         // --- SISTEM OTAK MODE MANDIRI (AUTONOMOUS WORKER & PATROL) ---
         if (state.mandiriInterval) clearInterval(state.mandiriInterval); 
         state.mandiriInterval = setInterval(async () => {
-            if (!state.modeMandiri || state.sedangKerja || state.targetSerangan || bot.isSleeping || state.sedangMencariKasur) return;
+            if (!bot.authenticated || !state.modeMandiri || state.sedangKerja || state.targetSerangan || bot.isSleeping || state.sedangMencariKasur) return;
 
             // 1. Cek Tas Penuh -> Paksa Pulang
             if (bot.inventory.emptySlotCount() === 0) {
@@ -242,7 +258,7 @@ function setupLifecycleEvents(bot, createBotFn) {
 
         if (state.afkInterval) clearInterval(state.afkInterval);
         state.afkInterval = setInterval(() => {
-            if (!bot.pathfinder.isMoving() && !state.modeMandiri && !state.sedangKerja) {
+            if (bot.authenticated && !bot.pathfinder.isMoving() && !state.modeMandiri && !state.sedangKerja) {
                 bot.setControlState('jump', true);
                 setTimeout(() => bot.setControlState('jump', false), 200);
             }

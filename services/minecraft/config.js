@@ -10,6 +10,9 @@ const CONFIG = {
     username: process.env.MC_USERNAME || 'Ritian223',
     version: (process.env.MC_VERSION && process.env.MC_VERSION.toLowerCase() !== 'auto' && process.env.MC_VERSION.toLowerCase() !== 'false') ? process.env.MC_VERSION : '1.21.1',
     auth: process.env.MC_AUTH || 'offline',
+    // Set true only when this username is excluded from AuthMe on the server.
+    // Otherwise movement is held until AuthMe confirms /login.
+    authmeBypass: process.env.MC_AUTHME_BYPASS === 'true',
     owners: process.env.MC_OWNERS ? process.env.MC_OWNERS.split(',').map(s => s.trim().toLowerCase()) : ['rukaajah'],
     reconnectDelay: 5000,
     aiCooldown: 3000,

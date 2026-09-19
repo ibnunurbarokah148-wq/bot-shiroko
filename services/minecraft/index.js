@@ -25,6 +25,11 @@ function createBot() {
         auth: CONFIG.auth
     });
 
+    // AuthMe can reject movement packets before authentication.  The server
+    // configuration may explicitly exempt this bot; otherwise lifecycle.js
+    // flips this flag after it receives AuthMe's successful-login message.
+    bot.authenticated = CONFIG.authmeBypass;
+
     bot.loadPlugin(pathfinder);
 
     // Setup lifecycle events (spawn, death, error, health, dll)
