@@ -134,27 +134,40 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
     }
 }
 
-async function generateWithTools({ prompt, senderId, isOwner, model, systemPrompt, tools, executeTool, maxToolRounds = 3, imageBuffer = null, imageMimeType = 'image/jpeg' }) {
+async function generateWithTools({ prompt, senderId, isOwner, model, systemPrompt, tools, executeTool, maxToolRounds = 3, imageBuffer = null, imageMimeType = 'image/jpeg', useMemory = false }) {
     if (!Array.isArray(tools) || typeof executeTool !== 'function') throw new Error('Tool UnoRouter belum dikonfigurasi dengan benar.');
     const modelName = resolveModel({ model, senderId, isOwner });
     const userContent = imageBuffer ? [{ type: 'text', text: prompt || 'Analisis gambar.' }, { type: 'image_url', image_url: { url: `data:${imageMimeType};base64,${imageBuffer.toString('base64')}` } }] : (prompt || '');
-    const messages = [{ role: 'system', content: systemPrompt || getShirokoSystemPrompt(isOwner) }, { role: 'user', content: userContent }];
-    for (let round = 0; round <= maxToolRounds; round++) {
-        const response = await axios.post(`${BASE_URL}/chat/completions`, { model: modelName, max_tokens: Number(process.env.UNOROUTER_MAX_TOKENS || 4096), messages, tools, tool_choice: 'auto' }, { headers: { Authorization: `Bearer ${getRandomKey()}`, 'Content-Type': 'application/json' }, timeout: Number(process.env.UNOROUTER_TIMEOUT || 120000) });
-        const message = response.data?.choices?.[0]?.message;
-        const calls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
-        if (!calls.length) return cleanThinkingLogs(extractOpenRouterText(response.data));
-        if (round === maxToolRounds) throw new Error('UnoRouter melewati batas tool call.');
-        messages.push({ role: 'assistant', content: message.content ?? null, tool_calls: calls });
-        for (const call of calls) {
-            let args = {};
-            try { args = JSON.parse(call.function?.arguments || '{}'); } catch (_) { args = { _parseError: 'invalid JSON' }; }
-            let result;
-            try { result = await executeTool(call.function?.name, args, { senderId, isOwner, model: modelName }); } catch (error) { result = { ok: false, error: error.message }; }
-            messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result || { ok: true }) });
+    const history = useMemory ? memory.getMessages(senderId, PROVIDER_NAME) : [];
+    if (useMemory && !memory.get(senderId, PROVIDER_NAME)) memory.init(senderId, PROVIDER_NAME);
+    if (useMemory) memory.push(senderId, PROVIDER_NAME, 'user', prompt || '[Gambar]');
+    const messages = [{ role: 'system', content: systemPrompt || getShirokoSystemPrompt(isOwner) }, ...(useMemory ? history : []), { role: 'user', content: userContent }];
+    try {
+        for (let round = 0; round <= maxToolRounds; round++) {
+            const response = await axios.post(`${BASE_URL}/chat/completions`, { model: modelName, max_tokens: Number(process.env.UNOROUTER_MAX_TOKENS || 4096), messages, tools, tool_choice: 'auto' }, { headers: { Authorization: `Bearer ${getRandomKey()}`, 'Content-Type': 'application/json' }, timeout: Number(process.env.UNOROUTER_TIMEOUT || 120000) });
+            const message = response.data?.choices?.[0]?.message;
+            const calls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+            if (!calls.length) {
+                const text = cleanThinkingLogs(extractOpenRouterText(response.data));
+                if (!text) throw new Error('UnoRouter mengembalikan respons kosong.');
+                if (useMemory) memory.push(senderId, PROVIDER_NAME, 'assistant', text);
+                return text;
+            }
+            if (round === maxToolRounds) throw new Error('UnoRouter melewati batas tool call.');
+            messages.push({ role: 'assistant', content: message.content ?? null, tool_calls: calls });
+            for (const call of calls) {
+                let args = {};
+                try { args = JSON.parse(call.function?.arguments || '{}'); } catch (_) { args = { _parseError: 'invalid JSON' }; }
+                let result;
+                try { result = await executeTool(call.function?.name, args, { senderId, isOwner, model: modelName }); } catch (error) { result = { ok: false, error: error.message }; }
+                messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result || { ok: true }) });
+            }
         }
+        throw new Error('UnoRouter tool execution gagal.');
+    } catch (error) {
+        if (useMemory) memory.popLast(senderId, PROVIDER_NAME);
+        throw error;
     }
-    throw new Error('UnoRouter tool execution gagal.');
 }
 
 async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId, isOwner }) {

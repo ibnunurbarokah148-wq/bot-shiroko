@@ -820,7 +820,7 @@ async function handle(ctx) {
 
         // Perbarui mood sebelum companion flow agar jalur visual tidak melewati state mood.
         // Normal chat membaca flag ini supaya tidak melakukan update dua kali.
-        if (isOwner && pesanUser) {
+        if (isOwner && pesanUser && resolvedMode.provider !== 'unorouter') {
             moodState.updateFromResponse(pesanUser);
             ctx.moodProcessed = true;
         }
@@ -872,13 +872,15 @@ async function handle(ctx) {
         if (!cekDanPotongLimit(senderId, cost)) { await reply(`Nn... Token habis. Butuh ${cost} limit.`); return true; }
 
         if (costProvider === 'unorouter') {
-            const companionIntent = companionService.detectHeuristicIntent(textLower, !!chatImageBuffer);
-            const visualIntent = companionIntent && !['NORMAL_CHAT', 'OUTFIT_DISCUSSION', 'VISION_ANALYSIS'].includes(companionIntent.intent);
+            const detectedIntent = companionService.detectHeuristicIntent(textLower, !!chatImageBuffer);
+            // UnoRouter menjadi decision-maker utama untuk chat companion. Heuristic
+            // hanya memberi konteks awal; pesan tanpa trigger tetap masuk ke native
+            // tools agar model dapat memahami roleplay dan situasi percakapan.
+            const companionIntent = detectedIntent || { intent: 'CONTEXT_DECISION', renderRequested: true };
+            const visualIntent = true;
 
             if (visualIntent) {
-                const activePrompt = triggerType === 'shiroko'
-                    ? getShirokoSystemPrompt(isOwner)
-                    : (state.userSystemPrompt?.[senderId] || (core && state.userSystemPrompt?.[core])) || getShirokoSystemPrompt(isOwner);
+                const activePrompt = (state.userSystemPrompt?.[senderId] || (core && state.userSystemPrompt?.[core])) || getShirokoSystemPrompt(isOwner);
                 try {
                     return await companionService.handleUnoRouterCompanionFlow({
                         ...ctx,

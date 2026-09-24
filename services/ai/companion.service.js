@@ -8,6 +8,7 @@ const { getCoreNumber } = require('../../utils/helpers');
 const { parseJsonObject } = require('./utils');
 const memory = require('./memory');
 const waifuService = require('../waifu.service');
+const moodState = require('./mood.state');
 
 // Base Anchor Shiroko tanpa tag "side braid" agar hairstyle dinamis dapat di-override bersih
 const SHIROKO_CHARACTER_ANCHOR = 'sunaookami shiroko, 1girl, light blue hair, blue eyes, halo, wolf ears, anime style';
@@ -113,6 +114,24 @@ const UNOROUTER_COMPANION_TOOLS = Object.freeze([
                 type: 'object',
                 properties: { reason: { type: 'string' } },
                 required: ['reason'],
+                additionalProperties: false
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'update_mood',
+            description: 'Memperbarui mood karakter berdasarkan konteks emosional user. Hanya gunakan jika sinyal emosinya cukup jelas.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    mood: { type: 'string', enum: ['neutral', 'happy', 'affectionate', 'playful', 'sad', 'tired', 'anxious', 'frustrated', 'annoyed', 'distant'] },
+                    intensity: { type: 'number', minimum: 0, maximum: 1 },
+                    confidence: { type: 'number', minimum: 0, maximum: 1 },
+                    signal: { type: 'string' }
+                },
+                required: ['mood', 'intensity', 'confidence'],
                 additionalProperties: false
             }
         }
@@ -244,6 +263,16 @@ function createUnoRouterToolExecutor(ctx) {
             const queued = await renderAndSendCharacter({ ...ctx, provider: 'unorouter' }, appearance, args.reason || ctx.textClean);
             return { ok: queued, status: queued ? 'image_queued' : 'image_not_queued', reason: args.reason || null };
         }
+        if (name === 'update_mood') {
+            if (!isOwner) return { ok: false, error: 'Mood state hanya tersedia untuk owner.' };
+            const updated = moodState.setMood({
+                mood: args.mood,
+                intensity: args.intensity,
+                confidence: args.confidence,
+                lastSignal: typeof args.signal === 'string' ? args.signal.slice(0, 80) : 'ai_context'
+            });
+            return { ok: true, mood: updated.mood, intensity: updated.intensity };
+        }
         return { ok: false, error: `Tool tidak dikenal: ${name}` };
     };
 }
@@ -258,6 +287,7 @@ async function handleUnoRouterCompanionFlow(ctx) {
 Intent lokal yang sudah divalidasi: ${companionIntent}.
 Render diizinkan: ${companionRenderAllowed ? 'YA' : 'TIDAK'}.
 ${moodContext || ''}
+Kamu adalah pengambil keputusan konteks percakapan. Untuk obrolan, roleplay, atau pertanyaan biasa, jangan panggil tool dan jawab natural.
 Kamu terhubung langsung ke tool bot. Jangan menulis prompt gambar atau berpura-pura sudah mengirim gambar.
 Jangan panggil generate_character_image jika Render diizinkan bernilai TIDAK.
 Untuk intent perubahan penampilan, panggil update_appearance saja kecuali render diizinkan.
@@ -275,7 +305,8 @@ ${appearanceContext}`;
         tools: UNOROUTER_COMPANION_TOOLS,
         executeTool: createUnoRouterToolExecutor(ctx),
         imageBuffer: ctx.chatImageBuffer,
-        imageMimeType: ctx.chatImageMime
+        imageMimeType: ctx.chatImageMime,
+        useMemory: true
     });
     await ctx.reply(result);
     return true;
