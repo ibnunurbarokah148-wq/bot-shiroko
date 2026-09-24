@@ -44,14 +44,23 @@ function getModelCapabilities(model) {
         ...(Array.isArray(model?.capabilities?.input_modalities) ? model.capabilities.input_modalities : [])
     ].map(value => String(value).toLowerCase());
     const serialized = JSON.stringify(model || {}).toLowerCase();
+    const hasCapabilityMetadata = values.length > 0 ||
+        Object.keys(model?.capabilities || {}).length > 0 ||
+        Object.keys(model?.architecture || {}).length > 0;
     const image = values.some(value => /image|vision|visual/.test(value)) ||
-        /image[_ -]?input|vision|multimodal|multimodal/.test(serialized);
+        /image[_ -]?input|vision|multimodal/.test(serialized);
     const audio = values.some(value => /audio|sound/.test(value));
-    return { text: true, image, audio };
+    return {
+        text: true,
+        // null berarti gateway tidak mengirim metadata capability. Jangan
+        // menganggap model text-only hanya karena metadata-nya minim.
+        image: image ? true : (hasCapabilityMetadata ? false : null),
+        audio: audio ? true : (hasCapabilityMetadata ? false : null)
+    };
 }
 
 function supportsImage(model) {
-    return getModelCapabilities(model).image;
+    return getModelCapabilities(model).image !== false;
 }
 
 function getModelCost(model, { isOwner = false } = {}) {

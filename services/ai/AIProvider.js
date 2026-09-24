@@ -119,7 +119,7 @@ function validateModelAccess(provider, model, context = {}) {
         isPremium: context.isPremium === true || hasActivePremium(context.senderId, context.alternateId)
     };
     if (provider !== 'unorouter') return { allowed: true, cost: getModelCost(provider, model, accessContext) };
-    if (context.imageRequested && context.metadata && !unorouterProvider.supportsImage(context.metadata)) {
+    if (context.imageRequested && context.metadata && unorouterProvider.getModelCapabilities(context.metadata).image === false) {
         return { allowed: false, cost: null, reason: 'Model UnoRouter yang dipilih belum mendukung input gambar. Pilih model Premium yang mendukung vision.' };
     }
     const verdict = ensureUnoRouterAccess(model, accessContext);
