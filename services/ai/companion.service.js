@@ -7,6 +7,7 @@ const appState = require('../../config/state');
 const { getCoreNumber } = require('../../utils/helpers');
 const { parseJsonObject } = require('./utils');
 const memory = require('./memory');
+const waifuService = require('../waifu.service');
 
 // Base Anchor Shiroko tanpa tag "side braid" agar hairstyle dinamis dapat di-override bersih
 const SHIROKO_CHARACTER_ANCHOR = 'sunaookami shiroko, 1girl, light blue hair, blue eyes, halo, wolf ears, anime style';
@@ -58,7 +59,7 @@ function detectHeuristicIntent(textLower, hasImage) {
         if (/sekarang\s+kamu\s+(pakai|pake)|lagi\s+(pakai|pake)\s+apa|kamu\s+(pakai|pake)\s+baju\s+apa|kirim\s+(foto|gambar)|minta(?:kan)?\s+(?:foto|gambar)|mana\s+(?:foto|gambar)|pap\s+dong|lihat\s+(?:foto|gambar)|foto\s+kamu|gambar\s+kamu|lihat\s+kamu/i.test(textLower)) {
             return { intent: 'CHARACTER_VISUAL_REQUEST', renderRequested: true };
         }
-        if (/ganti\s+(baju|pakaian|rambut)|pakai\s+(hoodie|gaun|kaos|jaket|kemeja|rok|seragam|celana|jepit)|rambut.*(kuncir|potong|gerai|ponytail|twintail)|(senyum|cemberut|blush|melambai|duduk|berdiri)|coba\s+di\s+(taman|pantai|kamar|sekolah)|baju\s+itu|seragam\s+itu/i.test(textLower)) {
+        if (/\b(ganti|ubah|rubah|pakai|pake|kenakan|kenakanlah)\b.*\b(baju|pakaian|rambut|hoodie|gaun|kaos|jaket|kemeja|rok|seragam|celana|jepit|kuncir|ponytail|twintail)\b|\b(?:kamu|lu|lo|dirimu)\s+(?:sedang\s+)?(?:berada|tinggal|duduk)\s+di\s+(taman|pantai|kamar|sekolah)|\b(reset|kembalikan)\b.*\b(penampilan|outfit|baju|pakaian|rambut)\b|baju\s+itu|seragam\s+itu/i.test(textLower)) {
             const wantsRender = /kirim\s+(?:foto|gambar)|buat(?:kan)?\s+(?:foto|gambar)|generate\s+(?:foto|gambar)|lihat|tunjukkan|mana|pap/i.test(textLower);
             return { intent: 'APPEARANCE_CHANGE', renderRequested: wantsRender };
         }
@@ -72,7 +73,7 @@ const UNOROUTER_COMPANION_TOOLS = Object.freeze([
         type: 'function',
         function: {
             name: 'get_current_appearance',
-            description: 'Membaca penampilan Shiroko saat ini dari database sebelum menjawab atau membuat gambar.',
+            description: 'Membaca penampilan karakter aktif saat ini dari database sebelum menjawab atau membuat gambar.',
             parameters: { type: 'object', properties: {}, additionalProperties: false }
         }
     },
@@ -80,7 +81,7 @@ const UNOROUTER_COMPANION_TOOLS = Object.freeze([
         type: 'function',
         function: {
             name: 'update_appearance',
-            description: 'Mengubah pakaian, rambut, ekspresi, pose, atau lokasi penampilan Shiroko sesuai permintaan pengguna. Tidak membuat gambar.',
+            description: 'Mengubah pakaian, rambut, ekspresi, pose, atau lokasi penampilan karakter aktif sesuai permintaan pengguna. Tidak membuat gambar.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -107,7 +108,7 @@ const UNOROUTER_COMPANION_TOOLS = Object.freeze([
         type: 'function',
         function: {
             name: 'generate_character_image',
-            description: 'Membuat dan mengirim gambar Shiroko menggunakan penampilan terbaru dari database. Gunakan jika pengguna meminta melihat atau membuat visual.',
+            description: 'Membuat dan mengirim gambar karakter aktif menggunakan penampilan terbaru dari database. Gunakan jika pengguna meminta melihat atau membuat visual.',
             parameters: {
                 type: 'object',
                 properties: { reason: { type: 'string' } },
@@ -275,6 +276,27 @@ ${appearanceContext}`;
         executeTool: createUnoRouterToolExecutor(ctx),
         imageBuffer: ctx.chatImageBuffer,
         imageMimeType: ctx.chatImageMime
+    });
+    await ctx.reply(result);
+    return true;
+}
+
+async function handleUnoRouterCompanionFallback(ctx) {
+    const { companionIntent, companionRenderAllowed, senderId, isOwner, userMode, textClean } = ctx;
+    if (ctx.provider !== 'unorouter' || !companionIntent) return false;
+    if (companionIntent === 'CHARACTER_VISUAL_REQUEST' && companionRenderAllowed) {
+        return renderAndSendCharacter(ctx, appearanceState.getAppearance(senderId), textClean);
+    }
+    const { provider, model } = AIProvider.resolveMode(userMode, senderId);
+    const result = await AIProvider.generate({
+        provider,
+        model,
+        prompt: textClean,
+        senderId,
+        isOwner,
+        systemPrompt: ctx.systemPrompt || getShirokoSystemPrompt(isOwner),
+        useMemory: true,
+        syncSharedMemory: false
     });
     await ctx.reply(result);
     return true;
@@ -489,10 +511,14 @@ async function renderAndSendCharacter(ctx, appearanceData, sceneContextText, ren
     };
 
     try {
+        const activeCharacter = waifuService.get(senderId);
+        const characterAnchor = activeCharacter
+            ? `${activeCharacter.name.toLowerCase()}, 1girl, anime style`
+            : SHIROKO_CHARACTER_ANCHOR;
         const promptTags = appearanceState.toPixaiPromptTags(appearanceData);
         const extraRenderPrompt = typeof renderPrompt === 'string' ? renderPrompt.trim() : '';
         const sceneContext = typeof sceneContextText === 'string' && sceneContextText.trim() ? sceneContextText.trim() : '';
-        const fullPixaiPrompt = `${SHIROKO_CHARACTER_ANCHOR}, ${promptTags}${sceneContext ? `, ${sceneContext}` : ''}${extraRenderPrompt ? `, ${extraRenderPrompt}` : ''}, solo, looking at viewer, high quality, masterpiece`;
+        const fullPixaiPrompt = `${characterAnchor}, ${promptTags}${sceneContext ? `, ${sceneContext}` : ''}${extraRenderPrompt ? `, ${extraRenderPrompt}` : ''}, solo, looking at viewer, high quality, masterpiece`;
 
         // Buat pesan roleplay pendamping gambar
         const roleplayContext = `[SISTEM ROLEPLAY]: Kamu baru saja mengubah penampilan/memakai pakaian ini: (${appearanceData.description || promptTags}). Responlah ucapan Sensei dengan sikap Shiroko yang kalem, agak malu-malu tapi senang. Sampaikan bahwa kamu sudah tampil dengan gaya ini untuknya.`;
@@ -753,6 +779,6 @@ module.exports = {
     generateShirokoRoleplayReply,
     renderAndSendCharacter,
     handleUnoRouterCompanionFlow,
-    handleUnoRouterCompanionFlow,
+    handleUnoRouterCompanionFallback,
     handleCompanionFlow
 };

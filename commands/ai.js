@@ -876,7 +876,6 @@ async function handle(ctx) {
             const visualIntent = companionIntent && !['NORMAL_CHAT', 'OUTFIT_DISCUSSION', 'VISION_ANALYSIS'].includes(companionIntent.intent);
 
             if (visualIntent) {
-                if (!unorouterMetadata?.capabilities?.tools) { kembalikanLimit(senderId, cost); await reply('Nn... Model UnoRouter ini belum mendukung native tool calling untuk aksi visual. Pilih model lain.'); return true; }
                 const activePrompt = triggerType === 'shiroko'
                     ? getShirokoSystemPrompt(isOwner)
                     : (state.userSystemPrompt?.[senderId] || (core && state.userSystemPrompt?.[core])) || getShirokoSystemPrompt(isOwner);
@@ -894,10 +893,25 @@ async function handle(ctx) {
                         moodContext: isOwner ? moodState.buildMoodContext() : ''
                     });
                 } catch (error) {
-                    kembalikanLimit(senderId, cost);
-                    console.error('🚨 UnoRouter Native Tool Error:', error);
-                    await reply(PESAN_GANGGUAN_AI);
-                    return true;
+                    console.warn('⚠️ UnoRouter native tools gagal, memakai fallback companion:', error.message);
+                    try {
+                        return await companionService.handleUnoRouterCompanionFallback({
+                            ...ctx,
+                            userMode,
+                            provider: costProvider,
+                            model: costModel,
+                            companionIntent: companionIntent.intent,
+                            companionRenderAllowed: companionIntent.renderRequested,
+                            systemPrompt: activePrompt,
+                            chatImageBuffer,
+                            chatImageMime
+                        });
+                    } catch (fallbackError) {
+                        kembalikanLimit(senderId, cost);
+                        console.error('🚨 UnoRouter Companion Fallback Error:', fallbackError);
+                        await reply(PESAN_GANGGUAN_AI);
+                        return true;
+                    }
                 }
             }
 
