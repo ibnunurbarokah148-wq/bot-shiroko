@@ -49,7 +49,8 @@ function getCloudflarePair() {
  * @param {string|null} [options.systemPrompt]
  * @returns {Promise<string>}
  */
-async function generate({ prompt, senderId, isOwner, model, systemPrompt = null }) {
+async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, imageBuffer = null }) {
+    if (imageBuffer) throw new Error('Cloudflare AI chat belum mendukung input gambar. Pilih Gemini, Ollama vision, atau model UnoRouter vision.');
     const { accountId, token } = getCloudflarePair();
     const modelName = model || state.userCloudflareModel[senderId] || '@cf/meta/llama-3-8b-instruct';
     const instruction = systemPrompt || getShirokoShortPrompt(isOwner);

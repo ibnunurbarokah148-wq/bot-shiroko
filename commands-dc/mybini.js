@@ -216,6 +216,10 @@ module.exports = {
 
                 await privateChannel.send(`*${characterName.replace('-', ' ')} telah memasuki ruangan...*\n\n_(Catatan: Ruangan ini menggunakan **${noteModel}**. Otomatis hangus jika AFK 3 menit)_`);
 
+                // Room baru harus mulai dari memory kosong agar persona tidak
+                // tercampur dengan percakapan atau karakter sebelumnya.
+                AIProvider.clearMemory(message.author.id);
+
                 const chatCollector = privateChannel.createMessageCollector({
                     filter: m => m.author.id === message.author.id,
                     idle: 180000
@@ -252,7 +256,9 @@ module.exports = {
                                 prompt: m.content,
                                 senderId: message.author.id,
                                 isOwner: true,
-                                systemPrompt: systemInstruction
+                                systemPrompt: systemInstruction,
+                                useMemory: true,
+                                syncSharedMemory: false
                             });
                         } else if (chosenModel === 'openrouter') {
                             balasanAI = await AIProvider.generate({
@@ -261,7 +267,9 @@ module.exports = {
                                 prompt: m.content,
                                 senderId: message.author.id,
                                 isOwner: true,
-                                systemPrompt: systemInstruction
+                                systemPrompt: systemInstruction,
+                                useMemory: true,
+                                syncSharedMemory: false
                             });
                         } else if (chosenModel === 'cloudflare') {
                             balasanAI = await AIProvider.generate({
@@ -270,7 +278,9 @@ module.exports = {
                                 prompt: m.content,
                                 senderId: message.author.id,
                                 isOwner: true,
-                                systemPrompt: systemInstruction
+                                systemPrompt: systemInstruction,
+                                useMemory: true,
+                                syncSharedMemory: false
                             });
                         } else if (chosenModel === 'ollama') {
                             chatHistoryOllama.push({ role: 'user', content: m.content });

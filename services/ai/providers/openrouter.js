@@ -30,7 +30,7 @@ function getRandomKey() {
  * @param {string|null} [options.systemPrompt]
  * @returns {Promise<string>}
  */
-async function generate({ prompt, senderId, isOwner, model, systemPrompt = null }) {
+async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, imageBuffer = null, imageMimeType = 'image/jpeg' }) {
     const apiKey = getRandomKey();
     const modelName = model || state.userOpenRouterModel[senderId] || 'deepseek/deepseek-r1:free';
     const instruction = systemPrompt || getShirokoSystemPrompt(isOwner);
@@ -44,7 +44,18 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null 
     memory.push(senderId, PROVIDER_NAME, 'user', prompt);
 
     const systemMessage = { role: 'system', content: instruction };
-    const payloadMessages = [systemMessage, ...memory.getMessages(senderId, PROVIDER_NAME)];
+    const history = memory.getMessages(senderId, PROVIDER_NAME);
+    const payloadMessages = [systemMessage, ...history];
+    if (imageBuffer && payloadMessages.length > 1) {
+        const lastIndex = payloadMessages.length - 1;
+        payloadMessages[lastIndex] = {
+            ...payloadMessages[lastIndex],
+            content: [
+                { type: 'text', text: prompt || 'Analisis gambar ini.' },
+                { type: 'image_url', image_url: { url: `data:${imageMimeType || 'image/jpeg'};base64,${imageBuffer.toString('base64')}` } }
+            ]
+        };
+    }
 
     let rawData = null;
 
@@ -141,7 +152,9 @@ async function fetchModels() {
             id: m.id,
             name: cleanName,
             limitCost: 1,
-            billingType: 'free'
+            billingType: 'free',
+            capabilities: m.capabilities || {},
+            architecture: m.architecture || {}
         };
     }).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }

@@ -5,10 +5,24 @@ const { getCharacterById, getCharacterByName } = require('../config/waifu.charac
 
 function keysFor(jid) { const core = getCoreNumber(jid); return core && core !== jid ? [jid, core] : [jid]; }
 function persist() { db.setSetting('userWaifuState', state.waifuState); }
+function resetSessions(jid) {
+  const keys = new Set(keysFor(jid));
+  for (const key of keys) {
+    for (const [stateName, session] of Object.entries(state)) {
+      if (stateName.startsWith('sesi') && session && typeof session === 'object' && !Array.isArray(session)) {
+        delete session[key];
+      }
+    }
+  }
+}
 function activate(jid, characterId) {
   const character = getCharacterById(characterId) || getCharacterByName(characterId);
   if (!character) return null;
   if (!state.userSystemPrompt) state.userSystemPrompt = {};
+  resetSessions(jid);
+  try { require('./ai/AIProvider').clearMemory(jid); } catch (error) {
+    console.warn('[WAIFU] Gagal mereset memory saat ganti karakter:', error.message);
+  }
   for (const key of keysFor(jid)) {
     state.waifuState[key] = character.id;
     state.userSystemPrompt[key] = character.prompt;

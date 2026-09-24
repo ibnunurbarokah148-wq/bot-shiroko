@@ -119,6 +119,9 @@ function validateModelAccess(provider, model, context = {}) {
         isPremium: context.isPremium === true || hasActivePremium(context.senderId, context.alternateId)
     };
     if (provider !== 'unorouter') return { allowed: true, cost: getModelCost(provider, model, accessContext) };
+    if (context.imageRequested && context.metadata && !unorouterProvider.supportsImage(context.metadata)) {
+        return { allowed: false, cost: null, reason: 'Model UnoRouter yang dipilih belum mendukung input gambar. Pilih model Premium yang mendukung vision.' };
+    }
     const verdict = ensureUnoRouterAccess(model, accessContext);
     if (!verdict.allowed) return { allowed: false, cost: null, reason: verdict.reason };
     return { allowed: true, cost: getModelCost(provider, model, accessContext) };
@@ -158,7 +161,7 @@ function resolveMode(mode, senderId) {
  * @param {string} options.senderId - ID pengirim
  * @param {boolean} options.isOwner - Apakah owner
  * @param {string|null} [options.systemPrompt] - Custom system prompt (null = Shiroko default)
- * @param {Buffer|null} [options.imageBuffer] - Buffer gambar untuk vision (Gemini & Ollama only)
+ * @param {Buffer|null} [options.imageBuffer] - Buffer gambar untuk model yang mendukung vision
  * @returns {Promise<string>}
  */
 async function generate(options) {

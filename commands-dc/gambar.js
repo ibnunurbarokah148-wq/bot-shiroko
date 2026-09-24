@@ -89,6 +89,10 @@ module.exports = {
                     });
 
                     const data = response.data;
+                    if (data?.success === false) {
+                        const apiError = data.error || data.message || 'ArisuSoft menolak permintaan gambar.';
+                        throw new Error(typeof apiError === 'string' ? apiError : JSON.stringify(apiError));
+                    }
                     let imageUrl = data.url || (data.data && data.data.url) || data.image || data.imageUrl || (data.data && typeof data.data === 'string' && data.data.startsWith('http') ? data.data : null); 
                     let base64 = data.base64 || (data.data && data.base64) || (data.data && typeof data.data === 'string' && !data.data.startsWith('http') ? data.data : null);
 

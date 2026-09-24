@@ -55,7 +55,8 @@ async function generate({ prompt, senderId, isOwner, model, systemPrompt = null,
         return balasanAI;
     } catch (error) {
         console.error('🚨 ERROR OLLAMA:', error);
-        return 'Nn... Maaf Sayang, otak offline Shiroko lagi ngadat atau VRAM penuh.';
+        memory.popLast(senderId, PROVIDER_NAME);
+        throw new Error(`Ollama Error (${model || 'default'}): ${error.message}`);
     }
 }
 

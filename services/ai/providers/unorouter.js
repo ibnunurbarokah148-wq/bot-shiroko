@@ -36,6 +36,24 @@ function isPremiumModel(model) {
     return !id.includes(':free') && isTextGenerationModel(model);
 }
 
+function getModelCapabilities(model) {
+    const values = [
+        ...(Array.isArray(model?.modalities) ? model.modalities : []),
+        ...(Array.isArray(model?.input_modalities) ? model.input_modalities : []),
+        ...(Array.isArray(model?.architecture?.input_modalities) ? model.architecture.input_modalities : []),
+        ...(Array.isArray(model?.capabilities?.input_modalities) ? model.capabilities.input_modalities : [])
+    ].map(value => String(value).toLowerCase());
+    const serialized = JSON.stringify(model || {}).toLowerCase();
+    const image = values.some(value => /image|vision|visual/.test(value)) ||
+        /image[_ -]?input|vision|multimodal|multimodal/.test(serialized);
+    const audio = values.some(value => /audio|sound/.test(value));
+    return { text: true, image, audio };
+}
+
+function supportsImage(model) {
+    return getModelCapabilities(model).image;
+}
+
 function getModelCost(model, { isOwner = false } = {}) {
     if (isOwner) return 0;
     const id = modelId(model).toLowerCase();
@@ -68,13 +86,31 @@ async function fetchModels({ premiumOnly = false, all = true } = {}) {
     return models.filter(model => all || !premiumOnly || isPremiumModel(model));
 }
 
-async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, imageBuffer = null, useMemory = true }) {
+async function generate({ prompt, senderId, isOwner, model, systemPrompt = null, imageBuffer = null, imageMimeType = 'image/jpeg', useMemory = true }) {
     const modelName = resolveModel({ model, senderId, isOwner });
     const keepMemory = useMemory !== false;
     if (keepMemory && !memory.get(senderId, PROVIDER_NAME)) memory.init(senderId, PROVIDER_NAME);
     if (keepMemory) memory.push(senderId, PROVIDER_NAME, 'user', prompt || '[Gambar]');
-    const userContent = imageBuffer ? [{ type: 'text', text: prompt || 'Analisis gambar ini.' }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBuffer.toString('base64')}` } }] : (prompt || '');
-    const messages = [{ role: 'system', content: systemPrompt || getShirokoSystemPrompt(isOwner) }, ...(keepMemory ? memory.getMessages(senderId, PROVIDER_NAME) : [{ role: 'user', content: userContent }])];
+    const history = keepMemory ? memory.getMessages(senderId, PROVIDER_NAME) : [];
+    const messages = [{ role: 'system', content: systemPrompt || getShirokoSystemPrompt(isOwner) }];
+    if (keepMemory) {
+        messages.push(...history);
+        if (imageBuffer) {
+            const lastUser = messages.length - 1;
+            messages[lastUser] = {
+                ...messages[lastUser],
+                content: [
+                    { type: 'text', text: prompt || 'Analisis gambar ini.' },
+                    { type: 'image_url', image_url: { url: `data:${imageMimeType || 'image/jpeg'};base64,${imageBuffer.toString('base64')}` } }
+                ]
+            };
+        }
+    } else {
+        messages.push({ role: 'user', content: imageBuffer ? [
+            { type: 'text', text: prompt || 'Analisis gambar ini.' },
+            { type: 'image_url', image_url: { url: `data:${imageMimeType || 'image/jpeg'};base64,${imageBuffer.toString('base64')}` } }
+        ] : (prompt || '') });
+    }
     try {
         const response = await axios.post(`${BASE_URL}/chat/completions`, { model: modelName, max_tokens: Number(process.env.UNOROUTER_MAX_TOKENS || 4096), messages }, {
             headers: { Authorization: `Bearer ${getRandomKey()}`, 'Content-Type': 'application/json' }, timeout: Number(process.env.UNOROUTER_TIMEOUT || 120000)
@@ -119,4 +155,4 @@ async function transcribe({ audioBuffer, mimeType = 'audio/ogg', model, senderId
     return validateTranscript(cleanThinkingLogs(extractOpenRouterText(response.data)), 'UnoRouter', modelName);
 }
 
-module.exports = { generate, generateWithTools, transcribe, fetchModels, fetchLiveModels, resolveModel, getModelCost, isTextGenerationModel, isPremiumModel, BASE_URL };
+module.exports = { generate, generateWithTools, transcribe, fetchModels, fetchLiveModels, resolveModel, getModelCost, isTextGenerationModel, isPremiumModel, getModelCapabilities, supportsImage, BASE_URL };

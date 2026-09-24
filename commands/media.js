@@ -287,14 +287,9 @@ async function handle(ctx) {
                 }
 
                 const cost = 4;
-                const { dbLimit, simpanDB } = require('../config/db');
-                if (!isOwner && dbLimit[senderId] !== undefined) {
-                    if (dbLimit[senderId] < cost) {
-                        await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih server lain atau ketik *batal*.`);
-                        return true;
-                    }
-                    dbLimit[senderId] -= cost;
-                    simpanDB();
+                if (!isOwner && !cekDanPotongLimit(senderId, cost)) {
+                    await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih server lain atau ketik *batal*.`);
+                    return true;
                 }
 
                 delete state.sesiArisu[senderId];
@@ -404,14 +399,9 @@ async function handle(ctx) {
                 }
             }
 
-            const { dbLimit, simpanDB } = require('../config/db');
-            if (!isOwner && dbLimit[senderId] !== undefined) {
-                if (dbLimit[senderId] < cost) {
-                    await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih model lain atau ketik *batal*.`);
-                    return true;
-                }
-                dbLimit[senderId] -= cost;
-                simpanDB();
+            if (!isOwner && !cekDanPotongLimit(senderId, cost)) {
+                await reply(`Nn... Tokenmu tidak cukup untuk membayar ${cost} limit.\nSilakan pilih model lain atau ketik *batal*.`);
+                return true;
             }
 
             const promptMentah = sesi.promptMentah;
@@ -435,7 +425,7 @@ async function handle(ctx) {
                     incrementStat('imageGenerated');
                 } catch (cfErr) {
                     const { kembalikanLimit } = require('../config/db');
-                    if (!isOwner) kembalikanLimit(senderId);
+                    if (!isOwner) kembalikanLimit(senderId, cost);
                     console.error("🚨 ERROR CLOUDFLARE IMAGE:", cfErr.message);
                     await reply(`⚠️ Nn... Gagal membuat gambar di Cloudflare AI.\n*Laporan Sistem:* ${cfErr.message}\nToken limit dikembalikan.`);
                 }
@@ -454,6 +444,10 @@ async function handle(ctx) {
                     });
 
                     const data = response.data;
+                    if (data?.success === false) {
+                        const apiError = data.error || data.message || 'ArisuSoft menolak permintaan gambar.';
+                        throw new Error(typeof apiError === 'string' ? apiError : JSON.stringify(apiError));
+                    }
                     let imageUrl = data.url || (data.data && data.data.url) || data.image || data.imageUrl; 
                     let base64 = data.base64 || (data.data && data.base64);
 
@@ -475,7 +469,7 @@ async function handle(ctx) {
                     incrementStat('imageGenerated');
                 } catch (arisuErr) {
                     const { kembalikanLimit } = require('../config/db');
-                    if (!isOwner) kembalikanLimit(senderId);
+                    if (!isOwner) kembalikanLimit(senderId, cost);
                     console.error("🚨 ERROR ARISUSOFT IMAGE:", arisuErr.message);
                     await reply(`⚠️ Nn... Gagal membuat gambar di ArisuSoft.\n*Laporan Sistem:* ${arisuErr.message}\nToken limit dikembalikan.`);
                 }

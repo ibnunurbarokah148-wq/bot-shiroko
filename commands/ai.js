@@ -846,14 +846,19 @@ async function handle(ctx) {
         const { provider: costProvider, model: costModel } = AIProvider.resolveMode(userMode, senderId);
         const isPremium = hasActivePremium(senderId, premiumIdentity);
         let unorouterMetadata = null;
+        let selectedModelMetadata = null;
         if (costProvider === 'unorouter') {
             try { unorouterMetadata = (await AIProvider.fetchModels('unorouter')).find(item => item.id === costModel) || null; }
             catch (err) { console.warn(`[UNOROUTER] Gagal memvalidasi katalog model: ${err.message}`); }
+        } else if (costProvider === 'openrouter' && chatImageBuffer) {
+            try { selectedModelMetadata = (await AIProvider.fetchModels('openrouter')).find(item => item.id === costModel) || null; }
+            catch (err) { console.warn(`[OPENROUTER] Gagal memvalidasi katalog model: ${err.message}`); }
         }
         const access = AIProvider.validateModelAccess(costProvider, costModel, {
             isOwner,
             isPremium,
-            metadata: unorouterMetadata
+            metadata: unorouterMetadata || selectedModelMetadata,
+            imageRequested: !!chatImageBuffer
         });
         if (!access.allowed) {
             await reply(`Nn... ${access.reason}`);
